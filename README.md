@@ -35,6 +35,28 @@ parley
 
 문제 발생 시 먼저 터미널에서 `codex`, `claude`, `agy`가 각각 실행되고 로그인되어 있는지 확인. 포트 충돌 시 `parley --port 0` 사용.
 
+### 원본 Parley와의 차이점
+
+| 구분 | 원본 `auspex0/parley` | Parley HY |
+|---|---|---|
+| Gemini 계열 연결 | 기존 Gemini CLI 기준 | 현재 Google Antigravity CLI인 `agy` 사용 |
+| 화면 언어 | 영어 중심 | 한국어/English 전환 및 브라우저별 설정 저장 |
+| 왼쪽 메뉴 | 고정 표시 | 접기/펼치기 및 상태 저장 |
+| 모델 도구 확인 | 채팅 화면에서 별도 확인 어려움 | 모델별 Skill, MCP, Plugin 검색·입력 기능 |
+| 운영 방식 | 범용 다중 에이전트 대화 | Codex 주도 + Claude/AGY 검토 방식 가이드 제공 |
+| 공개 정보 보호 | 원본 기본 동작 | 도구 설명의 명령·URL·Windows/POSIX 로컬 경로 마스킹 강화 |
+| 브랜드·문서 | Parley | Parley HY 이름과 한국어 설치·사용·업데이트 가이드 |
+
+다음 핵심 동작은 원본과 동일하게 유지함.
+
+- API 키 없이 `codex`, `claude`, `agy` CLI의 기존 구독 로그인 사용
+- 실행 명령 `parley` 및 기본 주소 `http://127.0.0.1:4141` 유지
+- 방·대화·설정의 기본 저장 위치 `~/.parley` 유지
+- Talk, Work, Pair, Lurk, 자동 발언 제한 등 기존 대화 구조 유지
+- 기존 Parley 방 파일과의 호환성을 위해 AGY의 내부 provider id는 `gemini` 유지
+
+Parley HY는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 클론하여 실행해야 함. `npx parley-room` 또는 `npm install -g parley-room` 실행 시 Parley HY가 아닌 원본 npm 버전이 설치됨.
+
 ### 추천 운영 방식: Codex 주도 + 검토 모델
 
 토큰 사용을 줄이면서 의견 검토를 받으려면 다음 구성을 권장함.
