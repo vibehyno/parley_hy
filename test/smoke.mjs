@@ -21,6 +21,8 @@ import vm from "node:vm";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SERVER = path.join(here, "..", "parley.mjs");
 const FAKE = path.join(here, "fake-cli.mjs");
+const FAKE_AGY = path.join(here, "fake-agy.mjs");
+const FAKE_TOOLS = path.join(here, "fake-tools.mjs");
 const ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "parley-smoke-"));
 
 let base = "";
@@ -34,7 +36,7 @@ function ok(name, cond, detail) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let TOKEN = ""; // read out of the served page, exactly as the browser does
-const RUNTIME_PROTOCOL = "12";
+const RUNTIME_PROTOCOL = "14";
 
 async function api(method, route, body) {
   const res = await fetch(base + route, method === "GET"
@@ -1640,12 +1642,13 @@ async function main() {
   console.log("api access");
   const servedHtml = await fetch(base + "/").then((r) => r.text());
   const scriptHref = /src="(\/ui\/app\.js\?v=[^"]+)"/.exec(servedHtml)?.[1];
+  const i18nHref = /src="(\/ui\/i18n\.js\?v=[^"]+)"/.exec(servedHtml)?.[1];
   const styleHref = /href="(\/ui\/styles\.css\?v=[^"]+)"/.exec(servedHtml)?.[1];
-  ok("page references versioned JavaScript and CSS", !!scriptHref && !!styleHref);
-  const [servedScript, servedStyle] = await Promise.all([scriptHref, styleHref].map((href) =>
+  ok("page references versioned JavaScript and CSS", !!scriptHref && !!i18nHref && !!styleHref);
+  const [servedScript, servedStyle, servedI18n] = await Promise.all([scriptHref, styleHref, i18nHref].map((href) =>
     href ? fetch(base + href).then((response) => response.text()) : ""));
   // Existing behavior probes inspect one startup-consistent client source set.
-  const page = `${servedHtml}\n${servedStyle}\n${servedScript}`;
+  const page = `${servedHtml}\n${servedStyle}\n${servedScript}\n${servedI18n}`;
   const markdownSource = (page.match(/const SENT_A[\s\S]*?\r?\n}\r?\n(?=document\.addEventListener)/) || [])[0];
   // renderMD calls the highlighter, which lives above it, so the slice has to
   // carry both or the extracted function throws on the first code block.
@@ -1726,9 +1729,23 @@ async function main() {
     !page.includes("<datalist id=") && page.includes('class="freecombo-toggle"') &&
     page.includes('setFreeComboOpen(combo, opening, "")'));
   ok("Claude Full access is a warned structured setting",
-    page.includes('<option value="bypassPermissions">full access') &&
+    page.includes('<option value="bypassPermissions">') && page.includes('"settings.claudeFull": "full access') &&
     page.includes("Give ${who} Full access in this room?") &&
     page.includes("Full access includes protected paths such as .git"));
+  ok("AGY settings use current modes and warn before full access",
+    page.includes('<option value="accept-edits">') && page.includes('"settings.agyAccept": "accept edits') &&
+    page.includes('<option value="full">') && page.includes('"settings.agyFull": "full access') &&
+    page.includes("dangerously-skip-permissions") && !page.includes('value="auto_edit"'));
+  ok("desktop sidebar can collapse, reopen and persist its state",
+    page.includes("sidebar-collapsed") && page.includes("parley.sidebarCollapsed") &&
+    page.includes("sidebar.inert") && page.includes("desktopNav.matches"));
+  ok("provider tools can be searched and inserted into the composer",
+    page.includes('id="toolsBtn"') && page.includes('id="toolsOverlay"') &&
+    page.includes('/api/tools?') && page.includes("insertToolPrompt"));
+  ok("Parley HY exposes a persisted Korean/English UI selector",
+    page.includes("Parley HY") && page.includes('id="s_locale"') &&
+    page.includes('data-i18n="settings.title"') &&
+    page.includes('setLocale($("s_locale").value)'));
   const stopChoiceSource = (page.match(/const stopIsChoice = [\s\S]*?;\r?\n/) || [])[0];
   let stopChoice = null;
   try { stopChoice = stopChoiceSource ? Function(`${stopChoiceSource}; return stopIsChoice;`)() : null; }
@@ -1946,7 +1963,116 @@ async function main() {
   await checkWakeMenuUi();
   await checkSoloPairControlUi();
 
-  console.log("routing & the delta protocol");
+  console.log("provider tool catalog");
+  const toolProject = path.join(ROOT, "tool-project");
+  const pluginSkill = path.join(toolProject, ".fake-plugin", "skills", "plugin-helper");
+  fs.mkdirSync(path.join(toolProject, ".codex", "skills", "short-review"), { recursive: true });
+  fs.mkdirSync(path.join(toolProject, ".claude", "skills", "short-review"), { recursive: true });
+  fs.mkdirSync(path.join(toolProject, ".gemini", "skills", "short-review"), { recursive: true });
+  fs.mkdirSync(pluginSkill, { recursive: true });
+  const skillText = "---\nname: short-review\ndescription: Concise review at https://private.example/tool, C:\\\\Secret\\\\skill.md, C:\\\\Users\\\\Jane Doe\\\\private.md, /root/private/skill.md, /workspace/internal/tool, /workspace/My Project/file.txt, /Users/Jane Doe/private.md, /srv/parley/config, and /private/tmp/token\n---\nSECRET_SKILL_BODY\n";
+  for (const providerDir of [".codex", ".claude", ".gemini"]) {
+    fs.writeFileSync(path.join(toolProject, providerDir, "skills", "short-review", "SKILL.md"), skillText);
+  }
+  fs.writeFileSync(path.join(pluginSkill, "SKILL.md"), "---\nname: plugin-helper\ndescription: Plugin helper\n---\n");
+  for (const [roomName, provider, peer] of [
+    ["tools-codex", "codex", "claude"],
+    ["tools-claude", "claude", "codex"],
+    ["tools-agy", "gemini", "codex"],
+  ]) {
+    const roomDir = path.join(ROOT, roomName);
+    fs.mkdirSync(path.join(roomDir, "workspace"), { recursive: true });
+    fs.writeFileSync(path.join(roomDir, "room.json"), JSON.stringify({
+      mode: "talk", projectDir: toolProject, defaultAgent: provider,
+      agents: {
+        [provider]: { provider, command: FAKE_TOOLS, lurk: false },
+        [peer]: { provider: peer, command: FAKE, lurk: false },
+      },
+    }, null, 2));
+    const tools = await api("GET", `/api/tools?room=${roomName}&provider=${provider}&refresh=1`);
+    const exposed = JSON.stringify(tools.data);
+    ok(`${provider} tool catalog exposes safe skill, MCP and plugin names`,
+      tools.status === 200 && tools.data.provider === provider &&
+      tools.data.skills.some((item) => item.name === "short-review") &&
+      tools.data.mcps.some((item) => item.name === "fake-mcp") &&
+      tools.data.plugins.some((item) => item.name === "Fake Plugin"), exposed);
+    ok(`${provider} tool catalog withholds local paths, commands and skill bodies`,
+      !exposed.includes(toolProject) && !exposed.includes("secret-command") &&
+      !exposed.includes("SECRET_SKILL_BODY") && !exposed.includes(FAKE_TOOLS) &&
+      !exposed.includes("https://private.example") && !exposed.includes("C:\\\\Secret") &&
+      !exposed.includes("Jane Doe") && !exposed.includes("My Project") &&
+      !exposed.includes("Doe/private.md") && !exposed.includes("Project/file.txt") &&
+      !exposed.includes("/root/private") && !exposed.includes("/workspace/internal") &&
+      !exposed.includes("/srv/parley") && !exposed.includes("/private/tmp"), exposed);
+  }
+  if (process.env.PARLEY_TEST_TOOLS_ONLY === "1") return;
+
+  console.log("AGY adapter");
+  const agyDir = path.join(ROOT, "agy-adapter");
+  fs.mkdirSync(path.join(agyDir, "workspace"), { recursive: true });
+  fs.writeFileSync(path.join(agyDir, "room.json"), JSON.stringify({
+    mode: "talk",
+    defaultAgent: "gemini",
+    agents: {
+      claude: { provider: "claude", command: FAKE, lurk: false },
+      gemini: {
+        provider: "gemini", command: FAKE_AGY, model: "gemini-3.8-flash-low",
+        effort: "low", approvalMode: "auto", extraArgs: [], lurk: false,
+      },
+    },
+  }, null, 2));
+  await say("agy-adapter", "ARGJSON USAGE1", "gemini");
+  let agyData = await idle("agy-adapter");
+  let agyReply = lastAgent(agyData, "gemini");
+  let agyArgv = argvFrom(agyReply);
+  ok("AGY Talk uses stream JSON print mode", hasArg(agyArgv, "--output-format", "stream-json") &&
+    hasArg(agyArgv, "--input-format", "stream-json") &&
+    hasArg(agyArgv, "--mode", "plan") && agyArgv.includes("--sandbox") &&
+    hasArg(agyArgv, "--model", "gemini-3.8-flash-low") && hasArg(agyArgv, "--effort", "low"),
+    JSON.stringify(agyArgv));
+  ok("AGY sends the prompt as stream JSON through stdin instead of Windows-limited argv",
+    hasArg(agyArgv, "--input-format", "stream-json") && hasArg(agyArgv, "--output-format", "stream-json") &&
+    !agyArgv.includes("-p") && !agyArgv.includes("--print") &&
+    !agyArgv.some((value) => String(value).includes("ARGJSON USAGE1")),
+    JSON.stringify(agyArgv));
+  ok("AGY starts without deprecated Gemini session flags",
+    !agyArgv.includes("--session-id") && !agyArgv.includes("--resume") &&
+    !agyArgv.includes("--approval-mode") && !agyArgv.includes("--include-directories"),
+    JSON.stringify(agyArgv));
+  ok("AGY records the conversation id and first-turn usage",
+    agyData.room.agents.gemini?.linked === true && agyReply?.meta?.tokens?.in === 100 &&
+    agyReply.meta?.tokens?.out === 20 && agyReply.meta?.tokens?.reasoning === 5 &&
+    agyReply.meta?.tokens?.cacheRead === 10,
+    JSON.stringify({ agent: agyData.room.agents.gemini, tokens: agyReply.meta?.tokens }));
+
+  await say("agy-adapter", "ARGJSON USAGE2", "gemini");
+  agyData = await idle("agy-adapter");
+  agyReply = lastAgent(agyData, "gemini");
+  agyArgv = argvFrom(agyReply);
+  ok("AGY resumes the exact conversation", hasArg(agyArgv, "--conversation", "fake-agy-talk"),
+    JSON.stringify(agyArgv));
+  ok("AGY converts cumulative usage to a per-turn delta",
+    agyReply.meta?.tokens?.in === 60 && agyReply.meta?.tokens?.out === 10 &&
+    agyReply.meta?.tokens?.reasoning === 3 && agyReply.meta?.tokens?.cacheRead === 10,
+    JSON.stringify(agyReply.meta?.tokens));
+
+  await cfg("agy-adapter", { mode: "work" });
+  await say("agy-adapter", "WORKARGS", "gemini");
+  agyData = await idle("agy-adapter");
+  agyArgv = argvFrom(lastAgent(agyData, "gemini"));
+  ok("AGY Work uses sandboxed accept-edits", hasArg(agyArgv, "--mode", "accept-edits") &&
+    agyArgv.includes("--sandbox") && !agyArgv.includes("--dangerously-skip-permissions"),
+    JSON.stringify(agyArgv));
+
+  await say("agy-adapter", "AGYERROR", "gemini");
+  agyData = await idle("agy-adapter");
+  ok("AGY JSON error status becomes a visible provider error",
+    agyData.entries.some((entry) => entry.kind === "system" && entry.meta?.error &&
+      entry.text.includes("fake AGY provider error")),
+    JSON.stringify(texts(agyData, "system").slice(-3)));
+  if (process.env.PARLEY_TEST_AGY_ONLY === "1") return;
+
+  console.log("\nrouting & the delta protocol");
   await useFakes("default");
   const routedMango = await say("default", "@claude SAY:MANGO", "both");
   ok("the message response reports the server-resolved inline target",

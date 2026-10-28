@@ -2,6 +2,14 @@
 
 Notable changes per published version. Dates are release dates on npm.
 
+## Unreleased — AGY compatibility fork
+
+- Replaced the retired consumer Gemini CLI invocation with Google Antigravity CLI (`agy`) while retaining the internal `gemini` provider id for saved-room compatibility.
+- Added AGY conversation resume, JSON response/error parsing, current model and effort controls, sandboxed Talk/Work modes, explicit Full access, and cumulative-to-per-turn usage accounting.
+- Added deterministic AGY adapter coverage without provider logins or token spend.
+- Added a searchable per-provider Tools drawer for Skills, MCP servers and plugins, with safe composer insertion and metadata-only browser exposure.
+- Added a persistent desktop sidebar collapse control while preserving the mobile overlay.
+
 ## 1.2.1 — 2026-10-11
 
 Two Claude Code fixes.

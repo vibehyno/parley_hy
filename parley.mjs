@@ -65,7 +65,10 @@ const UI_HTML = UI_SNAPSHOT.html;
 //    lane order is not arrival order.
 // 11: recovery actions name their original root and Pair cancellation recovers
 //     a whole cycle. Old pages offer unbound/per-seat actions for those entries.
-const RUNTIME_PROTOCOL = "12";
+// 13: the provider-tool catalog is available and browser responses contain
+//     display metadata only. Older pages do not know this endpoint or drawer.
+// 14: the startup UI includes the version-pinned localization asset.
+const RUNTIME_PROTOCOL = "14";
 const IS_WIN = process.platform === "win32";
 
 const IMAGE_TYPES = new Map([
@@ -114,7 +117,7 @@ if (argv.includes("--version") || argv.includes("-v")) {
   process.exit(0);
 }
 if (argv.includes("--help") || argv.includes("-h")) {
-  console.log(`Parley — a shared chat room for you, Claude and Codex.
+  console.log(`Parley HY — a shared chat room for you, Claude, Codex and AGY.
 
 Usage: parley [--port N] [--root DIR] [--no-open] [--version]
 
@@ -289,49 +292,38 @@ const PROVIDERS = {
     },
   },
   gemini: {
-    label: "Gemini", sub: "Google Gemini CLI", desc: "Google's coding agent",
+    // Keep the provider id `gemini` so existing room.json files continue to
+    // resolve, but drive Google's current Antigravity CLI (`agy`).
+    label: "AGY", sub: "Google Antigravity CLI", desc: "Google's current coding agent CLI",
     avatar: "G", color: "#8ab4f8",
-    defaults: { command: "gemini", model: null, extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, approvalMode: "auto" },
-    fields: ["command", "model", "approvalMode", "extraArgs"],
-    // The CLI exposes no reasoning-effort dial, so the seat card omits it.
-    models: ["gemini-3-pro", "gemini-3-flash"],
+    defaults: { command: "agy", model: "gemini-3.8-flash-low", effort: "low", extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, approvalMode: "auto" },
+    fields: ["command", "model", "effort", "approvalMode", "extraArgs"],
+    models: ["gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
     capabilities: {
-      // Verified against gemini 0.53.0: `--session-id <uuid>` starts a session
-      // with an id we choose and `--resume <uuid>` reattaches to it, so the
-      // delta protocol works here exactly as it does for the other two.
       sessions: "resume",
-      sessionScope: { field: "approvalScope", of: (seatCfg, roomMode) => effectiveGeminiApprovalMode(seatCfg, roomMode) },
-      // Protected turns run under --approval-mode plan — enforced, not prose.
+      sessionScope: { field: "approvalScope", of: (seatCfg, roomMode) => effectiveAgyApprovalMode(seatCfg, roomMode) },
       protectedTurnEnforced: true,
-      fullAccessScope: "yolo",
+      fullAccessScope: "full",
       resumeLostPatterns: [
-        /\bsession not found\b/i,
-        /\bno session\b[^\r\n]{0,40}\bfound\b/i,
+        /\bconversation not found\b/i,
+        /\bno conversation\b[^\r\n]{0,40}\bfound\b/i,
       ],
       nativeImageBytes: Infinity,
-      // Same reasoning as Claude's: Room Settings is the warned route to yolo.
       extraArgsIssue: (args) => {
         for (let i = 0; i < args.length; i++) {
           const flag = args[i].split("=", 1)[0].toLowerCase();
-          if (flag === "-y" || flag === "--yolo") {
-            return "Use Gemini's warned Full access setting instead of --yolo in Extra CLI args";
-          }
-          if (flag === "--approval-mode") {
-            const mode = args[i].includes("=") ? args[i].slice(args[i].indexOf("=") + 1) : args[i + 1];
-            if (String(mode || "").trim().toLowerCase() === "yolo") {
-              return "Use Gemini's warned Full access setting instead of --approval-mode yolo in Extra CLI args";
-            }
+          if (["--mode", "--sandbox", "--dangerously-skip-permissions", "--approval-mode", "--yolo", "-y"].includes(flag)) {
+            return `Use AGY's structured approval setting instead of ${flag} in Extra CLI args`;
           }
         }
         return null;
       },
-      // The approval mode is chosen per invocation, so nothing about it is
-      // baked into the session.
       enums: {
         approvalMode: {
-          values: () => GEMINI_APPROVAL_MODES,
+          values: () => AGY_APPROVAL_MODES,
           fallback: "auto",
-          error: (v) => `Unknown Gemini approval mode: ${v}. Choose room default, plan, auto_edit, or full access.`,
+          error: (v) => `Unknown AGY approval mode: ${v}. Choose room default, plan, accept-edits, or full access.`,
         },
       },
     },
@@ -339,9 +331,9 @@ const PROVIDERS = {
 };
 const DEFAULT_SEATS = ["claude", "codex"];
 const CLAUDE_PERMISSION_MODES = new Set(["auto", "plan", "acceptEdits", "bypassPermissions"]);
-// Gemini's own vocabulary, minus the interactive-only cases. "auto" is Parley's
-// room default rather than one of the CLI's values, matching Claude's field.
-const GEMINI_APPROVAL_MODES = new Set(["auto", "plan", "auto_edit", "yolo"]);
+// Legacy values remain accepted so existing Gemini rooms migrate without
+// becoming unusable; the UI writes only AGY's current vocabulary.
+const AGY_APPROVAL_MODES = new Set(["auto", "plan", "accept-edits", "full", "auto_edit", "yolo"]);
 
 function seatIds(room) { return Object.keys(room.cfg.agents); }
 function otherSeat(room, id) { return seatIds(room).find((s) => s !== id) || id; }
@@ -1549,85 +1541,62 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   return { text: text || "", emptyReply: !text, sessionRef: threadRef || "--last", sentinelThread: !threadRef || threadRef === "--last", usage };
 }
 
-// `auto` is Parley's "follow the room", matching Claude's field, rather than one
-// of Gemini's own values. An explicit Extra CLI arg still wins.
-function effectiveGeminiApprovalMode(cfg, roomMode) {
-  const override = cliArgValue(cfg.extraArgs || [], "--approval-mode");
-  if (override !== null) return override || "invalid";
-  const configured = GEMINI_APPROVAL_MODES.has(cfg.approvalMode) ? cfg.approvalMode : "auto";
-  return configured === "auto" ? (roomMode === "work" ? "auto_edit" : "default") : configured;
+function effectiveAgyApprovalMode(cfg, roomMode) {
+  const configured = AGY_APPROVAL_MODES.has(cfg.approvalMode) ? cfg.approvalMode : "auto";
+  if (configured === "auto_edit") return "accept-edits";
+  if (configured === "yolo") return "full";
+  return configured === "auto" ? (roomMode === "work" ? "accept-edits" : "plan") : configured;
 }
 
 /**
- * Google Gemini CLI: headless mode with JSON output.
- *
- * Verified against gemini 0.53.0 rather than assumed:
- *  - Headless mode triggers on a non-TTY stdin, which is how Parley spawns it,
- *    so the whole prompt goes on stdin and never near a command line — Windows
- *    would otherwise truncate a normal delta somewhere past 32 KB.
- *  - `--output-format json` returns one object: { response, stats, error? }.
- *  - `--session-id <uuid>` starts a session with an id we choose, and
- *    `--resume <uuid>` reattaches to it. That is what makes Gemini a full
- *    delta-protocol seat rather than a stateless one that re-reads history
- *    every turn: Parley mints the id, so it knows the session's name before the
- *    process has said anything.
- *  - `--approval-mode` takes default | auto_edit | yolo | plan. `plan` is a
- *    real read-only mode, which is what protected discussion, reviewer and
- *    listener turns need — the same role Claude's Plan mode plays.
+ * Google Antigravity CLI (`agy`) print mode with JSON output. AGY assigns the
+ * conversation id on a fresh turn and resumes it with `--conversation`.
  */
-async function geminiSend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
+async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
   const cfg = room.cfg.agents[seat];
   const protectedTurn = !!(discussion || readOnly);
   const sess = room.state.agents[seat].sessionRef;
   const extraArgs = checkedExtraArgs(room, seat, cfg.extraArgs);
-  const args = ["--output-format", "json"];
-  // Reattach to the session Parley named, or name the next one. Either way the
-  // id is ours, so a reply never has to tell us what it just created.
-  const sessionRef = sess || crypto.randomUUID();
-  if (sess) args.push("--resume", sess);
-  else args.push("--session-id", sessionRef);
+  const args = ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands"];
+  if (sess) args.push("--conversation", sess);
   if (cfg.model) args.push("--model", cfg.model);
-  // Disposable copies of attachments, never the room's canonical store.
-  if (inputDir) args.push("--include-directories", inputDir);
-  const approval = protectedTurn ? "plan" : effectiveGeminiApprovalMode(cfg, room.cfg.mode);
-  args.push("--approval-mode", approval);
-  // A protected turn must not be reopened by an advanced per-room override.
-  args.push(...(protectedTurn ? withoutArgWithValue(extraArgs, "--approval-mode") : extraArgs));
+  if (cfg.effort) args.push("--effort", cfg.effort);
+  if (inputDir) args.push("--add-dir", inputDir);
+  const approval = protectedTurn ? "plan" : effectiveAgyApprovalMode(cfg, room.cfg.mode);
+  if (approval === "full") args.push("--mode", "auto", "--dangerously-skip-permissions");
+  else args.push("--mode", approval, "--sandbox");
+  args.push(...extraArgs);
 
   // The briefing is a system-level instruction for the other two providers, but
   // Gemini's headless mode has no equivalent flag, so it leads the prompt. The
   // fresh-session case is the only one that has a briefing at all.
-  const input = briefing ? `${briefing}\n\n${prompt}` : prompt;
+  const promptText = briefing ? `${briefing}\n\n${prompt}` : prompt;
 
-  let usage = null;
-  let responseText = null;
-  let errorText = null;
-  // json mode emits one object at the end rather than a stream, so there is
-  // nothing to feed onStream — the live bubble simply stays on "thinking" until
-  // the reply lands, which is honest rather than fake.
+  // Keep the full room briefing off argv. Windows CreateProcess has a small
+  // command-line ceiling; AGY's documented stream-json mode accepts one user
+  // event per stdin line and emits a result event for the completed turn.
+  const input = JSON.stringify({ event: "user", message: { content: promptText } }) + "\n";
+
+  let result = null;
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
-    let obj; try { obj = JSON.parse(line); } catch { return; }
-    if (typeof obj.response === "string") responseText = obj.response;
-    if (obj.error) errorText = obj.error.message || String(obj.error);
-    const stats = obj.stats && (obj.stats.tokens || obj.stats);
-    if (stats && typeof stats.output === "number") {
-      usage = { out: stats.output, ...(typeof stats.thoughts === "number" ? { reasoning: stats.thoughts } : {}) };
-    }
+    try {
+      const event = JSON.parse(line);
+      if (event?.event === "result" && event.result) result = event.result;
+    } catch { /* final stdout parse below */ }
   };
 
   const r = await runCli(resolveCommand(cfg.command), args, {
     cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input, onLine, room, agent: seat,
   });
 
-  // json mode can also emit the object as one multi-line blob rather than a
-  // single line, so parse the whole of stdout if the line reader found nothing.
-  if (responseText === null && r.stdout) {
-    try {
-      const obj = JSON.parse(r.stdout.trim());
-      if (typeof obj.response === "string") responseText = obj.response;
-      if (obj.error) errorText = obj.error.message || String(obj.error);
-    } catch { /* not a single JSON document; fall through to the raw text */ }
+  if (!result && r.stdout) {
+    for (const line of r.stdout.trim().split(/\r?\n/).reverse()) {
+      try {
+        const event = JSON.parse(line);
+        if (event?.event === "result" && event.result) { result = event.result; break; }
+      } catch { /* keep looking for the final result event */ }
+    }
   }
 
   if (r.stopped) throw new AdapterError(`${seat} was stopped by you`, { stopped: true });
@@ -1635,15 +1604,35 @@ async function geminiSend(room, { seat = "gemini", prompt, briefing, onStream, o
   if (r.spawnError) throw new AdapterError(`could not launch ${seat} (command: "${cfg.command}") — ${r.stderr}`);
   if (r.code !== 0) {
     throw new AdapterError(`${seat} (command: "${cfg.command}") exited with code ${r.code}${stderrTail(r)}`, {
-      // Exit 42 is the CLI's "input error", which is what a resume against a
-      // session it no longer has looks like.
-      resumeFailed: !!sess && (r.code === 42 || missingNativeSession(room, seat, r)),
+      resumeFailed: !!sess && missingNativeSession(room, seat, r),
     });
   }
+  const errorText = result?.error && (result.error.message || String(result.error));
+  if (result?.status && result.status !== "SUCCESS") {
+    throw new AdapterError(`${seat}: ${truncate(errorText || `AGY returned status ${result.status}`, 300)}`);
+  }
   if (errorText) throw new AdapterError(`${seat}: ${truncate(errorText, 300)}`);
-  const text = responseText ?? (r.stdout || "").trim() ?? null;
+  const sessionRef = typeof result?.conversation_id === "string" ? result.conversation_id : null;
+  if (!sessionRef) throw new AdapterError(`${seat} returned no conversation id`);
+  const text = typeof result?.response === "string" ? result.response : null;
   if (!text && !allowEmpty) throw new AdapterError(`${seat} returned an empty reply`);
-  return { text: text || "", emptyReply: !text, sessionRef, ...(usage ? { usage } : {}) };
+
+  let usage = null;
+  const rawUsage = result?.usage;
+  if (rawUsage && typeof rawUsage === "object") {
+    const cumulative = {
+      in: Number(rawUsage.input_tokens) || 0,
+      out: Number(rawUsage.output_tokens) || 0,
+      reasoning: Number(rawUsage.thinking_tokens) || 0,
+      cacheRead: Number(rawUsage.cache_read_tokens) || 0,
+    };
+    const previous = room.state.agents[seat].agyUsage;
+    usage = Object.fromEntries(Object.entries(cumulative).map(([key, value]) => [
+      key, Math.max(0, value - (previous?.sessionRef === sessionRef ? Number(previous[key]) || 0 : 0)),
+    ]));
+    room.state.agents[seat].agyUsage = { sessionRef, ...cumulative };
+  }
+  return { text: text || "", emptyReply: !text, sessionRef, sessionScope: approval, ...(usage ? { usage } : {}) };
 }
 
 // A briefing is a string (fresh session) or null (resumed session). Anything
@@ -1697,7 +1686,7 @@ function briefedAdapter(send) {
 const adapters = {
   claude: briefedAdapter(claudeSend),
   codex: briefedAdapter(codexSend),
-  gemini: briefedAdapter(geminiSend),
+  gemini: briefedAdapter(agySend),
 };
 
 // ---------------------------------------------------------------- rooms
@@ -2453,11 +2442,11 @@ const AUTH_HINTS = {
     how: "Run `codex` once in a terminal and sign in.",
   },
   gemini: {
-    paths: [[".gemini", "oauth_creds.json"], [".gemini", "google_accounts.json"]],
-    how: "Run `gemini` once in a terminal and complete the login, or set GEMINI_API_KEY.",
+    paths: [[".gemini", "antigravity-cli", "settings.json"]],
+    how: "Run `agy` once in a terminal and complete the Antigravity login.",
   },
 };
-const AUTH_ENV = { gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"], claude: ["ANTHROPIC_API_KEY"], codex: ["OPENAI_API_KEY"] };
+const AUTH_ENV = { gemini: [], claude: ["ANTHROPIC_API_KEY"], codex: ["OPENAI_API_KEY"] };
 
 async function seatHealth(room, seat) {
   const cfg = room.cfg.agents[seat];
@@ -6944,6 +6933,172 @@ function handleNewConversation(room) {
 
 // ---------------------------------------------------------------- HTTP server
 
+// Provider inventory is deliberately reduced to display metadata before it
+// crosses the browser boundary. CLI list commands can contain executable
+// paths, server URLs and inherited environment values; none of those belong in
+// a page just because the page wants a convenient tool picker.
+const TOOL_CATALOG_TTL_MS = 45_000;
+const toolCatalogCache = new Map();
+const TOOL_COMMANDS = {
+  codex: { mcp: ["mcp", "list"], plugins: ["plugin", "list", "--json"], skillDirs: [".codex"] },
+  claude: { mcp: ["mcp", "list"], plugins: ["plugin", "list", "--json"], skillDirs: [".claude"] },
+  gemini: { mcp: ["mcp", "list"], plugins: ["plugins", "list", "--json"], skillDirs: [".gemini", ".agy"] },
+};
+
+function catalogText(value, max = 120) {
+  return String(value || "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\b(?:https?|file):\/\/\S+/gi, "[link]")
+    // Consume through spaces until a strong list/markup delimiter. Stopping at
+    // whitespace leaked the tail of paths such as /Users/Jane Doe/private.md.
+    // Display metadata is intentionally lossy here: hiding a little prose is
+    // safer than exposing a local path from a CLI or SKILL.md description.
+    .replace(/\b[A-Za-z]:[\\/][^,;|"'<>()[\]\r\n]*/g, "[path]")
+    .replace(/(^|[\s(])(?:~[\\/]|\/(?=[^,;|"'<>()[\]\r\n]*\/))[^,;|"'<>()[\]\r\n]*/g, "$1[path]")
+    .replace(/\\\\[^,;|"'<>()[\]\r\n]*/g, "[path]")
+    .replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function catalogStatus(line) {
+  const text = String(line || "").toLowerCase();
+  if (/\b(disabled|not connected|failed|error|unavailable)\b/.test(text)) return "unavailable";
+  if (/\b(enabled|connected|ready|active)\b/.test(text) || /[✓✔]/.test(text)) return "available";
+  return "configured";
+}
+
+function parseMcpInventory(stdout) {
+  const items = [];
+  for (const raw of String(stdout || "").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^(name\b|[-─]+$|warning\b|no mcp servers? configured)/i.test(line)) continue;
+    let name = "";
+    const colon = line.indexOf(":");
+    if (colon > 0 && colon < 100) name = line.slice(0, colon);
+    else name = line.split(/\s{2,}|\t|\s/)[0];
+    name = catalogText(name, 80);
+    if (!name || !/^[\p{L}\p{N}_.@/+-]+(?: [\p{L}\p{N}_.@/+-]+)*$/u.test(name)) continue;
+    items.push({ name, status: catalogStatus(line) });
+  }
+  return dedupeCatalog(items);
+}
+
+function parseJsonPayload(stdout) {
+  const text = String(stdout || "").trim();
+  for (const marker of ["[", "{"]) {
+    const at = text.indexOf(marker);
+    if (at < 0) continue;
+    try { return JSON.parse(text.slice(at)); } catch { /* try the other shape */ }
+  }
+  return null;
+}
+
+function parsePluginInventory(stdout) {
+  const parsed = parseJsonPayload(stdout);
+  const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.installed) ? parsed.installed : []);
+  const items = [], roots = [];
+  for (const row of rows.slice(0, 500)) {
+    if (!row || typeof row !== "object") continue;
+    const name = catalogText(row.name || row.pluginId || row.id, 100);
+    if (!name) continue;
+    const item = { name, enabled: row.enabled !== false };
+    const version = catalogText(row.version, 40);
+    if (version) item.version = version;
+    items.push(item);
+    for (const candidate of [row.installPath, row.path, row.source?.path]) {
+      if (typeof candidate === "string" && candidate.trim()) roots.push(candidate);
+    }
+  }
+  return { items: dedupeCatalog(items), roots };
+}
+
+function dedupeCatalog(items) {
+  const seen = new Set(), out = [];
+  for (const item of items) {
+    const key = String(item.name || "").toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key); out.push(item);
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function skillMetadata(file) {
+  let text = "";
+  try { text = fs.readFileSync(file, "utf8").slice(0, 8192); } catch { return null; }
+  const front = /^---\s*\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || "";
+  const field = (name) => {
+    const match = new RegExp(`^${name}:\\s*(.+)$`, "mi").exec(front);
+    if (!match) return "";
+    return catalogText(match[1].replace(/^(["'])(.*)\1$/, "$2"), name === "description" ? 240 : 100);
+  };
+  const name = field("name") || catalogText(path.basename(path.dirname(file)), 100);
+  if (!name) return null;
+  const description = field("description");
+  return description ? { name, description } : { name };
+}
+
+function scanSkillRoots(roots) {
+  const found = [];
+  const visited = new Set();
+  let inspected = 0;
+  function walk(dir, depth) {
+    if (depth > 6 || inspected >= 800) return;
+    let resolved;
+    try { resolved = fs.realpathSync(dir); } catch { return; }
+    const key = IS_WIN ? resolved.toLowerCase() : resolved;
+    if (visited.has(key)) return;
+    visited.add(key);
+    let entries;
+    try { entries = fs.readdirSync(resolved, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (inspected++ >= 800) return;
+      if (entry.isFile() && entry.name.toLowerCase() === "skill.md") {
+        const meta = skillMetadata(path.join(resolved, entry.name));
+        if (meta) found.push(meta);
+      } else if (entry.isDirectory() && ![".git", "node_modules", "dist", "build"].includes(entry.name)) {
+        walk(path.join(resolved, entry.name), depth + 1);
+      }
+    }
+  }
+  for (const root of roots) walk(root, 0);
+  return dedupeCatalog(found);
+}
+
+async function providerToolCatalog(room, providerId, refresh = false) {
+  const def = TOOL_COMMANDS[providerId];
+  if (!def) throw Object.assign(new Error(`unknown provider: ${providerId}`), { status: 400 });
+  const seat = seatIds(room).find((id) => providerIdOf(room, id) === providerId);
+  if (!seat) throw Object.assign(new Error(`${PROVIDERS[providerId].label} is not seated in this room`), { status: 409 });
+  const seatCfg = room.cfg.agents[seat];
+  const cwd = workDir(room);
+  const cacheKey = `${room.name}\u0000${providerId}\u0000${seatCfg.command}\u0000${cwd}`;
+  const cached = toolCatalogCache.get(cacheKey);
+  if (!refresh && cached && Date.now() - cached.at < TOOL_CATALOG_TTL_MS) return cached.value;
+
+  const spec = resolveCommand(seatCfg.command || PROVIDERS[providerId].defaults.command);
+  const invoke = (args) => runCli(spec, args, { cwd, timeoutMs: 10_000, input: "" });
+  const [mcpRun, pluginRun] = await Promise.all([invoke(def.mcp), invoke(def.plugins)]);
+  const pluginData = pluginRun.code === 0 ? parsePluginInventory(pluginRun.stdout) : { items: [], roots: [] };
+  const skillRoots = [];
+  for (const base of [cwd, os.homedir()]) {
+    for (const dir of def.skillDirs) skillRoots.push(path.join(base, dir, "skills"));
+  }
+  skillRoots.push(...pluginData.roots);
+  const warnings = [];
+  if (mcpRun.code !== 0) warnings.push("MCP 목록을 불러오지 못했어.");
+  if (pluginRun.code !== 0) warnings.push("Plugin 목록을 불러오지 못했어.");
+  const value = {
+    provider: providerId,
+    label: PROVIDERS[providerId].label,
+    seat,
+    skills: scanSkillRoots(skillRoots),
+    mcps: mcpRun.code === 0 ? parseMcpInventory(mcpRun.stdout) : [],
+    plugins: pluginData.items,
+    warnings,
+  };
+  toolCatalogCache.set(cacheKey, { at: Date.now(), value });
+  return value;
+}
+
 // EventSource can't send headers, so the stream accepts the token as a query
 // param; everything else uses X-Parley-Token. A cross-site page could still
 // *send* a request, so a foreign Origin is refused outright.
@@ -7094,6 +7249,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "GET /api/rooms") return json(res, 200, { rooms: roomsWithModes(), providers: providerCatalog() });
+
+    if (route === "GET /api/tools") {
+      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const provider = String(url.searchParams.get("provider") || "").toLowerCase();
+      const catalog = await providerToolCatalog(room, provider, url.searchParams.get("refresh") === "1");
+      return json(res, 200, catalog);
+    }
 
     if (route === "POST /api/rooms") {
       const { name, seats, projectDir } = await readBody(req);
@@ -7757,7 +7919,7 @@ function listen(attempt = 0) {
   server.listen(port, "127.0.0.1", () => {
     const u = `http://127.0.0.1:${server.address().port}`;
     loadRoom("default", undefined, true); // bootstrap: always somewhere to land
-    console.log(`\n  Parley ${packageVersion()} is running\n\n  UI:     ${u}\n  Rooms:  ${ROOT}\n\n  Ctrl+C to quit.\n`);
+    console.log(`\n  Parley HY ${packageVersion()} is running\n\n  UI:     ${u}\n  Rooms:  ${ROOT}\n\n  Ctrl+C to quit.\n`);
     if (!NO_OPEN) openBrowser(u);
   });
 }

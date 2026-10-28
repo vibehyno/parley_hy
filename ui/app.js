@@ -1,6 +1,25 @@
 "use strict";
 // ------------------------------------------------------------ state
 const $ = (id) => document.getElementById(id);
+const I18N = window.ParleyI18n || {
+  currentLocale: () => "en",
+  t: (key) => key,
+  setLocale: () => "en",
+  applyLocale: () => {},
+};
+const currentLocale = () => I18N.currentLocale();
+const t = (key, vars) => I18N.t(key, vars);
+const setLocale = (locale) => I18N.setLocale(locale);
+const applyLocale = (root) => I18N.applyLocale(root);
+function tr(key, fallback, vars = {}) {
+  const translated = t(key, vars);
+  if (translated !== key) return translated;
+  let value = fallback;
+  for (const [name, replacement] of Object.entries(vars)) value = value.replaceAll(`{${name}}`, String(replacement));
+  return value;
+}
+applyLocale();
+document.title = t("app.name");
 const INITIAL_ROOM = new URLSearchParams(location.search).get("room") || "default";
 const hopChoiceStorageKey = (room) => `parley.hopChoice:${room}`;
 function storedHopChoice(room) {
@@ -43,6 +62,7 @@ const state = {
   doctor: {},        // seat -> first-run health, from /api/doctor
   eventVersion: 0,   // any newer SSE event makes a reconnect snapshot stale for live UI state
   resyncVersion: 0,
+  toolCatalogs: {},  // provider -> safe display metadata from /api/tools
 };
 
 // ------------------------------------------------------------ helpers
@@ -60,7 +80,7 @@ function toast(msg, isErr) {
 // This blocks blind/cross-origin requests; it is not a secret from local
 // processes, which can fetch the public page and read the embedded token.
 const TOKEN = (document.querySelector('meta[name="parley-token"]') || {}).content || "";
-const REQUIRED_RUNTIME_PROTOCOL = "12";
+const REQUIRED_RUNTIME_PROTOCOL = "14";
 const PAGE_RUNTIME_PROTOCOL = (document.querySelector('meta[name="parley-runtime-protocol"]') || {}).content || "";
 const withToken = (url) => url + (url.includes("?") ? "&" : "?") +
   "token=" + encodeURIComponent(TOKEN) + "&protocol=" + encodeURIComponent(REQUIRED_RUNTIME_PROTOCOL);
@@ -501,7 +521,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#hopWrap")) closeHopMenu();
   if (!e.target.closest("#queueWrap")) closeQueuePop();
 });
-window.addEventListener("focus", () => { document.title = "Parley"; refreshGitId(); });
+window.addEventListener("focus", () => { document.title = t("app.name"); refreshGitId(); });
 
 // ------------------------------------------------------------ chat rendering
 const chatWrap = $("chatWrap"), chat = $("chat");
@@ -1881,22 +1901,27 @@ function seatAvatar(a) {
 // them, so the only cost signal was one bubble at a time — in an app whose Sleep
 // feature exists because people hit rate limits.
 function seatUsage(a) {
-  let out = 0, reasoning = 0, replies = 0;
+  let input = 0, out = 0, reasoning = 0, cacheRead = 0, replies = 0;
   for (const e of state.entries) {
     if (e.kind !== "agent" || e.author !== a) continue;
     const t = e.meta && e.meta.tokens;
     if (!t) continue;
     replies++;
+    if (typeof t.in === "number") input += t.in;
     if (typeof t.out === "number") out += t.out;
     if (typeof t.reasoning === "number") reasoning += t.reasoning;
+    if (typeof t.cacheRead === "number") cacheRead += t.cacheRead;
   }
-  return { out, reasoning, replies };
+  return { input, out, reasoning, cacheRead, replies };
 }
 function usageSummaryText(a) {
   const u = seatUsage(a);
   if (!u.replies) return "";
-  const parts = [`${u.out.toLocaleString()} output tokens`];
+  const parts = [];
+  if (u.input) parts.push(`${u.input.toLocaleString()} input tokens`);
+  parts.push(`${u.out.toLocaleString()} output tokens`);
   if (u.reasoning) parts.push(`${u.reasoning.toLocaleString()} reasoning`);
+  if (u.cacheRead) parts.push(`${u.cacheRead.toLocaleString()} cache read`);
   return `${parts.join(" · ")} over ${u.replies} repl${u.replies === 1 ? "y" : "ies"} in this conversation`;
 }
 
@@ -2297,18 +2322,46 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAskMenu(); });
 
-// ---- narrow-width room navigation ----
-// Below 760px the sidebar slides over the chat instead of vanishing. Without
-// this, rooms, the workspace, the transcript and settings were all unreachable
-// and the only way to another room was editing ?room= by hand.
+// ---- room navigation ----
+// Narrow screens use the existing overlay. Desktop keeps the same button, but
+// collapses the sidebar in the layout and remembers that preference.
+const desktopNav = typeof window.matchMedia === "function"
+  ? window.matchMedia("(min-width: 761px)")
+  : { matches: true, addEventListener() {} };
+const SIDEBAR_COLLAPSED_KEY = "parley.sidebarCollapsed";
+const sidebar = $("sidebar");
+function syncSidebarVisibility() {
+  const visible = desktopNav.matches
+    ? !document.body.classList.contains("sidebar-collapsed")
+    : document.body.classList.contains("nav-open");
+  sidebar.inert = !visible;
+  $("navToggle").setAttribute("aria-expanded", String(visible));
+  const navLabel = visible ? tr("nav.hideRooms", "Hide rooms") : tr("nav.showRooms", "Show rooms");
+  $("navToggle").setAttribute("aria-label", navLabel);
+  $("navToggle").title = navLabel;
+}
+function setSidebarCollapsed(collapsed, persist = true) {
+  document.body.classList.toggle("sidebar-collapsed", collapsed);
+  if (persist) {
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* unavailable storage */ }
+  }
+  syncSidebarVisibility();
+}
 function setNavOpen(open) {
   document.body.classList.toggle("nav-open", open);
-  $("navToggle").setAttribute("aria-expanded", String(open));
   $("navScrim").hidden = !open;
+  syncSidebarVisibility();
 }
-$("navToggle").onclick = () => setNavOpen(!document.body.classList.contains("nav-open"));
+try { setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1", false); }
+catch { setSidebarCollapsed(false, false); }
+setNavOpen(false);
+$("navToggle").onclick = () => {
+  if (desktopNav.matches) setSidebarCollapsed(!document.body.classList.contains("sidebar-collapsed"));
+  else setNavOpen(!document.body.classList.contains("nav-open"));
+};
 $("navScrim").onclick = () => setNavOpen(false);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") setNavOpen(false); });
+desktopNav.addEventListener("change", () => { setNavOpen(false); syncSidebarVisibility(); });
 
 // ---- keyboard-navigable menus ----
 // These surfaces declare role="menu" but had no arrow keys, no focus move on
@@ -2707,8 +2760,12 @@ function hopSafetyLimit() {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 function automaticAccounting() { return state.summary?.cfg?.accounting === "automatic"; }
-function accountingLabel() { return automaticAccounting() ? "Automatic turns" : "Extra exchanges"; }
-function hopBudgetLabel(value) { return Number(value) === -1 ? "Until settled" : String(value); }
+function accountingLabel() {
+  return automaticAccounting()
+    ? tr("hop.accountingAutomatic", "Automatic turns")
+    : tr("hop.accountingLegacy", "Extra exchanges");
+}
+function hopBudgetLabel(value) { return Number(value) === -1 ? tr("hop.untilSettled", "Until settled") : String(value); }
 function effectiveHopLimit(budget, limit) {
   if (Number.isSafeInteger(limit) && limit >= 0) return limit;
   const safety = hopSafetyLimit();
@@ -2716,13 +2773,15 @@ function effectiveHopLimit(budget, limit) {
 }
 function hopBudgetDetail(value) {
   const budget = normalizedHopBudget(value, -1);
-  if (automaticAccounting()) return budget < 0 ? `safety max ${hopSafetyLimit() ?? "unknown"} automatic turns per message`
-    : `up to ${budget} additional automatic agent turns; initial requested responses do not count`;
+  if (automaticAccounting()) return budget < 0
+    ? tr("hop.autoUnlimited", "safety max {limit} automatic turns per message", { limit: hopSafetyLimit() ?? "unknown" })
+    : tr("hop.autoBudget", "up to {budget} additional automatic agent turns; initial requested responses do not count", { budget });
   const safety = hopSafetyLimit();
-  if (budget === -1) return safety === null ? "server safety limit unavailable" : `safety max ${safety} continuations per message`;
-  if (budget === 0) return "no extra continuations; included sibling delivery and answer returns may still complete";
+  if (budget === -1) return safety === null ? tr("hop.safetyUnavailable", "server safety limit unavailable")
+    : tr("hop.legacyUnlimited", "safety max {limit} continuations per message", { limit: safety });
+  if (budget === 0) return tr("hop.legacyZero", "no extra continuations; included sibling delivery and answer returns may still complete");
   const effective = effectiveHopLimit(budget);
-  return `up to ${effective} extra continuation${effective === 1 ? "" : "s"}` +
+  return tr("hop.legacyBudget", "up to {limit} extra continuations", { limit: effective }) +
     (effective < budget ? ` (configured ${budget}; server safety max ${effective})` : "");
 }
 function draftRoute() {
@@ -2757,30 +2816,36 @@ function renderHopProjections() {
     const choice = option.dataset.hopChoice;
     const estimate = freshTurnEstimate(choice, route);
     const budget = choice === "default" ? roomHopBudget() : normalizedHopBudget(choice);
-    const detail = choice === "solo" ? "One selected responder; no automatic peer response."
+    const detail = choice === "solo" ? tr("hop.soloDetail", "One selected responder; no automatic peer response.")
       : `${hopBudgetLabel(budget)}: ${hopBudgetDetail(budget)}.`;
-    option.setAttribute("aria-label", choice === "solo" ? "Solo" : `${accountingLabel()}: ${detail}`);
-    option.title = detail + (estimate === null ? " Pair rounds or command rules apply; no estimate."
-      : ` Fresh isolated message estimate: up to ${estimate} agent turns. ` + (automaticAccounting()
-        ? "Every automatic start counts, including failures and silence. No complete round is guaranteed."
-        : "Included sibling delivery and answer returns are uncharged."));
+    option.setAttribute("aria-label", choice === "solo" ? tr("hop.soloAria", "Solo") : `${accountingLabel()}: ${detail}`);
+    option.title = detail + (estimate === null ? ` ${tr("hop.pairEstimateRules", "Pair rounds or command rules apply; no estimate.")}`
+      : ` ${tr("hop.freshEstimate", "Fresh isolated message estimate: up to {count} agent turns.", { count: estimate })} ` + (automaticAccounting()
+        ? tr("hop.automaticCounts", "Every automatic start counts, including failures and silence. No complete round is guaranteed.")
+        : tr("hop.legacyUncharged", "Included sibling delivery and answer returns are uncharged.")));
     if (choice === "default") {
-      $("hopRoomDefault").textContent = `Currently ${hopBudgetLabel(budget)} — ${hopBudgetDetail(budget)}` +
-        (estimate === null ? " · no estimate" : ` · up to ${estimate} agent turn${estimate === 1 ? "" : "s"}`);
+      $("hopRoomDefault").textContent = tr("hop.currently", "Currently {budget} — {detail}", {
+        budget: hopBudgetLabel(budget), detail: hopBudgetDetail(budget),
+      }) + (estimate === null ? ` · ${tr("hop.noEstimate", "No estimate").toLowerCase()}`
+        : ` · ${tr("hop.upToTurns", "up to {count} agent turns", { count: estimate })}`);
     } else if (choice === "solo") {
       const note = option.querySelector(".hm-sub");
-      if (note) note.textContent = "One selected seat responds; the other cannot lurk or react. " +
-        (estimate === null ? "Choose one ordinary addressee." : "Fresh isolated message: 1 agent turn.");
+      if (note) note.textContent = `${tr("hop.soloDetail", "One selected seat responds; the other cannot lurk or react.")} ` +
+        (estimate === null ? tr("hop.chooseAddressee", "Choose one ordinary addressee.") : tr("hop.oneTurn", "Fresh isolated message: 1 agent turn."));
     } else {
       option.innerHTML = `<b>${esc(hopBudgetLabel(choice))}</b><span class="hm-sub">` +
-        (Number(choice) < 0 ? `${hopSafetyLimit() === null ? "Safety max unavailable" : `Safety max ${hopSafetyLimit()}`} · ` : "") +
-        `${estimate === null ? "No estimate" : `up to ${estimate} turn${estimate === 1 ? "" : "s"}`}</span>`;
+        (Number(choice) < 0 ? `${hopSafetyLimit() === null
+          ? tr("hop.safetyMaxUnavailable", "Safety max unavailable")
+          : tr("hop.safetyMax", "Safety max {limit}", { limit: hopSafetyLimit() })} · ` : "") +
+        `${estimate === null ? tr("hop.noEstimate", "No estimate") : tr("hop.upToTurns", "up to {count} agent turns", { count: estimate })}</span>`;
     }
   });
   const estimate = freshTurnEstimate(state.hopChoice, route);
-  $("hopProjection").textContent = route && route.pair ? "Pair uses review rounds; this continuation control does not govern its cycle."
-    : estimate === null ? "An estimate is unavailable for this draft or until the server supplies its safety limit."
-      : `Fresh isolated message estimate: up to ${estimate} agent turns. Shared or delayed catch-up can cover several messages, so this is not lifetime spend or a remaining-turn guarantee.`;
+  $("hopProjection").textContent = route && route.pair
+    ? tr("hop.projectionPair", "Pair uses review rounds; this continuation control does not govern its cycle.")
+    : estimate === null
+      ? tr("hop.projectionUnavailable", "An estimate is unavailable for this draft or until the server supplies its safety limit.")
+      : tr("hop.projectionEstimate", "Fresh isolated message estimate: up to {count} agent turns. Shared or delayed catch-up can cover several messages, so this is not lifetime spend or a remaining-turn guarantee.", { count: estimate });
 }
 function pairControlOnly(raw, hasAttachments = false) {
   if (hasAttachments) return false;
@@ -2829,26 +2894,32 @@ function openHopMenu() {
   menu.style.top = `${Math.max(8, r.top - h - 7)}px`;
 }
 function renderHopControl() {
-  $("hopAccountingNote").textContent = "Remembered for this room and browser session. " +
-    (automaticAccounting() ? "Every automatic start counts; initial requested responses do not. No answer return is free. "
-      : "This room retains its previous accounting: a counted request can include a free answer return. Switch to Automatic turns in Settings for one unit per automatic start. ") +
-    "This is not a token or cost limit.";
+  $("hopAccountingNote").textContent = automaticAccounting()
+    ? tr("hop.accountingAutoNote", "Remembered for this room and browser session. Every automatic start counts; initial requested responses do not. No answer return is free. This is not a token or cost limit.")
+    : tr("hop.accountingLegacyNote", "Remembered for this room and browser session. This room retains its previous accounting: a counted request can include a free answer return. Switch to Automatic turns in Settings for one unit per automatic start. This is not a token or cost limit.");
   const roomBudget = roomHopBudget();
   const choice = state.hopChoice;
   const btn = $("hopBtn");
   const shown = choice === "default"
-    ? `Room (${hopBudgetLabel(roomBudget)})`
-    : choice === "solo" ? "Solo" : hopBudgetLabel(choice);
-  $("hopBtnLabel").textContent = choice === "solo" ? "◎ Solo · override" : `${accountingLabel()}: ${shown}${choice !== "default" ? " · override" : ""}`;
+    ? tr("hop.roomChoice", "Room ({budget})", { budget: hopBudgetLabel(roomBudget) })
+    : choice === "solo" ? tr("hop.solo", "Solo") : hopBudgetLabel(choice);
+  $("hopBtnLabel").textContent = choice === "solo"
+    ? `◎ ${tr("hop.solo", "Solo")} · ${tr("hop.overrideMark", "override")}`
+    : `${accountingLabel()}: ${shown}${choice !== "default" ? ` · ${tr("hop.overrideMark", "override")}` : ""}`;
   btn.classList.toggle("override", choice !== "default");
   btn.title = choice === "solo"
-    ? "Solo stays selected for this room and browser session: only one selected seat responds. The other seat cannot lurk or react, but can read the transcript on a later turn."
+    ? tr("hop.soloTitle", "Solo stays selected for this room and browser session: only one selected seat responds. The other seat cannot lurk or react, but can read the transcript on a later turn.")
     : choice === "default"
-      ? `Room default (${hopBudgetLabel(roomBudget)}): ${hopBudgetDetail(roomBudget)}.`
-      : `Selected for this room and browser session (${hopBudgetLabel(choice)}): ${hopBudgetDetail(choice)}.`;
-  $("hopRoomDefault").textContent = `Currently ${hopBudgetLabel(roomBudget)} — ${hopBudgetDetail(roomBudget)}`;
-  $("hopOverrideNote").textContent = choice === "default" ? `Using room default: ${hopBudgetLabel(roomBudget)}`
-    : `Message override: ${choice === "solo" ? "Solo" : hopBudgetLabel(choice)} · Room default: ${hopBudgetLabel(roomBudget)}`;
+      ? tr("hop.defaultTitle", "Room default ({budget}): {detail}.", { budget: hopBudgetLabel(roomBudget), detail: hopBudgetDetail(roomBudget) })
+      : tr("hop.overrideTitle", "Selected for this room and browser session ({choice}): {detail}.", { choice: hopBudgetLabel(choice), detail: hopBudgetDetail(choice) });
+  $("hopRoomDefault").textContent = tr("hop.currently", "Currently {budget} — {detail}", {
+    budget: hopBudgetLabel(roomBudget), detail: hopBudgetDetail(roomBudget),
+  });
+  $("hopOverrideNote").textContent = choice === "default"
+    ? tr("hop.usingDefault", "Using room default: {budget}", { budget: hopBudgetLabel(roomBudget) })
+    : tr("hop.messageOverride", "Message override: {choice} · Room default: {budget}", {
+      choice: choice === "solo" ? tr("hop.solo", "Solo") : hopBudgetLabel(choice), budget: hopBudgetLabel(roomBudget),
+    });
   document.querySelectorAll("#hopMenu [data-hop-choice]").forEach((option) => {
     option.setAttribute("aria-checked", String(option.dataset.hopChoice === choice));
   });
@@ -2857,8 +2928,8 @@ function renderHopControl() {
   if (both) {
     both.disabled = choice === "solo";
     both.title = choice === "solo"
-      ? "Solo requires one seat. The other seat will not react, but can read the message in the transcript later."
-      : "Send to both seats";
+      ? tr("hop.soloBothTitle", "Solo requires one seat. The other seat will not react, but can read the message in the transcript later.")
+      : tr("hop.sendBoth", "Send to both seats");
   }
 
   // Solo cannot inherit @both. Fall back to Auto—not a particular seat—so
@@ -3882,7 +3953,7 @@ $("openRoomDir").onclick = () => api("/api/open", { room: state.room, what: "roo
 // fields it understands, so a new provider's settings appear automatically.
 function seatFieldHTML(a, field, p) {
   const d = (n, f) => `data-seat="${esc(a)}" data-f="${f}"`;
-  if (field === "command") return `<div class="fld"><label>Command</label><input ${d(a, "command")} spellcheck="false"></div>`;
+  if (field === "command") return `<div class="fld"><label>${esc(tr("settings.command", "Command"))}</label><input ${d(a, "command")} spellcheck="false"></div>`;
   // Model and effort are comboboxes, not fixed lists: the suggestions are a
   // convenience, but anything you type is passed straight to the CLI — so
   // models and effort levels released after this build still work.
@@ -3902,34 +3973,34 @@ function seatFieldHTML(a, field, p) {
       `<input class="freecombo-input" ${d(a, fieldName)} spellcheck="false" autocomplete="off" ` +
       `role="combobox" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false" ` +
       `aria-controls="${esc(id)}" placeholder="${esc(placeholder)}">` +
-      `<button type="button" class="freecombo-toggle" aria-label="Show all suggestions" title="Show all suggestions">▾</button>` +
+      `<button type="button" class="freecombo-toggle" aria-label="${esc(tr("settings.suggestions", "Show all suggestions"))}" title="${esc(tr("settings.suggestions", "Show all suggestions"))}">▾</button>` +
       `<div class="freecombo-menu" id="${esc(id)}" role="listbox" hidden>${choices}` +
-      `<div class="freecombo-empty" hidden>No matching suggestions — you can still use the value you typed.</div></div></div>`;
+      `<div class="freecombo-empty" hidden>${esc(tr("settings.noSuggestions", "No matching suggestions — you can still use the value you typed."))}</div></div></div>`;
   };
-  if (field === "model") return `<div class="fld"><label>Model override (blank = default)</label>` +
-    combo("model", p.models, "blank = the CLI's default") +
-    `<div class="note">Any value the CLI accepts — aliases or full model names.</div></div>`;
-  if (field === "effort") return `<div class="fld"><label>Reasoning effort</label>` +
-    combo("effort", p.efforts, "blank = default") + `</div>`;
-  if (field === "permissionMode") return `<div class="fld"><label>Permission mode</label><select ${d(a, "permissionMode")}>` +
-    `<option value="auto">room default — Claude's default in Talk, accept edits in Work</option>` +
-    `<option value="plan">plan — read &amp; propose only, even in work rooms</option>` +
-    `<option value="acceptEdits">accept edits — ordinary project edits allowed; protected paths and commands may still prompt</option>` +
-    `<option value="bypassPermissions">full access — bypass ordinary Claude permission checks</option></select>` +
-    `<div class="note">An effective mode change starts a fresh Claude session; the transcript keeps the room history.</div>` +
-    `<div class="note danger">With Claude Code 2.1.126+, Full access includes protected paths such as .git and can reach outside this project. Explicit policy and OS limits may still apply. Claude recommends an isolated container or VM; using it directly on a trusted host grants host-level access.</div></div>`;
-  if (field === "approvalMode") return `<div class="fld"><label>Approval mode</label><select ${d(a, "approvalMode")}>` +
-    `<option value="auto">room default — Gemini's default in Talk, auto-approve edits in Work</option>` +
-    `<option value="plan">plan — read &amp; propose only, even in work rooms</option>` +
-    `<option value="auto_edit">auto edit — edits auto-approved; other tools still prompt</option>` +
-    `<option value="yolo">full access — auto-approve every tool</option></select>` +
-    `<div class="note">An effective mode change starts a fresh Gemini session; the transcript keeps the room history.</div>` +
-    `<div class="note danger">Full access auto-approves every tool call, including commands and writes outside this project. An isolated container or VM is the recommended place for it.</div></div>`;
-  if (field === "sandbox") return `<div class="fld"><label>Sandbox</label><select ${d(a, "sandbox")}>` +
+  if (field === "model") return `<div class="fld"><label>${esc(tr("settings.model", "Model override (blank = default)"))}</label>` +
+    combo("model", p.models, tr("settings.modelPlaceholder", "blank = the CLI's default")) +
+    `<div class="note">${esc(tr("settings.modelHelp", "Any value the CLI accepts — aliases or full model names."))}</div></div>`;
+  if (field === "effort") return `<div class="fld"><label>${esc(tr("settings.effort", "Reasoning effort"))}</label>` +
+    combo("effort", p.efforts, tr("settings.defaultPlaceholder", "blank = default")) + `</div>`;
+  if (field === "permissionMode") return `<div class="fld"><label>${esc(tr("settings.permissionMode", "Permission mode"))}</label><select ${d(a, "permissionMode")}>` +
+    `<option value="auto">${esc(tr("settings.claudeAuto", "room default — Claude's default in Talk, accept edits in Work"))}</option>` +
+    `<option value="plan">${esc(tr("settings.claudePlan", "plan — read & propose only, even in work rooms"))}</option>` +
+    `<option value="acceptEdits">${esc(tr("settings.claudeAccept", "accept edits — ordinary project edits allowed; protected paths and commands may still prompt"))}</option>` +
+    `<option value="bypassPermissions">${esc(tr("settings.claudeFull", "full access — bypass ordinary Claude permission checks"))}</option></select>` +
+    `<div class="note">${esc(tr("settings.claudeModeHelp", "An effective mode change starts a fresh Claude session; the transcript keeps the room history."))}</div>` +
+    `<div class="note danger">${esc(tr("settings.claudeFullWarning", "With Claude Code 2.1.126+, Full access includes protected paths such as .git and can reach outside this project. Explicit policy and OS limits may still apply. Claude recommends an isolated container or VM; using it directly on a trusted host grants host-level access."))}</div></div>`;
+  if (field === "approvalMode") return `<div class="fld"><label>${esc(tr("settings.approvalMode", "Approval mode"))}</label><select ${d(a, "approvalMode")}>` +
+    `<option value="auto">${esc(tr("settings.agyAuto", "room default — sandboxed Plan in Talk, sandboxed Accept edits in Work"))}</option>` +
+    `<option value="plan">${esc(tr("settings.agyPlan", "plan — sandboxed read & propose only, even in work rooms"))}</option>` +
+    `<option value="accept-edits">${esc(tr("settings.agyAccept", "accept edits — sandboxed project edits allowed"))}</option>` +
+    `<option value="full">${esc(tr("settings.agyFull", "full access — bypass AGY tool permission prompts"))}</option></select>` +
+    `<div class="note">${esc(tr("settings.agyModeHelp", "An effective mode change starts a fresh AGY conversation; the transcript keeps the room history."))}</div>` +
+    `<div class="note danger">${esc(tr("settings.agyFullWarning", "Full access uses AGY's dangerously-skip-permissions flag and can run commands or write outside this project. Use an isolated container or VM."))}</div></div>`;
+  if (field === "sandbox") return `<div class="fld"><label>${esc(tr("settings.sandbox", "Sandbox"))}</label><select ${d(a, "sandbox")}>` +
     `<option value="read-only">read-only (default)</option><option value="workspace-write">workspace-write</option>` +
     `<option value="danger-full-access">danger-full-access</option></select>` +
-    `<div class="note">Changing this restarts the seat's session.</div></div>`;
-  if (field === "extraArgs") return `<div class="fld"><label>Extra CLI args</label><input ${d(a, "extraArgs")} spellcheck="false"></div>`;
+    `<div class="note">${esc(tr("settings.sandboxChangeHelp", "Changing this restarts the seat's session."))}</div></div>`;
+  if (field === "extraArgs") return `<div class="fld"><label>${esc(tr("settings.extraArgs", "Extra CLI args"))}</label><input ${d(a, "extraArgs")} spellcheck="false"></div>`;
   return "";
 }
 function setFreeComboOpen(combo, open, query = "") {
@@ -4020,15 +4091,15 @@ function renderSeatCards(s) {
     const p = (s.seatInfo && s.seatInfo[a]) || s.providers[a] || {};
     const ag = s.agents[a];
     let f = (p.fields || []).map((field) => seatFieldHTML(a, field, p)).join("");
-    f += `<div class="fld"><label>Lurk assertiveness (when 👂 is on)</label><select data-seat="${esc(a)}" data-f="lurkStyle">` +
-      `<option value="quiet">quiet — only uncorrected errors</option>` +
-      `<option value="balanced">balanced — errors, real disagreements, critical caveats</option>` +
-      `<option value="vocal">vocal — anything with real signal</option></select></div>`;
-    f += `<div class="fld"><label>Custom lurk criteria (optional, overrides preset; [pass] protocol stays active)</label>` +
-      `<input data-seat="${esc(a)}" data-f="lurkPrompt" placeholder="e.g. Interject whenever you disagree." spellcheck="false"></div>`;
+    f += `<div class="fld"><label>${esc(tr("settings.lurkStyle", "Lurk assertiveness (when 👂 is on)"))}</label><select data-seat="${esc(a)}" data-f="lurkStyle">` +
+      `<option value="quiet">${esc(tr("settings.lurkQuiet", "quiet — only uncorrected errors"))}</option>` +
+      `<option value="balanced">${esc(tr("settings.lurkBalanced", "balanced — errors, real disagreements, critical caveats"))}</option>` +
+      `<option value="vocal">${esc(tr("settings.lurkVocal", "vocal — anything with real signal"))}</option></select></div>`;
+    f += `<div class="fld"><label>${esc(tr("settings.lurkPrompt", "Custom lurk criteria (optional, overrides preset; [pass] protocol stays active)"))}</label>` +
+      `<input data-seat="${esc(a)}" data-f="lurkPrompt" placeholder="${esc(tr("settings.lurkPlaceholder", "e.g. Interject whenever you disagree."))}" spellcheck="false"></div>`;
     const sess = ag.linked
-      ? `Session linked (${ag.sessionRef}…), seen through turn ${ag.cursor}.`
-      : "No session yet — next message starts one.";
+      ? tr("settings.sessionLinked", "Session linked ({ref}…), seen through turn {cursor}.", { ref: ag.sessionRef, cursor: ag.cursor })
+      : tr("settings.sessionEmpty", "No session yet — next message starts one.");
     return `<div class="mgroup"><h3><span class="agc" style="color:${seatColor(a)}">${esc(seatLabel(a))}</span> · ${esc(p.sub || "")}</h3>${f}<div class="sess">${sess}</div></div>`;
   }).join("");
   for (const a of s.seats) {
@@ -4038,6 +4109,114 @@ function renderSeatCards(s) {
     }
   }
 }
+
+// ---- provider tool catalog ----
+// The server has already stripped commands, paths, URLs and environment data.
+// This surface only helps compose a request; clicking never sends or executes.
+const TOOL_PROVIDERS = ["codex", "claude", "gemini"];
+let toolsProvider = "codex";
+let toolsOpener = null;
+function toolSeat(provider) {
+  const info = state.summary && state.summary.seatInfo || {};
+  return Object.keys(info).find((seat) => info[seat]?.provider === provider) || null;
+}
+function toolLabel(provider) {
+  return state.providers?.[provider]?.label || ({ codex: "Codex", claude: "Claude", gemini: "AGY" }[provider] || provider);
+}
+function renderToolTabs() {
+  $("toolsTabs").innerHTML = TOOL_PROVIDERS.map((provider) => {
+    const seat = toolSeat(provider);
+    return `<button type="button" role="tab" data-tool-provider="${esc(provider)}" aria-selected="${provider === toolsProvider}" class="${provider === toolsProvider ? "active" : ""}">` +
+      `${esc(toolLabel(provider))}${seat ? `<span class="tool-seat">@${esc(seat)}</span>` : `<span class="tool-seat">${esc(tr("tools.notSeated", "not seated"))}</span>`}</button>`;
+  }).join("");
+}
+function toolItems(catalog, key) {
+  const query = $("toolsSearch").value.trim().toLowerCase();
+  return (catalog?.[key] || []).filter((item) =>
+    !query || `${item.name || ""} ${item.description || ""} ${item.version || ""}`.toLowerCase().includes(query));
+}
+function renderToolCatalog(catalog) {
+  if (!catalog) return;
+  const groups = [["skills", tr("tools.skills", "Skills"), "skill"], ["mcps", tr("tools.mcp", "MCP"), "MCP server"], ["plugins", tr("tools.plugins", "Plugins"), "plugin"]];
+  $("toolsStatus").textContent = (catalog.warnings || []).join(" ") ||
+    tr("tools.status", "{label} · @{seat} · click to insert", { label: toolLabel(catalog.provider), seat: catalog.seat });
+  $("toolsList").innerHTML = groups.map(([key, label, kind]) => {
+    const items = toolItems(catalog, key);
+    const rows = items.length ? items.map((item) => {
+      const detail = item.description || item.version || item.status || (item.enabled === false ? "disabled" : "");
+      return `<button type="button" class="tool-card" data-tool-kind="${esc(kind)}" data-tool-name="${esc(item.name)}" data-tool-seat="${esc(catalog.seat)}">` +
+        `<b>${esc(item.name)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}</button>`;
+    }).join("") : `<div class="tool-empty">${esc(tr("tools.noMatches", "No matching items"))}</div>`;
+    return `<section class="tool-group"><h3>${label} · ${items.length}</h3>${rows}</section>`;
+  }).join("");
+}
+async function loadToolCatalog(refresh = false) {
+  renderToolTabs();
+  const seat = toolSeat(toolsProvider);
+  if (!seat) {
+    $("toolsStatus").textContent = tr("tools.notSeatedStatus", "{provider} is not seated in this room.", { provider: toolLabel(toolsProvider) });
+    $("toolsList").innerHTML = `<div class="tool-empty">${esc(tr("tools.notSeatedHelp", "Add this provider to a room to inspect and invoke its tools."))}</div>`;
+    return;
+  }
+  const key = `${state.room}:${toolsProvider}`;
+  if (!refresh && state.toolCatalogs[key]) { renderToolCatalog(state.toolCatalogs[key]); return; }
+  $("toolsStatus").textContent = tr("tools.loading", "Loading {provider} tools…", { provider: toolLabel(toolsProvider) });
+  $("toolsList").innerHTML = "";
+  try {
+    const params = new URLSearchParams({ room: state.room, provider: toolsProvider });
+    if (refresh) params.set("refresh", "1");
+    const catalog = await api(`/api/tools?${params}`);
+    state.toolCatalogs[key] = catalog;
+    if ($("toolsOverlay").classList.contains("open") && toolsProvider === catalog.provider) renderToolCatalog(catalog);
+  } catch (err) {
+    $("toolsStatus").textContent = err.message;
+    $("toolsList").innerHTML = `<div class="tool-empty">${esc(tr("tools.unavailable", "Tool inventory unavailable."))}</div>`;
+  }
+}
+function insertToolPrompt(seat, kind, name) {
+  const phrases = { skill: "skill", "MCP server": "MCP server", plugin: "plugin" };
+  const phrase = `@${seat} Use the "${name}" ${phrases[kind] || kind} to `;
+  const input = $("input");
+  input.value = input.value.trim() ? `${input.value.trimEnd()}\n${phrase}` : phrase;
+  closeTools();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  autosize(); updateRouteHint(); mentionCheck();
+}
+function openTools() {
+  if (!state.summary) return;
+  toolsOpener = document.activeElement;
+  toolsProvider = TOOL_PROVIDERS.find((provider) => toolSeat(provider)) || "codex";
+  $("toolsSearch").value = "";
+  $("toolsOverlay").classList.add("open");
+  loadToolCatalog(false);
+}
+function closeTools() {
+  $("toolsOverlay").classList.remove("open");
+  if (toolsOpener && document.contains(toolsOpener)) toolsOpener.focus();
+  toolsOpener = null;
+}
+$("toolsBtn").onclick = openTools;
+$("toolsClose").onclick = closeTools;
+$("toolsRefresh").onclick = () => loadToolCatalog(true);
+$("toolsTabs").addEventListener("click", (e) => {
+  const tab = e.target.closest("[data-tool-provider]");
+  if (!tab) return;
+  toolsProvider = tab.dataset.toolProvider;
+  $("toolsSearch").value = "";
+  loadToolCatalog(false);
+});
+$("toolsSearch").addEventListener("input", () => {
+  const catalog = state.toolCatalogs[`${state.room}:${toolsProvider}`];
+  if (catalog) renderToolCatalog(catalog);
+});
+$("toolsList").addEventListener("click", (e) => {
+  const item = e.target.closest("[data-tool-name]");
+  if (item) insertToolPrompt(item.dataset.toolSeat, item.dataset.toolKind, item.dataset.toolName);
+});
+$("toolsOverlay").addEventListener("click", (e) => { if (e.target === $("toolsOverlay")) closeTools(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTools(); });
+
 // The folder dialog is not modal to this page, so Settings can be closed,
 // saved, or pointed at a different room while it is still open. Every one of
 // those retires the stamp, and a result that comes back against a retired stamp
@@ -4056,6 +4235,7 @@ function openSettings() {
   settingsOpener = document.activeElement;
   retireSettingsPick();
   $("roomPath").textContent = s.dir;
+  $("s_locale").value = currentLocale();
   $("mDelete").hidden = s.name === "default"; // the fallback room can't be removed
   renderSeatCards(s);
   $("s_notify").checked = notifyEnabled();
@@ -4067,15 +4247,43 @@ function openSettings() {
   $("s_hopbudget").value = String(normalizedHopBudget(s.cfg.hopBudget, -1));
   const previousAccounting = s.cfg.accounting !== "automatic";
   $("s_accounting").innerHTML = (previousAccounting
-    ? '<option value="exchanges" disabled>Previous accounting — current setting, not offered for new selection</option>' : "") +
-    '<option value="automatic">Automatic turns — every automatic start counts</option>';
+    ? `<option value="exchanges" disabled>${esc(tr("settings.previousAccounting", "Previous accounting — current setting, not offered for new selection"))}</option>` : "") +
+    `<option value="automatic">${esc(tr("settings.accountingOption", "Automatic turns — every automatic start counts"))}</option>`;
   $("s_accounting").value = previousAccounting ? "exchanges" : "automatic";
-  $("hopSettingsNote").textContent = `-1 = Until settled (${hopSafetyLimit() === null ? "server safety maximum unavailable" : `server safety maximum ${hopSafetyLimit()}`}). ` +
-    "Automatic turns: zero means only initial requested responses. Changes apply to messages you send after saving. Discussions already started keep their original rules, including later agent replies. Sticky composer overrides take precedence." +
-    (previousAccounting ? " This room still uses previous accounting. Select Automatic turns and review the allowance to switch; saving other settings alone will not switch it." : "");
+  const safetyText = hopSafetyLimit() === null
+    ? tr("settings.hopSafetyUnknown", "server safety maximum unavailable")
+    : tr("settings.hopSafetyKnown", "server safety maximum {limit}", { limit: hopSafetyLimit() });
+  $("hopSettingsNote").textContent = tr("settings.hopNote", "-1 = Until settled ({safety}). Automatic turns: zero means only initial requested responses. Changes apply to messages you send after saving. Discussions already started keep their original rules, including later agent replies. Sticky composer overrides take precedence.", { safety: safetyText }) +
+    (previousAccounting ? tr("settings.previousAccountingNote", " This room still uses previous accounting. Select Automatic turns and review the allowance to switch; saving other settings alone will not switch it.") : "");
   $("s_pairrounds").value = s.cfg.pairRounds || 0;
   $("overlay").classList.add("open");
 }
+function refreshLocalizedUi() {
+  applyLocale();
+  document.title = t("app.name");
+  syncSidebarVisibility();
+  if (state.summary) {
+    // Changing the display language is not a Save action. Preserve edits that
+    // are still sitting in the settings form while rebuilding translated
+    // provider fields; otherwise a language switch would silently undo them.
+    const pending = new Map([...document.querySelectorAll("#seatCards [data-seat][data-f]")]
+      .map((el) => [`${el.dataset.seat}:${el.dataset.f}`, el.value]));
+    renderSeatCards(state.summary);
+    for (const el of document.querySelectorAll("#seatCards [data-seat][data-f]")) {
+      const key = `${el.dataset.seat}:${el.dataset.f}`;
+      if (pending.has(key)) el.value = pending.get(key);
+    }
+  }
+  if ($("toolsOverlay").classList.contains("open")) {
+    renderToolTabs();
+    const catalog = state.toolCatalogs[`${state.room}:${toolsProvider}`];
+    if (catalog) renderToolCatalog(catalog);
+  }
+}
+$("s_locale").onchange = () => {
+  setLocale($("s_locale").value);
+  refreshLocalizedUi();
+};
 $("settingsBtn").onclick = openSettings;
 $("settingsBtn2").onclick = openSettings;
 $("mCancel").onclick = () => closeSettings();

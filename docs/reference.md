@@ -50,7 +50,7 @@ workspace/       shared folder; both agent CLIs run with this as cwd
 - **`lurk`** / **`lurkStyle`** / **`lurkPrompt`** — see [conversation.md](conversation.md#lurk-mode-).
 - **`hopBudget`** sets the per-message allowance. Under Automatic turns, every automatic provider start consumes one unit; initial addressed responses and Pair rounds are separate. The following describes legacy Extra exchanges accounting, which counts **charged request launches**: `-1` means until settled (with the emergency safety stop), `0` means no charged launches, and any positive integer caps continuations at that number. The legacy safety ceiling applies to Until settled, not as a clamp on finite budgets. Explicit agent calls and continuations spoken from a returned answer are charged; safe-boundary `@both` sibling delivery and a live lurker's right of reply are structural and do not consume the counter. Every launched request that produces an answer also earns one free, read-only return to its immediate caller, so one counted continuation can mean up to two provider invocations. Charged usage is durable per user-message root: Wake & deliver and Retry resume the already-spent count, while `state.json` keeps the newest 200 inactive charged roots plus any older root that is still active, held or retryable. Rooms written with the legacy `maxHops` key are migrated on load; its old `0 = until settled` becomes `hopBudget: -1`. Settings accepts any safe whole number; the sticky per-room composer shortcut deliberately offers only quick overrides through `8` without editing `room.json`. See [Continuations & right of reply](conversation.md#agent-to-agent-hops--right-of-reply) for the full scheduler.
 - **`pairRounds`** is separate from `hopBudget`: `0` means review until approved, while a positive value caps Pair fix/review rounds.
-- **`permissionMode`** (Claude), **`sandbox`** (Codex) and **`approvalMode`** (Gemini) — see [permissions.md](permissions.md).
+- **`permissionMode`** (Claude), **`sandbox`** (Codex) and **`approvalMode`** (AGY) — see [permissions.md](permissions.md).
 - **`provider`** names the CLI that drives the seat (`claude`, `codex`, `gemini`). It defaults to the seat's own name and is fixed once the room exists — changing it by hand orphans that seat's session.
 
 ## Rooms and seats
@@ -66,6 +66,8 @@ The sidebar footer names the folder the room actually works in, so you can alway
 ### Housekeeping
 
 Hover a room in the sidebar for ✎ (rename) and ✕ (delete) — they act on that room, not whichever one you're viewing. The same two live in Settings for the current room, next to "Archive & start fresh".
+
+The sidebar's **Tools** drawer shows the Skills, MCP servers and plugins available to each provider seated in the current room. The list is fetched from that provider's own CLI and nearby `SKILL.md` metadata, cached briefly, and searchable. Clicking an item inserts a natural-language `@seat` request into the composer; it does not execute or send anything. Only display names, short descriptions, versions and availability reach the browser — commands, paths, URLs, environment values and skill bodies stay server-side.
 
 Renaming is live: the page follows the new name without reloading and the transcript is untouched (for a sandbox room the workspace moves with it, so agents start a fresh session and get the conversation replayed; a linked room keeps its sessions since the working directory doesn't move).
 
@@ -142,6 +144,6 @@ In the **+** form, picking the same provider in both dropdowns reveals a pair of
 
 ## Adding a provider
 
-A provider is a CLI coding harness that runs in a seat: Claude Code, Codex and Gemini CLI today. Adding one means writing an adapter in [parley.mjs](../parley.mjs) and registering it in `PROVIDERS`; the seat picker, settings, routing and receipts pick it up automatically. A harness doesn't need to support session resume — the room's delta protocol and inline history replay can carry a stateless CLI.
+A provider is a CLI coding harness that runs in a seat: Claude Code, Codex and Google Antigravity (`agy`) today. The compatible internal provider id for AGY is still `gemini`. Adding another provider means writing an adapter in [parley.mjs](../parley.mjs) and registering it in `PROVIDERS`; the seat picker, settings, routing and receipts pick it up automatically. A harness doesn't need to support session resume — the room's delta protocol and inline history replay can carry a stateless CLI.
 
 The full guide is in [CONTRIBUTING.md](../CONTRIBUTING.md#adding-an-agent-provider), including the three parts that need care: taking the final answer from an authoritative source, session resume and lost-session recovery, and enforced read-only turns for reviewers and listeners.

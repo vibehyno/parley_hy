@@ -8,7 +8,7 @@ Every room has a mode (toggle in the header).
 
 **Talk** is the default: conversational behavior and conservative room defaults, with explicit per-seat permission overrides still active.
 
-**Work** lets agents act in the shared workspace — Claude defaults to `--permission-mode acceptEdits`, Codex to the `workspace-write` sandbox, and timeouts stretch to at least 15 minutes. A loud amber banner marks work rooms, and it remains visible in Talk when a seat has a write/full-access override; the sidebar tags work rooms 🔨.
+**Work** lets agents act in the shared workspace — Claude defaults to `--permission-mode acceptEdits`, Codex to the `workspace-write` sandbox, AGY to sandboxed `--mode accept-edits`, and timeouts stretch to at least 15 minutes. A loud amber banner marks work rooms, and it remains visible in Talk when a seat has a write/full-access override; the sidebar tags work rooms 🔨.
 
 Switching modes restarts any seat whose effective permission changes, then re-briefs it from the transcript.
 
@@ -22,7 +22,16 @@ Activity lines are also relayed to the other agent as context, which is what mak
 
 The table talks; a named agent works. For a `@both` message in a 🔨 room, Parley tells both agents to read and reply without making changes. The whole exchange it spawns (hops, chimes) inherits that instruction, the route hint shows "· discussion (no edits)", and the message is marked 💬.
 
-Parley requests Claude's `plan` mode and, if its structured Full-access setting is configured, does not reuse the bypass-enabled native session. Codex resumes the room's existing sandboxed thread, so **its no-edit scope is a workflow instruction rather than an independent OS-level boundary.** Tag one agent when you want implementation.
+Parley requests Claude's `plan` mode and AGY's sandboxed `--mode plan`; Codex resumes the room's existing sandboxed thread, so **Codex's no-edit scope is a workflow instruction rather than an independent OS-level boundary.** Tag one agent when you want implementation.
+
+## AGY approval modes
+
+- **room default** — sandboxed Plan in Talk, sandboxed Accept edits in Work
+- **plan** — sandboxed read and proposal only
+- **accept edits** — sandboxed project edits allowed
+- **Full access** — `--dangerously-skip-permissions`; host-level trust
+
+AGY returns cumulative usage for a conversation. Parley binds the last counters to the returned `conversation_id` and records only the non-negative per-turn delta. A fresh conversation starts a fresh baseline.
 
 ## Claude permission modes
 
@@ -45,7 +54,7 @@ Parley records both the effective session permissions and the configuration unde
 
 ## When a settings change takes effect
 
-Changing Codex's sandbox, Claude's effective permission mode, the room mode, or the project link restarts the affected native session when required. Parley handles the reset and re-briefing from room history.
+Changing Codex's sandbox, Claude's or AGY's effective permission mode, the room mode, or the project link restarts the affected native session when required. Parley handles the reset and re-briefing from room history.
 
 Such a change **saves immediately, even mid-answer.** The boundary is the CLI run, not the reply: a process that has already launched keeps the flags it started with and Parley says so, but the session it produces is discarded rather than resumed, and everything launched afterwards — the next turn, or an automatic retry if that reply loses its session — uses the new settings.
 
@@ -59,10 +68,10 @@ Two changes still wait for the work to finish:
 ## Security posture
 
 - The server binds to **`127.0.0.1` only**. The local API requires a fresh in-memory token embedded in the served page and rejects foreign browser origins. This prevents blind/cross-origin web pages from driving your agents; like any loopback web app, it is not an OS security boundary against another process already running as your user.
-- **Permissions are conservative in Talk rooms by default.** Claude runs in print mode with its normal CLI permissions and Codex uses the `read-only` sandbox. Work mode intentionally changes those defaults so the selected agent can edit the workspace. A structured Full-access choice exists for each provider (`bypassPermissions` for Claude, `danger-full-access` for Codex); both should be treated as **host-level trust, not project-level trust**.
-- **Reviewer, listener and `@both`-discussion turns** run read-only where the provider can enforce it: Claude is switched to Plan and kept out of any bypass-enabled session. Codex's equivalent separation happens inside its existing sandboxed thread, so it is a workflow instruction rather than an independent OS-level boundary.
-- **Extra CLI args are validated.** Raw `--dangerously-*`, `--allow-dangerously-*` and raw Claude `--permission-mode bypassPermissions` arguments are rejected, so Room Settings stays the visible, warned route to elevation. Other extra args are passed to the provider and may alter Parley's selected permission or sandbox flags — only add arguments you understand and trust.
+- **Permissions are conservative in Talk rooms by default.** Claude runs in print mode with its normal CLI permissions, Codex uses the `read-only` sandbox, and AGY uses sandboxed Plan. Work mode intentionally changes those defaults so the selected agent can edit the workspace. A structured Full-access choice exists for each provider (`bypassPermissions` for Claude, `danger-full-access` for Codex, `--dangerously-skip-permissions` for AGY); all should be treated as **host-level trust, not project-level trust**.
+- **Reviewer, listener and `@both`-discussion turns** run read-only where the provider can enforce it: Claude and AGY are switched to Plan. Codex's equivalent separation happens inside its existing sandboxed thread, so it is a workflow instruction rather than an independent OS-level boundary.
+- **Extra CLI args are validated.** Raw danger flags and raw authority-mode overrides are rejected, so Room Settings stays the visible, warned route to elevation. Other extra args are passed to the provider — only add arguments you understand and trust.
 - Your provider/user settings, hand-edited local configuration and custom command wrappers are trusted local inputs outside Parley's guardrails; Parley's validation governs what Parley itself passes to the CLIs.
 - Parley does not inspect, copy or persist provider credentials; the CLIs use their own authentication and inherited process environment.
-- Prompts are passed over stdin and child processes are spawned without a shell, so message text is not evaluated as a shell command by Parley.
+- Child processes are spawned without a shell, so message text is never evaluated as a shell command by Parley. Claude and Codex receive prompts over stdin; AGY receives its print prompt as one direct process argument.
 - Room transcripts and activity lines can contain source code, prompts, local paths and CLI error output. Review and redact them before attaching them to a public issue.

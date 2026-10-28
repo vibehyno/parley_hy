@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--PARLEY_TOKEN-->
 <!--PARLEY_RUNTIME_PROTOCOL-->
-<title>Parley</title>
+<title>Parley HY</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="%23555c6b" stroke-width="2"/><circle cx="16" cy="7" r="4" fill="%237aa2f7"/><circle cx="8" cy="22" r="4" fill="%23e8845c"/><circle cx="24" cy="22" r="4" fill="%232fd6a8"/></svg>'>
 <link rel="stylesheet" href="/ui/styles.css?v=__PARLEY_ASSET_VERSION__">
 </head>
@@ -15,102 +15,103 @@
   <aside id="sidebar">
     <div class="logo">
       <svg width="30" height="30" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="#555c6b" stroke-width="2"/><circle cx="16" cy="7" r="4" fill="#7aa2f7"/><circle cx="8" cy="22" r="4" fill="#e8845c"/><circle cx="24" cy="22" r="4" fill="#2fd6a8"/></svg>
-      <div><b>Parley</b><span id="tagline">you · claude · codex</span></div>
+      <div><b>Parley HY</b><span id="tagline">you · claude · codex</span></div>
     </div>
-    <div class="side-label">Rooms <button id="addRoomBtn" title="New room">+</button></div>
+    <div class="side-label"><span data-i18n="sidebar.rooms">Rooms</span> <button id="addRoomBtn" title="New room" data-i18n-title="sidebar.newRoom">+</button></div>
     <form id="newRoomForm">
-      <input id="newRoomInput" placeholder="room name…" maxlength="40" spellcheck="false">
+      <input id="newRoomInput" placeholder="room name…" data-i18n-placeholder="room.namePlaceholder" maxlength="40" spellcheck="false">
       <div style="display:flex;gap:6px;margin-top:6px">
-        <select id="seat1" title="Seat 1 provider" style="flex:1"></select>
-        <select id="seat2" title="Seat 2 provider" style="flex:1"></select>
+        <select id="seat1" title="Seat 1 provider" data-i18n-title="room.seat1Provider" style="flex:1"></select>
+        <select id="seat2" title="Seat 2 provider" data-i18n-title="room.seat2Provider" style="flex:1"></select>
       </div>
       <div id="seatNames" style="display:none;gap:6px;margin-top:6px">
-        <input id="seat1Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 1 name">
-        <input id="seat2Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 2 name">
+        <input id="seat1Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 1 name" data-i18n-aria-label="room.seat1Name">
+        <input id="seat2Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 2 name" data-i18n-aria-label="room.seat2Name">
       </div>
-      <div id="seatNamesHint" class="hint" style="display:none;margin-top:4px">
+      <div id="seatNamesHint" class="hint" data-i18n="room.sameProviderHint" style="display:none;margin-top:4px">
         Two seats on the same provider need different names — these become their @mentions.
       </div>
       <button type="button" id="newRoomProj" class="ract"
         style="display:block;width:100%;text-align:left;margin-top:6px;padding:4px 2px;font-size:11.5px;color:var(--text-faint)"
-        title="Point this room at an existing project folder"><span data-picker-label>📁 Link a project folder…</span> <span id="newRoomProjVal"></span></button>
+        title="Point this room at an existing project folder" data-i18n-title="room.linkProjectTitle"><span data-picker-label data-i18n="room.linkProject">📁 Link a project folder…</span> <span id="newRoomProjVal"></span></button>
       <label id="newRoomReview" style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:11.5px;color:var(--text-faint);cursor:pointer">
         <input type="checkbox" id="newRoomReviewChk" style="margin-top:2px">
-        <span>Pair review room — seat 1 codes, seat 2 lurks and reviews every change</span>
+        <span data-i18n="room.pairReview">Pair review room — seat 1 codes, seat 2 lurks and reviews every change</span>
       </label>
       <!-- A real submit button, not decoration. Without one the form relied on
            implicit submission, which the HTML spec only performs when there is
            exactly one text field — so adding the seat-name inputs silently
            stopped Enter from creating anything at all. -->
       <button type="submit" id="newRoomCreate" class="btn primary"
-        style="width:100%;margin-top:8px;padding:6px 10px;font-size:12px">Create room</button>
+        style="width:100%;margin-top:8px;padding:6px 10px;font-size:12px" data-i18n="room.create">Create room</button>
     </form>
     <nav id="roomList"></nav>
     <div class="side-foot">
-      <button id="openWs"><span class="ico">📁</span> <span id="openWsLabel">Open workspace</span></button>
+      <button id="openWs"><span class="ico">📁</span> <span id="openWsLabel" data-i18n="sidebar.openWorkspace">Open workspace</span></button>
       <div id="gitId" style="display:none"></div>
-      <a id="dlTranscript" href="#"><span class="ico">📄</span> Download transcript</a>
-      <button id="openRoomDir"><span class="ico">🗂️</span> Room folder</button>
-      <button id="settingsBtn2"><span class="ico">⚙️</span> Settings</button>
-      <a href="https://github.com/auspex0/parley#readme" target="_blank" rel="noreferrer noopener"><span class="ico">?</span> Docs</a>
+      <a id="dlTranscript" href="#"><span class="ico">📄</span> <span data-i18n="sidebar.downloadTranscript">Download transcript</span></a>
+      <button id="openRoomDir"><span class="ico">🗂️</span> <span data-i18n="sidebar.roomFolder">Room folder</span></button>
+      <button id="toolsBtn"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
+      <button id="settingsBtn2"><span class="ico">⚙️</span> <span data-i18n="sidebar.settings">Settings</span></button>
+      <a href="https://github.com/vibehyno/parley_hy#readme" target="_blank" rel="noreferrer noopener"><span class="ico">?</span> <span data-i18n="sidebar.docs">Docs</span></a>
     </div>
   </aside>
 
   <div id="main">
     <header>
-      <button class="hbtn" id="navToggle" aria-label="Rooms" aria-expanded="false" title="Rooms">☰</button>
+      <button class="hbtn" id="navToggle" aria-label="Hide rooms" aria-controls="sidebar" aria-expanded="true" title="Hide rooms">☰</button>
       <div id="connDot" title="connection"></div>
       <div id="roomTitle">default</div>
       <div id="modeToggle" title="Talk: conversational, conservative defaults; explicit seat permission overrides remain active. Work: agents can write files in the workspace and run commands.">
-        <button class="mbtn active" data-m="talk">💬 Talk</button>
-        <button class="mbtn" data-m="work">🔨 Work</button>
+        <button class="mbtn active" data-m="talk" data-i18n="mode.talk">💬 Talk</button>
+        <button class="mbtn" data-m="work" data-i18n="mode.work">🔨 Work</button>
       </div>
       <div class="pills" id="pills"></div>
-      <button class="hbtn" id="newConvBtn" title="Archive this conversation and start fresh">✨ New conversation</button>
-      <button class="hbtn" id="settingsBtn" title="Settings">⚙️</button>
+      <button class="hbtn" id="newConvBtn" title="Archive this conversation and start fresh" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">✨ New conversation</button>
+      <button class="hbtn" id="settingsBtn" title="Settings" data-i18n-title="sidebar.settings">⚙️</button>
     </header>
     <div id="pairBanner" style="display:none;padding:6px 20px;font-size:12.5px;color:#c9b3f5;background:rgba(150,110,240,.1);border-bottom:1px solid rgba(150,110,240,.35)">
       <span id="pairBannerText"></span>
-      <button id="pairEndBtn" style="margin-left:10px;color:#c9b3f5;text-decoration:underline;font-size:12.5px">End pair mode</button>
+      <button id="pairEndBtn" style="margin-left:10px;color:#c9b3f5;text-decoration:underline;font-size:12.5px" data-i18n="pair.end">End pair mode</button>
     </div>
     <div id="runtimeBanner" role="alert" style="display:none;padding:8px 20px;font-size:12.5px;color:var(--danger-fg);background:var(--danger-wash);border-bottom:1px solid var(--danger-edge)"></div>
     <div id="setupBanner" role="status" style="display:none;padding:8px 20px;font-size:12.5px;color:var(--warn);background:var(--warn-wash);border-bottom:1px solid var(--warn-edge)"></div>
-    <div id="workBanner">🔨 <b>Work room</b> — agents can write files in the shared workspace and run commands. Their actions show as inline activity lines.</div>
+    <div id="workBanner">🔨 <span data-i18n="work.banner">Work room — agents can write files in the shared workspace and run commands. Their actions show as inline activity lines.</span></div>
 
     <div id="chatWrap">
       <div id="chat" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
       <div id="empty" style="display:none">
         <div class="big">🃏</div>
-        <h2>The table is set</h2>
-        <p>One conversation, three seats. Tag an agent, or just type — Parley remembers who you were talking to.</p>
+        <h2 data-i18n="empty.title">The table is set</h2>
+        <p data-i18n="empty.body">One conversation, three seats. Tag an agent, or just type — Parley remembers who you were talking to.</p>
         <div class="starters" id="starters"></div>
       </div>
     </div>
-    <button id="jump">↓ New messages</button>
+    <button id="jump" data-i18n="jump.newMessages">↓ New messages</button>
 
     <div id="composerWrap">
       <div id="composer">
         <div id="mention"></div>
         <div class="chips" id="chipsRow">
-          <button class="chip active" data-t="auto">Auto</button>
+          <button class="chip active" data-t="auto" data-i18n="composer.auto">Auto</button>
           <span id="seatChips" style="display:contents"></span>
           <button class="chip" data-t="both">@both</button>
           <span id="hopWrap">
             <button id="hopBtn" type="button" aria-haspopup="menu" aria-expanded="false"
-              title="Choose this room's agent-to-agent follow-up policy for the browser session">
+              title="Choose this room's agent-to-agent follow-up policy for the browser session" data-i18n-title="hop.menuTitle">
               <span id="hopBtnLabel">⛓ Continuations: Room</span><span class="hop-caret">▼</span>
             </button>
-            <div id="hopMenu" role="menu" aria-label="Continuation policy">
+            <div id="hopMenu" role="menu" aria-label="Continuation policy" data-i18n-aria-label="hop.policy">
               <button type="button" role="menuitemradio" aria-checked="true" data-hop-choice="default">
-                <b>Room default</b><span class="hm-sub" id="hopRoomDefault">Until settled · awaiting server safety limit</span>
+                <b data-i18n="hop.roomDefault">Room default</b><span class="hm-sub" id="hopRoomDefault">Until settled · awaiting server safety limit</span>
               </button>
               <button type="button" role="menuitemradio" aria-checked="false" data-hop-choice="solo">
-                <b>Solo</b><span class="hm-sub">One selected seat responds until you choose another policy. The other cannot lurk or react, but can read the transcript later.</span>
+                <b data-i18n="hop.solo">Solo</b><span class="hm-sub" data-i18n="hop.soloHelp">One selected seat responds until you choose another policy. The other cannot lurk or react, but can read the transcript later.</span>
               </button>
               <div class="hm-label" id="hopOverrideNote"></div>
-              <div class="hm-label" id="hopAccountingNote">Remembered for this room and browser session. This is not a token or cost limit.</div>
+              <div class="hm-label" id="hopAccountingNote" data-i18n="hop.remembered">Remembered for this room and browser session. This is not a token or cost limit.</div>
               <div class="hm-grid">
-                <button type="button" role="menuitemradio" aria-label="Until settled" aria-checked="false" data-hop-choice="-1">Until settled</button>
+                <button type="button" role="menuitemradio" aria-label="Until settled" data-i18n-aria-label="hop.untilSettled" aria-checked="false" data-hop-choice="-1" data-i18n="hop.untilSettled">Until settled</button>
                 <button type="button" role="menuitemradio" aria-label="No extra continuations" aria-checked="false" data-hop-choice="0">0</button>
                 <button type="button" role="menuitemradio" aria-label="1 continuation" aria-checked="false" data-hop-choice="1">1</button>
                 <button type="button" role="menuitemradio" aria-label="2 continuations" aria-checked="false" data-hop-choice="2">2</button>
@@ -126,8 +127,8 @@
           </span>
           <span id="hopProgress" aria-live="polite" hidden></span>
           <span id="queueWrap">
-            <button id="queueBadge" aria-haspopup="dialog" aria-expanded="false" title="See what's waiting"></button>
-            <div id="queuePop" role="dialog" aria-label="Queued work"></div>
+            <button id="queueBadge" aria-haspopup="dialog" aria-expanded="false" title="See what's waiting" data-i18n-title="queue.seeWaiting"></button>
+            <div id="queuePop" role="dialog" aria-label="Queued work" data-i18n-aria-label="queue.title"></div>
           </span>
           <span id="routeHint"></span>
         </div>
@@ -135,17 +136,17 @@
         <div id="draftImages" aria-label="Attachments ready to send"></div>
         <div class="box">
           <input id="fileInput" type="file" multiple hidden aria-label="Choose files to attach">
-          <button id="attachBtn" type="button" title="Attach files" aria-label="Attach files">📎</button>
-          <textarea id="input" rows="1" placeholder="Message the table…  (@claude, @codex, @both)"></textarea>
+          <button id="attachBtn" type="button" title="Attach files" aria-label="Attach files" data-i18n-title="composer.attachFiles" data-i18n-aria-label="composer.attachFiles">📎</button>
+          <textarea id="input" rows="1" placeholder="Message the table…  (@claude, @codex, @both)" data-i18n-placeholder="composer.placeholder"></textarea>
           <div id="stopWrap">
-            <button id="stopBtn" title="Stop the running response">■</button>
-            <button id="stopMore" title="Choose what to stop" aria-label="Stop options"
+            <button id="stopBtn" title="Stop the running response" data-i18n-title="stop.response">■</button>
+            <button id="stopMore" title="Choose what to stop" aria-label="Stop options" data-i18n-title="stop.options" data-i18n-aria-label="stop.options"
                     aria-haspopup="menu" aria-expanded="false">▾</button>
             <div id="stopMenu" role="menu"></div>
           </div>
-          <button id="sendBtn" title="Send (Enter)">➤</button>
+          <button id="sendBtn" title="Send (Enter)" data-i18n-title="composer.send">➤</button>
         </div>
-        <div class="hint">Enter to send · Shift+Enter newline · attach or drop files · paste images · <b>/help</b> for commands · replies stream live</div>
+        <div class="hint" data-i18n="composer.hint">Enter to send · Shift+Enter newline · attach or drop files · paste images · /help for commands · replies stream live</div>
       </div>
     </div>
   </div>
@@ -156,55 +157,73 @@
 
 <div id="overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-    <h2 id="settingsTitle">Room settings</h2>
+    <div class="mrow" style="align-items:center"><h2 id="settingsTitle" data-i18n="settings.title">Room settings</h2>
+      <div class="fld" style="margin:0;min-width:140px"><label for="s_locale" data-i18n="language.label">Language</label>
+        <select id="s_locale"><option value="ko" data-i18n="language.ko">한국어</option><option value="en" data-i18n="language.en">English</option></select></div>
+    </div>
     <div class="sub" id="roomPath"></div>
     <div class="mgrid" id="seatCards"></div>
-    <div class="fld" style="margin-top:14px"><label>Room note (standing instruction both agents see on every turn — also /note)</label>
-      <input id="s_roomnote" placeholder="e.g. We're building a YT-transcription app; keep answers short." spellcheck="false"></div>
-    <div class="fld"><label>Notifications</label>
+    <div class="fld" style="margin-top:14px"><label data-i18n="settings.roomNote">Room note (standing instruction both agents see on every turn — also /note)</label>
+      <input id="s_roomnote" placeholder="e.g. We're building a YT-transcription app; keep answers short." data-i18n-placeholder="settings.roomNotePlaceholder" spellcheck="false"></div>
+    <div class="fld"><label data-i18n="settings.notifications">Notifications</label>
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--text-dim);cursor:pointer">
         <input type="checkbox" id="s_notify" style="margin-top:3px">
-        <span>Tell me when a reply lands, a pair cycle needs my decision, or a turn fails — only while this tab is in the background.</span>
+        <span data-i18n="settings.notificationsHelp">Tell me when a reply lands, a pair cycle needs my decision, or a turn fails — only while this tab is in the background.</span>
       </label>
-      <div class="note">Per browser, not per room. Your browser will ask for permission the first time.</div></div>
-    <div class="fld" style="margin-top:14px"><label>Project folder (blank = room's own sandbox workspace)</label>
+      <div class="note" data-i18n="settings.notificationsScope">Per browser, not per room. Your browser will ask for permission the first time.</div></div>
+    <div class="fld" style="margin-top:14px"><label data-i18n="settings.projectFolder">Project folder (blank = room's own sandbox workspace)</label>
       <div style="display:flex;gap:8px">
-        <input id="s_projdir" placeholder="e.g. D:\Projects\my-app" spellcheck="false" style="flex:1">
-        <button class="btn" id="s_browse" type="button" style="white-space:nowrap"><span data-picker-label>Browse…</span></button>
+        <input id="s_projdir" placeholder="e.g. D:\Projects\my-app" data-i18n-placeholder="settings.projectFolderPlaceholder" spellcheck="false" style="flex:1">
+        <button class="btn" id="s_browse" type="button" style="white-space:nowrap"><span data-picker-label data-i18n="settings.browse">Browse…</span></button>
       </div>
-      <div class="note">Point this room at a real project — the agents work and read there, and pick up its CLAUDE.md / AGENTS.md automatically. Changing it resets both agents' sessions.</div></div>
+      <div class="note" data-i18n="settings.projectFolderHelp">Point this room at a real project — the agents work and read there, and pick up its CLAUDE.md / AGENTS.md automatically. Changing it resets both agents' sessions.</div></div>
     <div class="mgrid" style="margin-top:14px">
-      <div class="fld"><label>Default agent (first message, before any tag)</label>
+      <div class="fld"><label data-i18n="settings.defaultAgent">Default agent (first message, before any tag)</label>
         <select id="s_default"></select></div>
-      <div class="fld"><label>Timeout (seconds)</label><input id="s_timeout" type="number" min="10" step="10">
-        <div class="note">Work rooms always get at least 900s.</div></div>
+      <div class="fld"><label data-i18n="settings.timeout">Timeout (seconds)</label><input id="s_timeout" type="number" min="10" step="10">
+        <div class="note" data-i18n="settings.timeoutHelp">Work rooms always get at least 900s.</div></div>
     </div>
     <div class="mgrid">
-        <div class="fld"><label>How automatic turns are counted</label>
+        <div class="fld"><label data-i18n="settings.accounting">How automatic turns are counted</label>
           <select id="s_accounting"><option value="automatic">Automatic turns — every automatic start counts</option></select>
-          <label>Allowance per message</label>
+          <label data-i18n="settings.allowance">Allowance per message</label>
         <input id="s_hopbudget" type="number" min="-1" step="1">
         <div class="note" id="hopSettingsNote">Every automatic start counts. Initial requested responses do not. Changes apply to messages you send after saving. Discussions already started keep their original rules, including later agent replies.</div></div>
-      <div class="fld"><label>Pair review rounds per message (0 = until approved)</label>
+      <div class="fld"><label data-i18n="settings.pairRounds">Pair review rounds per message (0 = until approved)</label>
         <input id="s_pairrounds" type="number" min="0" max="99" step="1">
-        <div class="note">Pair mode ends when the reviewer approves, so a limit is optional. A high safety stop still catches two agents that never converge.</div></div>
+        <div class="note" data-i18n="settings.pairRoundsHelp">Pair mode ends when the reviewer approves, so a limit is optional. A high safety stop still catches two agents that never converge.</div></div>
     </div>
     <div class="mrow">
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" id="mRename">Rename…</button>
-        <button class="btn danger" id="mNewConv">Archive &amp; start fresh</button>
-        <button class="btn danger" id="mDelete">Delete room</button>
+        <button class="btn" id="mRename" data-i18n="settings.rename">Rename…</button>
+        <button class="btn danger" id="mNewConv" data-i18n="settings.archive">Archive &amp; start fresh</button>
+        <button class="btn danger" id="mDelete" data-i18n="settings.delete">Delete room</button>
       </div>
       <div style="display:flex;gap:10px">
-        <button class="btn" id="mCancel">Cancel</button>
-        <button class="btn primary" id="mSave">Save</button>
+        <button class="btn" id="mCancel" data-i18n="common.cancel">Cancel</button>
+        <button class="btn primary" id="mSave" data-i18n="common.save">Save</button>
       </div>
     </div>
   </div>
 </div>
 
+<div id="toolsOverlay">
+  <div class="modal tools-modal" role="dialog" aria-modal="true" aria-labelledby="toolsTitle">
+    <div class="tools-head">
+      <div><h2 id="toolsTitle" data-i18n="tools.title">Provider tools</h2><div class="sub" data-i18n="tools.subtitle">Skills, MCP servers and plugins available to each CLI</div></div>
+      <div class="tools-actions"><button class="btn" id="toolsRefresh" type="button" data-i18n="common.refresh">Refresh</button><button class="btn" id="toolsClose" type="button" data-i18n="common.close">Close</button></div>
+    </div>
+    <div id="toolsTabs" class="tool-tabs" role="tablist" aria-label="Provider" data-i18n-aria-label="tools.provider"></div>
+    <input id="toolsSearch" class="tool-search" type="search" placeholder="Search skills, MCPs and plugins…" data-i18n-placeholder="tools.searchPlaceholder" spellcheck="false">
+    <div id="toolsStatus" class="tool-status" aria-live="polite"></div>
+    <div id="toolsList" class="tool-groups"></div>
+    <div class="note tool-note" data-i18n="tools.clickHelp">Clicking an item only inserts a request into the composer. Review it, add the task, then send.</div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
+<script src="/ui/i18n.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
 </body>
 </html>

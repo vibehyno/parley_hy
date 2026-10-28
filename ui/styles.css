@@ -80,6 +80,10 @@
   #sidebar {
     width: 250px; flex-shrink: 0; display: flex; flex-direction: column;
     background: var(--bg2); border-right: 1px solid var(--border);
+    transition: width .18s ease, border-color .18s ease;
+  }
+  @media (min-width: 761px) {
+    body.sidebar-collapsed #sidebar { width: 0; overflow: hidden; border-right-color: transparent; }
   }
   .logo { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; }
   .logo svg { flex-shrink: 0; }
@@ -620,11 +624,11 @@
   #jump:hover { color: var(--text); }
 
   /* ---------- modal ---------- */
-  #overlay {
+  #overlay, #toolsOverlay {
     position: fixed; inset: 0; background: rgba(5,7,10,.65); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; z-index: 50;
   }
-  #overlay.open { display: flex; }
+  #overlay.open, #toolsOverlay.open { display: flex; }
   .modal {
     width: min(560px, 92vw); max-height: 86vh; overflow-y: auto;
     background: var(--bg2); border: 1px solid var(--border2); border-radius: 18px; padding: 24px 26px;
@@ -632,6 +636,28 @@
   }
   .modal h2 { margin: 0 0 4px; font-size: 18px; }
   .modal .sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 18px; }
+  .tools-modal { width: min(720px, 92vw); }
+  .tools-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .tools-head .sub { margin-bottom: 12px; }
+  .tools-actions { display: flex; gap: 7px; }
+  .tool-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tool-tabs button { padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-dim); }
+  .tool-tabs button.active { color: var(--text); border-color: var(--user); background: rgba(122,162,247,.12); }
+  .tool-tabs button .tool-seat { opacity: .55; font-size: 10.5px; margin-left: 4px; }
+  .tool-search { width: 100%; padding: 9px 11px; border: 1px solid var(--border2); border-radius: 9px; background: var(--panel); color: var(--text); outline: none; }
+  .tool-search:focus { border-color: rgba(122,162,247,.55); }
+  .tool-status { min-height: 20px; padding: 8px 1px 4px; color: var(--text-faint); font-size: 12px; }
+  .tool-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .tool-group { border: 1px solid var(--border); border-radius: 11px; padding: 10px; min-width: 0; }
+  .tool-group h3 { margin: 0 0 8px; font-size: 12px; color: var(--text-faint); }
+  .tool-card { display: block; width: 100%; padding: 7px 8px; margin-top: 5px; text-align: left; border-radius: 8px; background: var(--panel); color: var(--text-dim); overflow: hidden; }
+  .tool-card:hover { background: var(--panel2); color: var(--text); }
+  .tool-card b, .tool-card span { display: block; overflow: hidden; text-overflow: ellipsis; }
+  .tool-card b { font-size: 12px; white-space: nowrap; }
+  .tool-card span { margin-top: 2px; color: var(--text-faint); font-size: 10.5px; line-height: 1.35; }
+  .tool-empty { padding: 8px 2px; color: var(--text-faint); font-size: 11.5px; }
+  .tool-note { margin-top: 12px; }
+  @media (max-width: 700px) { .tool-groups { grid-template-columns: 1fr; } .tools-head { flex-direction: column; } }
   .mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .mgroup { border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
   .mgroup h3 { margin: 0 0 10px; font-size: 13px; }
@@ -689,7 +715,7 @@
   #toast.show { transform: translateX(-50%) translateY(0); }
   #toast.err { border-color: rgba(242,109,109,.5); color: #f2a1a1; }
 
-  #navToggle { display: none; }
+  #navToggle { display: flex; align-items: center; justify-content: center; }
   #navScrim { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.45); }
   @media (max-width: 760px) {
     /* The sidebar slides over the chat rather than disappearing: without it
@@ -702,7 +728,6 @@
     }
     body.nav-open #sidebar { transform: none; }
     body.nav-open #navScrim { display: block; }
-    #navToggle { display: flex; }
     header { flex-wrap: wrap; row-gap: 6px; }
     .msg { max-width: 92%; }
     #composerWrap { padding: 8px 10px 12px; }

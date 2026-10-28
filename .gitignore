@@ -2,6 +2,8 @@ node_modules/
 coverage/
 .parley/
 .roundtable/
+.serena/
+.superpowers/
 
 # Local configuration and diagnostics may contain credentials or transcripts.
 .env

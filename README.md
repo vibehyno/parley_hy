@@ -1,15 +1,84 @@
-# Parley
+# Parley HY
 
-**Claude Code and Codex in one chat room — and they can overhear each other.**
+**Claude Code, Codex and AGY in one local chat room — choose any two seats and let them hear each other.**
 
-[![CI](https://github.com/auspex0/parley/actions/workflows/ci.yml/badge.svg)](https://github.com/auspex0/parley/actions/workflows/ci.yml)
 ![deps: zero](https://img.shields.io/badge/deps-zero-brightgreen)
 ![node: ≥20](https://img.shields.io/badge/node-%E2%89%A520-blue)
 [![license: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
+## 빠른 시작 (Windows)
+
+필수 준비: **Node.js 20 이상**과 사용할 CLI 2개 이상 설치 및 로그인. 지원 명령은 `codex`, `claude`, `agy`이며 API 키 대신 각 CLI의 기존 구독 로그인을 사용함.
+
+```powershell
+git clone https://github.com/vibehyno/parley_hy.git
+cd parley_hy
+npm.cmd start
+```
+
+실행 후 `http://127.0.0.1:4141`이 자동으로 열림. 전역 `parley` 명령이 필요하면 저장소 폴더에서 한 번만 실행:
+
+```powershell
+npm.cmd link
+parley
+```
+
+### 기본 사용법
+
+- 방 생성 후 두 자리에 Codex, Claude, AGY 중 원하는 모델 배치
+- `@codex`, `@claude`, `@gemini`, `@both`로 응답 대상 지정
+- **대화(Talk)**: 의견 공유·판단·검토 중심 / **작업(Work)**: 연결한 프로젝트 파일 수정 및 명령 실행
+- 왼쪽 **도구**에서 모델별 Skill, MCP, Plugin 확인 후 클릭하여 입력창에 호출 요청 추가
+- **설정 → 언어**에서 한국어/English 변경. 선택값은 해당 브라우저에 저장
+- 방·대화·설정은 Git 저장소가 아닌 사용자 PC의 `~/.parley`에 별도 저장. 저장소를 다시 클론해도 기존 대화 유지
+- CLI 계정을 바꾸거나 새 CLI를 설치한 경우 Parley 재시작 필요
+
+문제 발생 시 먼저 터미널에서 `codex`, `claude`, `agy`가 각각 실행되고 로그인되어 있는지 확인. 포트 충돌 시 `parley --port 0` 사용.
+
+### 추천 운영 방식: Codex 주도 + 검토 모델
+
+토큰 사용을 줄이면서 의견 검토를 받으려면 다음 구성을 권장함.
+
+1. **1번 자리: Codex**, **2번 자리: Claude 또는 AGY** 배치
+2. 평소 메시지는 `@codex`로 전달하여 판단·구현 주도
+3. 설계 확인이나 결과 검수만 `@claude` 또는 `@gemini`로 요청
+4. 자동 발언을 `0~1`로 설정하여 불필요한 왕복 대화 제한
+5. 합의 전에는 **대화(Talk)**, 실제 파일 수정 시에만 **작업(Work)** 사용
+
+예시:
+
+```text
+@codex 이 요구사항을 기준으로 구현을 주도해줘. 구현 후 Claude에게 핵심 위험만 짧게 검토받아줘.
+@claude Codex 결과에서 오류 가능성과 누락만 짧게 검토해줘.
+```
+
+한 모델이 작업하고 다른 모델이 반복 검토하는 방식은 Pair 모드 사용:
+
+```text
+/pair start @codex 로그인 오류를 수정하고 테스트해줘
+```
+
+왼쪽 **도구** 메뉴의 항목을 클릭하면 호출 문구만 입력창에 추가됨. 자동 전송되지 않으므로 실제 작업 내용과 범위를 덧붙인 뒤 전송 필요.
+
+### 업데이트와 데이터 보관
+
+```powershell
+cd parley_hy
+git pull --ff-only
+npm.cmd start
+```
+
+- 업데이트 적용을 위해 실행 중인 Parley 종료 후 재실행 필요
+- 방·대화·설정 저장 위치: `~/.parley`
+- 소스 저장소를 삭제하거나 다시 클론해도 `~/.parley`를 지우지 않으면 기존 대화 유지
+- 삭제한 방의 임시 보관 위치: `~/.parley/.trash`
+- Git 저장소에는 대화 내용과 CLI 로그인 정보가 포함되지 않음
+
+> 이 저장소는 [auspex0/parley](https://github.com/auspex0/parley)를 기반으로 한 개인화 버전이며 원본 MIT 라이선스를 유지함.
+
 Most multi-agent tools are work queues — worktrees, kanban boards, parallel terminals. Parley is a *conversation*: one local page, one shared thread, two agents who hear each other. `@claude`, `@codex`, `@both` — or just type, and it goes to whoever you were last talking to. Ask Claude something, then ask Codex what it thinks of the answer; they agree, disagree, and build on each other in one thread.
 
-It drives the **official Claude Code and Codex CLIs through your existing CLI logins**. No API key, no proxy; Parley never reads or stores provider credentials — if a CLI isn't authenticated, you see its own error in the chat.
+It drives the **official Claude Code, Codex and Google Antigravity (`agy`) CLIs through your existing CLI logins**. No API key, no proxy; Parley never reads or stores provider credentials — if a CLI isn't authenticated, you see its own error in the chat. The internal provider id remains `gemini` so older room files still open, but the retired consumer `gemini` command is no longer launched.
 
 The screenshots below are real conversations captured in version **1.2.0**.
 
@@ -33,35 +102,25 @@ Point that at a work room and you get continuous, unprompted code review: one ag
 
 Whether it speaks is the model's own judgment — there is no keyword trigger. A per-agent dial sets the bar: `quiet` (only outright problems), `balanced` (adds real disagreements and critical caveats), `vocal` (adds better approaches too). Or write your own criteria.
 
-## Get started
+## Get started (English)
 
-You need **Node.js ≥ 20** and the two official CLIs, each installed and authenticated: `claude` (Claude Code) and `codex` (OpenAI Codex). Parley shells out to them under your existing logins.
+You need **Node.js ≥ 20** and any two supported official CLIs, installed and authenticated: `claude` (Claude Code), `codex` (OpenAI Codex), or `agy` (Google Antigravity). Parley shells out to them under your existing subscription logins.
 
-Try it without installing anything:
-
-```bash
-npx parley-room
-```
-
-Or install it for good:
+Parley HY is not published as a separate npm package. Install this fork from source so the `parley` command points to this repository:
 
 ```bash
-npm install -g parley-room
+git clone https://github.com/vibehyno/parley_hy.git
+cd parley_hy
+npm test     # optional: real server, fake agents — no login, no tokens spent
+npm link
 parley
 ```
 
-The npm package is `parley-room`; `parley` on npm is unrelated. The command remains `parley`.
+The command remains `parley`. Do not use `npx parley-room` or `npm install -g parley-room` for this fork; those commands install the upstream npm release instead.
 
 The UI opens automatically at a loopback URL, normally `http://127.0.0.1:4141`. Flags: `--port N` (`--port 0` picks any free port), `--root DIR`, `--no-open`, `--version`, `--help`.
 
-Or run from source — there are no runtime dependencies:
-
-```bash
-git clone https://github.com/auspex0/parley.git
-cd parley
-npm test     # optional: real server, fake agents — no login, no tokens spent
-npm start    # `npm link` here gives you the global `parley` command
-```
+There are no runtime dependencies. `npm start` runs directly from the checkout without linking the command globally.
 
 Two notes at the door:
 
@@ -72,8 +131,8 @@ Two notes at the door:
 
 | Symptom | What it means |
 |---|---|
-| A seat shows **not found** | `claude` or `codex` isn't on Parley's `PATH`. Hover the pill for the exact resolver error. Install the CLI, then restart Parley — `PATH` is read at launch. |
-| A seat replies with a login or auth error | The CLI itself isn't signed in. Run `claude` or `codex` once in a terminal, complete the login, then come back. Parley never handles credentials. |
+| A seat shows **not found** | Its command (`claude`, `codex`, or `agy`) isn't on Parley's `PATH`. Hover the pill for the exact resolver error. Install the CLI, then restart Parley — `PATH` is read at launch. |
+| A seat replies with a login or auth error | The CLI itself isn't signed in. Run that command once in a terminal, complete the login, then come back. Parley never handles credentials. |
 | `Failed to start: EADDRINUSE` | Something else holds port 4141 and the next 20 ports. Use `--port 0` for any free port. |
 | The page says the runtime protocol doesn't match | Parley was updated under a page that's still open. Reload the tab. |
 | Windows: the folder picker seems to do nothing | It can open behind the browser. Look for **Parley — Choose a project folder** in the taskbar. |
@@ -86,6 +145,7 @@ Your rooms, transcripts and settings live in `~/.parley` (override with `--root`
 |---|---|
 | `@claude <text>` | Claude only |
 | `@codex <text>` | Codex only |
+| `@gemini <text>` | AGY only when the seat keeps the compatible `gemini` name |
 | `@both <text>` | Both, **in parallel** — replies stream in as they land |
 | `<text>` | Whoever you last addressed |
 
@@ -105,7 +165,8 @@ Each agent has its own **lane**: tag them back-to-back and they genuinely work a
 - **Attachments 📎** — paste, drag or clip in images, patches, logs and docs; images use each CLI's native image input.
   *Personal highlight: that little attachment paperclip. Shoutout to Codex.*
 - **Receipt dots** — under every message: who heard it live, who lurked it, who is queued to catch up, who caught up later, where a causal answer was returned, and where a cap or structural terminal deliberately ended the exchange — including deliveries you cancelled and terminal lurk outcomes.
-- **Per-reply token counts** — output (and Codex reasoning) tokens straight from the CLI, not model self-reporting.
+- **Per-reply token counts** — provider-reported input, output, reasoning and cache-read counts where available. AGY's cumulative conversation counters are converted to per-turn deltas.
+- **Provider tool drawer 🧰** — inspect the Skills, MCP servers and plugins reported by each CLI seated in the room. Search an item and click it to insert an addressed request into the composer; Parley never auto-sends it and never exposes tool commands, local paths, server URLs or environment values to the page.
 - **Two seats, extensible providers** — adding another CLI agent is one adapter function and a registry entry.
 
 ## Why you can trust it
