@@ -4,6 +4,7 @@ const $ = (id) => document.getElementById(id);
 const I18N = window.ParleyI18n || {
   currentLocale: () => "en",
   t: (key) => key,
+  toolDescription: (_name, original) => original || "",
   setLocale: () => "en",
   applyLocale: () => {},
 };
@@ -63,6 +64,7 @@ const state = {
   eventVersion: 0,   // any newer SSE event makes a reconnect snapshot stale for live UI state
   resyncVersion: 0,
   toolCatalogs: {},  // provider -> safe display metadata from /api/tools
+  adjustDraft: null, // one editable instruction waiting to join the active work
 };
 
 // ------------------------------------------------------------ helpers
@@ -89,9 +91,9 @@ let runtimeMismatch = false;
 function showRuntimeMismatch() {
   if (runtimeMismatch) return;
   runtimeMismatch = true;
-  const message = "Parley was updated while its old server was still running. Restart Parley, then reload this page.";
+  const message = t("runtime.restartMessage");
   const banner = $("runtimeBanner");
-  banner.innerHTML = `⚠ <b>Restart Parley</b> — ${esc(message)}`;
+  banner.innerHTML = `⚠ <b>${esc(t("runtime.restartTitle"))}</b> — ${esc(message)}`;
   banner.style.display = "block";
   document.querySelectorAll("button,input,textarea,select").forEach((el) => { el.disabled = true; });
   document.querySelectorAll("a").forEach((el) => {
@@ -102,7 +104,7 @@ function showRuntimeMismatch() {
 if (PAGE_RUNTIME_PROTOCOL !== REQUIRED_RUNTIME_PROTOCOL) showRuntimeMismatch();
 
 async function api(path, body) {
-  if (runtimeMismatch) throw new Error("Restart Parley to finish applying the update.");
+  if (runtimeMismatch) throw new Error(t("runtime.restartError"));
   const res = await fetch(path, body === undefined
     ? { headers: { "X-Parley-Token": TOKEN, "X-Parley-Runtime-Protocol": REQUIRED_RUNTIME_PROTOCOL } }
     : {
@@ -526,9 +528,14 @@ window.addEventListener("focus", () => { document.title = t("app.name"); refresh
 // ------------------------------------------------------------ chat rendering
 const chatWrap = $("chatWrap"), chat = $("chat");
 function nearBottom() { return chatWrap.scrollHeight - chatWrap.scrollTop - chatWrap.clientHeight < 120; }
-function scrollBottom(force) {
-  if (force || nearBottom()) { chatWrap.scrollTop = chatWrap.scrollHeight; $("jump").style.display = "none"; }
-  else $("jump").style.display = "block";
+function scrollBottom(force, instant = false) {
+  if (force || nearBottom()) {
+    const behavior = chatWrap.style.scrollBehavior;
+    if (instant) chatWrap.style.scrollBehavior = "auto";
+    chatWrap.scrollTop = chatWrap.scrollHeight;
+    if (instant) chatWrap.style.scrollBehavior = behavior;
+    $("jump").style.display = "none";
+  } else $("jump").style.display = "block";
 }
 // One page per frame. Scroll fires far faster than a render, and a page of
 // collapsed activity adds little height — so without this guard a single flick
@@ -1998,17 +2005,9 @@ function effectiveSeatPermission(a, cfg, roomMode) {
   return "provider default";
 }
 function permissionLabel(mode) {
-  const labels = {
-    default: "CLI default",
-    manual: "manual",
-    plan: "plan — read only",
-    acceptEdits: "accept edits",
-    bypassPermissions: "full access",
-    "read-only": "read only",
-    "workspace-write": "workspace write",
-    "danger-full-access": "full access",
-  };
-  return labels[mode] || mode;
+  const key = `permission.${mode}`;
+  const label = t(key);
+  return label === key ? mode : label;
 }
 function isFullAccess(mode) {
   return String(mode).toLowerCase() === "bypasspermissions" || mode === "danger-full-access";
@@ -2080,48 +2079,47 @@ function applySummary(s) {
       spent,
     ].filter(Boolean).join("\n");
     let txt = "";
-    if (!ag.command.ok) txt = "not found";
-    else if (health && !health.ok && health.stage === "auth") txt = "not signed in";
+    if (!ag.command.ok) txt = t("status.notFound");
+    else if (health && !health.ok && health.stage === "auth") txt = t("status.notSignedIn");
     else {
       // A seat can be both: sleep stops the *next* launch, so a response
       // already running still says so.
       const bits = [];
-      if (s.busy.includes(a)) bits.push("typing…");
-      if (ag.catchUp && !s.busy.includes(a)) bits.push("catch-up queued");
+      if (s.busy.includes(a)) bits.push(t("status.typing"));
+      if (ag.catchUp && !s.busy.includes(a)) bits.push(t("status.catchUpQueued"));
       // Held is a subset of pending, never an addend — "3 held · 14 pending"
       // means 3 of those 14 are messages the user addressed to this seat.
       // It outlives sleep: after Wake only the seat is awake and they are still
       // undelivered, so the count stays until a turn moves the cursor.
-      if (asleep) bits.push(ag.pending ? `asleep · ${ag.pending} pending` : "asleep");
-      if (ag.held) bits.push(`${ag.held} held`);
+      if (asleep) bits.push(ag.pending ? t("status.asleepPending", { count: ag.pending }) : t("status.asleep"));
+      if (ag.held) bits.push(t("status.held", { count: ag.held }));
       if (!bits.length && s.cfg.agents[a].model) bits.push(s.cfg.agents[a].model);
       txt = bits.join(" · ");
     }
     pill.querySelector(".pinfo").textContent = txt ? " · " + txt : "";
     pill.title = ag.command.ok
-      ? (ag.linked ? `session linked (${ag.sessionRef}…) · seen through turn ${ag.cursor}` : "fresh session")
+      ? (ag.linked
+        ? t("seat.sessionLinked", { ref: ag.sessionRef, cursor: ag.cursor })
+        : t("seat.sessionFresh"))
       : ag.command.detail;
     const moon = pill.querySelector(".moon");
-    const reason = (ag.sleep && ag.sleep.reason) || "";
     moon.classList.toggle("on", asleep);
     moon.textContent = asleep ? "☀" : "😴";
     // The pending count is context, not a token estimate — but this is the one
     // moment the size of the next turn is knowable before it runs, and that
     // turn arrives right after whatever quota event caused the sleep.
     moon.title = asleep
-      ? `Wake ${seatLabel(a)}${ag.pending ? ` — ${ag.pending} entr${ag.pending === 1 ? "y" : "ies"} pending` : ""}` +
-        `${reason ? ` · asleep: ${reason}` : ""}. ` +
-        (ag.held
-          ? `${ag.held} of them ${ag.held === 1 ? "is a message" : "are messages"} you sent it — choose whether to answer ${ag.held === 1 ? "it" : "them"} on wake.`
-          : "Nothing is replayed; its next turn carries them as ordinary context.")
-      : `Put ${seatLabel(a)} to sleep — no message, @call or lurk launches it until you wake it. ` +
-        `Use this when it is rate limited; a response already running still finishes.`;
+      ? t("seat.wakeTitle", {
+        seat: seatLabel(a),
+        pending: ag.pending ? t("seat.pendingCount", { count: ag.pending }) : "",
+      })
+      : t("seat.sleepTitle", { seat: seatLabel(a) });
     const ear = pill.querySelector(".ear");
     const lurking = !!s.cfg.agents[a].lurk;
     ear.classList.toggle("on", lurking);
     ear.title = lurking
-      ? `${a} is lurking: it overhears every exchange and may chime in (one extra ${a} call per message). Click to turn off.`
-      : `Let ${a} lurk: it will overhear every exchange and may chime in (one extra ${a} call per message). Click to turn on.`;
+      ? t("seat.lurkEnabledTitle", { seat: seatLabel(a) })
+      : t("seat.lurkDisabledTitle", { seat: seatLabel(a) });
   }
   const mode = s.cfg.mode || "talk";
   document.querySelectorAll(".mbtn").forEach((b) => b.classList.toggle("active", b.dataset.m === mode));
@@ -2130,20 +2128,20 @@ function applySummary(s) {
     mode: effectiveSeatPermission(a, s.cfg.agents[a], mode),
   }));
   const how = access.map(({ agent, mode: permission }) =>
-    `${esc(agent)}: ${esc(permissionLabel(permission))}`).join(" · ");
+    `${agent}: ${permissionLabel(permission)}`).join(" · ");
   const full = access.filter(({ mode: permission }) => isFullAccess(permission)).map(({ agent }) => agent);
   const talkOverride = mode === "talk" && access.some(({ mode: permission }) => !isConservative(permission));
   $("workBanner").style.display = mode === "work" || talkOverride ? "block" : "none";
   if (full.length) {
-    $("workBanner").innerHTML = `⚠ <b>Full access enabled</b> — ${full.map(esc).join(" + ")} may act beyond ` +
-      (s.cfg.projectDir ? `<b>${esc(s.cfg.projectDir)}</b>` : "the room workspace") +
-      ` within the current OS account's access (${how}).`;
+    const scope = s.cfg.projectDir || t("banner.roomWorkspace");
+    $("workBanner").innerHTML = `⚠ <b>${esc(t("banner.fullAccessTitle"))}</b> — ${esc(t("banner.fullAccessBody", {
+      agents: full.join(" + "), scope, permissions: how,
+    }))}`;
   } else if (mode === "work") {
-    $("workBanner").innerHTML = `🔨 <b>Work room</b> — agents can write files and run commands in ` +
-      (s.cfg.projectDir ? `<b>${esc(s.cfg.projectDir)}</b>` : "the shared workspace") +
-      ` (${how}). Actions show as inline activity lines.`;
+    const scope = s.cfg.projectDir || t("banner.sharedWorkspace");
+    $("workBanner").innerHTML = `🔨 <b>${esc(t("banner.workTitle"))}</b> — ${esc(t("banner.workBody", { scope, permissions: how }))}`;
   } else if (talkOverride) {
-    $("workBanner").innerHTML = `⚠ <b>Talk room with a permission override</b> — configured seats may still make changes (${how}).`;
+    $("workBanner").innerHTML = `⚠ <b>${esc(t("banner.talkOverrideTitle"))}</b> — ${esc(t("banner.talkOverrideBody", { permissions: how }))}`;
   }
   const pair = s.pair;
   $("pairBanner").style.display = pair ? "block" : "none";
@@ -2166,10 +2164,10 @@ function applySummary(s) {
   const wsBtn = $("openWs");
   $("openWsLabel").textContent = s.cfg.projectDir
     ? s.cfg.projectDir.split(/[\\/]/).filter(Boolean).pop()
-    : "Sandbox workspace";
+    : t("workspace.sandbox");
   wsBtn.title = s.cfg.projectDir
-    ? `Linked project — open ${s.cfg.projectDir}`
-    : `This room's own scratch folder — open ${s.workspace}`;
+    ? t("workspace.linkedTitle", { path: s.cfg.projectDir })
+    : t("workspace.sandboxTitle", { path: s.workspace });
   renderGitId(s.git);
   // A tab that loads mid-run knows each run's phase and start time from
   // busyInfo; without them every bubble read "is thinking · 0s" — for a
@@ -2438,8 +2436,8 @@ $("pills").addEventListener("click", async (e) => {
     try {
       await api("/api/seat/sleep", { room: state.room, agent: a, asleep: !asleep });
       toast(asleep
-        ? `☀ ${a} is awake — nothing was replayed`
-        : `😴 ${a} is asleep — nothing will be launched for it until you wake it`);
+        ? t("seat.wakeToast", { seat: seatLabel(a) })
+        : t("seat.sleepToast", { seat: seatLabel(a) }));
     } catch (err) { toast(err.message, true); }
     return;
   }
@@ -2449,7 +2447,9 @@ $("pills").addEventListener("click", async (e) => {
   const cur = !!state.summary.cfg.agents[a].lurk;
   try {
     await api("/api/config", { room: state.room, config: { agents: { [a]: { lurk: !cur } } } });
-    toast(!cur ? `👂 ${a} is now lurking — it hears every exchange and may chime in` : `${a} stopped lurking`);
+    toast(!cur
+      ? t("seat.lurkEnabledToast", { seat: seatLabel(a) })
+      : t("seat.lurkDisabledToast", { seat: seatLabel(a) }));
   } catch (err) { toast(err.message, true); }
 });
 document.querySelectorAll(".mbtn").forEach((b) => {
@@ -3199,6 +3199,7 @@ async function loadRoom(name) {
     old.close();
   }
   $("connDot").classList.remove("on");
+  clearAdjustmentDraft();
   clearDraftAttachments();
   clearAttachmentUrls();
   state.resyncVersion++;
@@ -3232,6 +3233,14 @@ async function loadRoom(name) {
   state.providers = data.room.providers || state.providers;
   renderAll({ preserveTransient: false });
   applySummary(data.room);
+  // Room opening is navigation, not a live arrival: always show the newest
+  // message immediately. The second pass runs after layout so smooth scrolling
+  // or late size calculations cannot leave the viewport halfway up the room.
+  const openedRoom = state.room;
+  scrollBottom(true, true);
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (state.room === openedRoom) scrollBottom(true, true);
+  }));
   // Opening a room can itself resume a persisted lurk catch-up. Re-pull once
   // the event stream is attached so an unusually fast catch-up cannot finish
   // in the GET→SSE gap and leave this tab with a stale entry/receipt snapshot.
@@ -3366,6 +3375,7 @@ function seatNameIssue(id) {
 
 // ------------------------------------------------------------ composer
 const input = $("input");
+const ComposerAdjustment = window.ParleyComposerAdjustment;
 const PASTE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const PASTE_IMAGE_EXTENSIONS = new Map([
   ["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"],
@@ -3527,7 +3537,89 @@ function fileBase64(file) {
 }
 
 function autosize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 200) + "px"; }
-input.addEventListener("input", () => { autosize(); updateRouteHint(); mentionCheck(); });
+
+function adjustmentTarget(route) {
+  if (route && route.target) return route.target;
+  const pair = state.summary && state.summary.workingPair;
+  if (pair && pair.worker) return pair.worker;
+  const summary = state.summary || {};
+  return state.chip !== "auto" ? state.chip : (summary.lastAddressed || summary.cfg?.defaultAgent || summary.seats?.[0]);
+}
+
+function renderAdjustmentDraft() {
+  const draft = state.adjustDraft;
+  const wrap = $("adjustDraft");
+  wrap.hidden = !draft;
+  $("input").disabled = !!draft;
+  $("attachBtn").disabled = !!draft;
+  $("sendBtn").disabled = !!draft || state.sending;
+  document.querySelector(".box").classList.toggle("adjustment-held", !!draft);
+  $("adjustDraftText").disabled = state.sending;
+  $("adjustDraftDelete").disabled = state.sending;
+  $("adjustDraftSend").disabled = state.sending;
+  if (!draft) return;
+  $("adjustDraftLabel").textContent = t("adjust.label", { target: draft.target === "both" ? "Both" : seatLabel(draft.target) });
+  if (document.activeElement !== $("adjustDraftText")) $("adjustDraftText").value = draft.text;
+}
+
+function clearAdjustmentDraft() {
+  state.adjustDraft = null;
+  renderAdjustmentDraft();
+}
+
+function stageAdjustment(text, route) {
+  const target = adjustmentTarget(route);
+  if (!ComposerAdjustment || !ComposerAdjustment.shouldStage({
+    summary: state.summary, target, text, attachmentCount: draftAttachmentCount(),
+  })) return false;
+  state.adjustDraft = {
+    room: state.room,
+    sourceN: ComposerAdjustment.activeSource(state.summary, target),
+    target,
+    text,
+    hopChoice: state.hopChoice,
+  };
+  input.value = "";
+  autosize();
+  hideMention();
+  if (typeof hideSkillAutocomplete === "function") hideSkillAutocomplete();
+  renderAdjustmentDraft();
+  $("adjustDraftText").focus();
+  return true;
+}
+
+async function sendAdjustmentDraft() {
+  const draft = state.adjustDraft;
+  if (!draft || state.sending) return;
+  const text = $("adjustDraftText").value.trim();
+  if (!text) return toast(t("adjust.empty"), true);
+  draft.text = text;
+  state.sending = true;
+  renderAdjustmentDraft();
+  try {
+    const body = {
+      room: draft.room, sourceN: draft.sourceN, mode: "queue",
+      target: draft.target, text,
+    };
+    if (draft.hopChoice === "solo") body.solo = true;
+    else if (draft.hopChoice !== "default") body.hopBudget = normalizedHopBudget(draft.hopChoice, -1);
+    const result = await api("/api/ask", body);
+    if (state.adjustDraft === draft) clearAdjustmentDraft();
+    toast(result.deferred && result.deferred.length
+      ? t("adjust.queued", { targets: result.deferred.join(" · ") })
+      : t("adjust.added"));
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    state.sending = false;
+    renderAdjustmentDraft();
+  }
+}
+
+input.addEventListener("input", () => {
+  autosize(); updateRouteHint();
+  if (!skillAutocompleteCheck()) mentionCheck();
+});
 
 // Local slash commands; /pair goes to the server, the rest resolve here.
 function localSystemNote(html) {
@@ -3604,6 +3696,7 @@ async function send() {
   const imageDrafts = [...state.draftImages];
   const fileDrafts = [...state.draftFiles];
   if ((!text && !imageDrafts.length && !fileDrafts.length) || state.sending) return;
+  if (stageAdjustment(text, draftRoute())) return;
   if (text.startsWith("/") && (imageDrafts.length || fileDrafts.length) && !/^\/pair\b/i.test(text)) {
     toast("Attachments can accompany messages or /pair tasks, not local slash commands.", true);
     return;
@@ -3620,12 +3713,14 @@ async function send() {
       ? soloTargetProblem(text, !!(imageDrafts.length || fileDrafts.length)) : "";
     if (problem) { toast(problem, true); return; }
     input.value = ""; autosize(); hideMention();
+    if (typeof hideSkillAutocomplete === "function") hideSkillAutocomplete();
     const handled = await handleSlash(text);
     if (handled) return;
   } else {
     const problem = soloTargetProblem(text);
     if (problem) { toast(problem, true); return; }
     input.value = ""; autosize(); hideMention();
+    if (typeof hideSkillAutocomplete === "function") hideSkillAutocomplete();
   }
   state.sending = true;
   $("sendBtn").disabled = true;
@@ -3664,10 +3759,18 @@ async function send() {
     if (state.room === sentRoom && !input.value.trim()) { input.value = text; autosize(); }
   } finally {
     state.sending = false;
-    $("sendBtn").disabled = false;
+    $("sendBtn").disabled = !!state.adjustDraft;
   }
 }
 $("sendBtn").onclick = send;
+$("adjustDraftText").addEventListener("input", (event) => {
+  if (state.adjustDraft) state.adjustDraft.text = event.target.value;
+});
+$("adjustDraftDelete").onclick = () => {
+  clearAdjustmentDraft();
+  input.focus();
+};
+$("adjustDraftSend").onclick = sendAdjustmentDraft;
 $("attachBtn").onclick = () => {
   if (state.sending) return toast("Wait for the current message to finish sending.", true);
   $("fileInput").click();
@@ -3769,6 +3872,7 @@ $("stopMenu").onclick = (e) => {
   stopResponses(choice.dataset.stopScope, choice.dataset.stopAgent || null);
 };
 input.addEventListener("keydown", (e) => {
+  if (skillAutocompleteKeydown(e)) return;
   if (mentionKeydown(e)) return;
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -3796,6 +3900,138 @@ $("starters").addEventListener("click", (e) => {
 });
 
 // mention popover — options come from the room's seats
+const SkillAutocomplete = window.ParleySkillAutocomplete;
+let skillAcItems = [];
+let skillAcSelected = 0;
+let skillAcParsed = null;
+let skillAcRequest = 0;
+
+function skillProviderOptions() {
+  const seats = state.summary?.seats || [];
+  const info = state.summary?.seatInfo || {};
+  return seats.map((seat) => ({
+    type: "provider",
+    seat,
+    provider: info[seat]?.provider || seat,
+    label: seatLabel(seat),
+  }));
+}
+
+function skillAutocompleteOpen() {
+  return $("skillAutocomplete").style.display === "block";
+}
+
+function hideSkillAutocomplete() {
+  skillAcRequest++;
+  skillAcItems = [];
+  skillAcParsed = null;
+  $("skillAutocomplete").style.display = "none";
+}
+
+function renderSkillAutocomplete(title, items, emptyKey = "skillAutocomplete.noMatches") {
+  skillAcItems = items.slice(0, 100);
+  skillAcSelected = 0;
+  const el = $("skillAutocomplete");
+  const rows = skillAcItems.map((choice, index) => {
+    if (choice.type === "provider") {
+      return `<button type="button" data-skill-ac-index="${index}" class="${index === 0 ? "sel" : ""}"><b>$${esc(choice.seat)}</b><span>${esc(toolLabel(choice.provider))}</span></button>`;
+    }
+    const item = choice.item;
+    const detail = window.ParleyI18n.toolDescription(item.name, item.description || "");
+    return `<button type="button" data-skill-ac-index="${index}" class="${index === 0 ? "sel" : ""}"><b>${esc(item.displayName || item.name)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}</button>`;
+  }).join("");
+  el.innerHTML = `<div class="skill-ac-title">${esc(title)}</div>` +
+    (rows || `<div class="skill-ac-empty">${esc(tr(emptyKey, "No matching Skills"))}</div>`);
+  el.style.display = "block";
+  el.querySelectorAll("[data-skill-ac-index]").forEach((button) => {
+    button.onclick = () => pickSkillAutocomplete(Number(button.dataset.skillAcIndex));
+  });
+}
+
+function showSkillAutocompleteMessage(key, fallback) {
+  skillAcItems = [];
+  const el = $("skillAutocomplete");
+  el.innerHTML = `<div class="skill-ac-empty">${esc(tr(key, fallback))}</div>`;
+  el.style.display = "block";
+}
+
+function skillAutocompleteCheck() {
+  if (!SkillAutocomplete) return false;
+  const parsed = SkillAutocomplete.parse(input.value, input.selectionStart);
+  if (!parsed) { hideSkillAutocomplete(); return false; }
+  skillAcParsed = parsed;
+  hideMention();
+  const providers = skillProviderOptions();
+  if (parsed.stage === "provider") {
+    const query = parsed.providerQuery.toLowerCase();
+    const matches = providers.filter((choice) =>
+      `${choice.seat} ${choice.provider} ${choice.label}`.toLowerCase().includes(query));
+    renderSkillAutocomplete(tr("skillAutocomplete.chooseProvider", "Choose a model"), matches);
+    return true;
+  }
+  const selected = providers.find((choice) => choice.seat === parsed.provider) ||
+    providers.find((choice) => choice.provider === parsed.provider);
+  if (!selected) {
+    renderSkillAutocomplete(tr("skillAutocomplete.chooseProvider", "Choose a model"), []);
+    return true;
+  }
+  const key = `${state.room}:${selected.provider}`;
+  const showCatalog = (catalog) => {
+    const filtered = SkillAutocomplete.filterSkills(catalog?.skills || [], parsed.query,
+      (item) => window.ParleyI18n.toolDescription(item.name, item.description || ""));
+    renderSkillAutocomplete(`@${selected.seat} · ${toolLabel(selected.provider)}`,
+      filtered.map((item) => ({ type: "skill", seat: selected.seat, item })));
+  };
+  if (state.toolCatalogs[key]) { showCatalog(state.toolCatalogs[key]); return true; }
+  const request = ++skillAcRequest;
+  const room = state.room;
+  showSkillAutocompleteMessage("skillAutocomplete.loading", "Loading Skills…");
+  const params = new URLSearchParams({ room, provider: selected.provider });
+  api(`/api/tools?${params}`).then((catalog) => {
+    if (request !== skillAcRequest || state.room !== room) return;
+    const current = SkillAutocomplete.parse(input.value, input.selectionStart);
+    if (!current || current.provider !== parsed.provider) return;
+    state.toolCatalogs[key] = catalog;
+    skillAcParsed = current;
+    showCatalog(catalog);
+  }).catch(() => {
+    if (request === skillAcRequest && state.room === room) {
+      showSkillAutocompleteMessage("skillAutocomplete.unavailable", "Could not load the Skill list");
+    }
+  });
+  return true;
+}
+
+function pickSkillAutocomplete(index) {
+  const choice = skillAcItems[index];
+  if (!choice || !skillAcParsed) return;
+  let replacement;
+  if (choice.type === "provider") replacement = `$${choice.seat} `;
+  else replacement = SkillAutocomplete.prompt(choice.seat, choice.item.invokeName || choice.item.name);
+  const result = SkillAutocomplete.replace(input.value, input.selectionStart, skillAcParsed, replacement);
+  input.value = result.text;
+  input.selectionStart = input.selectionEnd = result.cursor;
+  hideSkillAutocomplete();
+  autosize(); updateRouteHint(); input.focus();
+  if (choice.type === "provider") skillAutocompleteCheck();
+}
+
+function skillAutocompleteKeydown(e) {
+  if (!skillAutocompleteOpen()) return false;
+  if (e.key === "Escape") { e.preventDefault(); hideSkillAutocomplete(); return true; }
+  if (e.key === "Enter" || e.key === "Tab") {
+    e.preventDefault();
+    if (skillAcItems.length) pickSkillAutocomplete(skillAcSelected);
+    return true;
+  }
+  if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || !skillAcItems.length) return false;
+  e.preventDefault();
+  skillAcSelected = (skillAcSelected + (e.key === "ArrowDown" ? 1 : skillAcItems.length - 1)) % skillAcItems.length;
+  $("skillAutocomplete").querySelectorAll("[data-skill-ac-index]").forEach((button, index) => button.classList.toggle("sel", index === skillAcSelected));
+  $("skillAutocomplete").querySelector(`[data-skill-ac-index="${skillAcSelected}"]`)?.scrollIntoView({ block: "nearest" });
+  return true;
+}
+
 function mentionOptions() {
   const seats = state.summary ? state.summary.seats : [];
   return [
@@ -3925,8 +4161,8 @@ $("newRoomForm").onsubmit = async (e) => {
 async function browseFolder(start, btn) {
   const label = btn && btn.querySelector("[data-picker-label]");
   const original = label && label.textContent;
-  if (btn) { btn.disabled = true; if (label) label.textContent = "Choosing…"; }
-  toast("Opening the folder picker… If Windows keeps it behind, choose ‘Parley — Choose a project folder’ from the taskbar.");
+  if (btn) { btn.disabled = true; if (label) label.textContent = t("folder.choosing"); }
+  toast(t("folder.pickerOpening"));
   try {
     const r = await api("/api/pickfolder", { start: start || null });
     if (r.error) { toast(r.error, true); return null; }
@@ -3942,10 +4178,10 @@ $("s_browse").onclick = async () => {
   $("s_projdir").value = picked;
 };
 $("openWs").onclick = () => api("/api/open", { room: state.room, what: "workspace" })
-  .then(() => toast("📁 Workspace opened in Explorer — check the taskbar if it isn't in front."))
+  .then(() => toast(t("folder.workspaceOpened")))
   .catch((e) => toast(e.message, true));
 $("openRoomDir").onclick = () => api("/api/open", { room: state.room, what: "room" })
-  .then(() => toast("🗂️ Room folder opened in Explorer — check the taskbar if it isn't in front."))
+  .then(() => toast(t("folder.roomOpened")))
   .catch((e) => toast(e.message, true));
 
 // ------------------------------------------------------------ settings modal
@@ -4124,6 +4360,7 @@ function toolLabel(provider) {
   return state.providers?.[provider]?.label || ({ codex: "Codex", claude: "Claude", gemini: "AGY" }[provider] || provider);
 }
 function renderToolTabs() {
+  $("toolsHealth").hidden = toolsProvider !== "claude";
   $("toolsTabs").innerHTML = TOOL_PROVIDERS.map((provider) => {
     const seat = toolSeat(provider);
     return `<button type="button" role="tab" data-tool-provider="${esc(provider)}" aria-selected="${provider === toolsProvider}" class="${provider === toolsProvider ? "active" : ""}">` +
@@ -4132,8 +4369,11 @@ function renderToolTabs() {
 }
 function toolItems(catalog, key) {
   const query = $("toolsSearch").value.trim().toLowerCase();
-  return (catalog?.[key] || []).filter((item) =>
-    !query || `${item.name || ""} ${item.description || ""} ${item.version || ""}`.toLowerCase().includes(query));
+  return (catalog?.[key] || []).filter((item) => {
+    const localized = key === "skills"
+      ? window.ParleyI18n.toolDescription(item.name, item.description || "") : "";
+    return !query || `${item.displayName || item.name || ""} ${item.name || ""} ${item.source?.id || ""} ${item.description || ""} ${localized} ${item.version || ""}`.toLowerCase().includes(query);
+  });
 }
 function renderToolCatalog(catalog) {
   if (!catalog) return;
@@ -4143,14 +4383,21 @@ function renderToolCatalog(catalog) {
   $("toolsList").innerHTML = groups.map(([key, label, kind]) => {
     const items = toolItems(catalog, key);
     const rows = items.length ? items.map((item) => {
-      const detail = item.description || item.version || item.status || (item.enabled === false ? "disabled" : "");
-      return `<button type="button" class="tool-card" data-tool-kind="${esc(kind)}" data-tool-name="${esc(item.name)}" data-tool-seat="${esc(catalog.seat)}">` +
-        `<b>${esc(item.name)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}</button>`;
+      const pluginDetail = key === "plugins" && Number.isFinite(item.skillCount)
+        ? [item.version, tr("tools.includedSkills", "{count} included Skills", { count: item.skillCount })].filter(Boolean).join(" · ") : "";
+      const originalDetail = item.description || pluginDetail || item.version || item.status || (item.enabled === false ? "disabled" : "");
+      const detail = key === "skills" && item.description
+        ? window.ParleyI18n.toolDescription(item.name, item.description) : originalDetail;
+      const detailTitle = detail !== originalDetail && originalDetail ? ` title="${esc(originalDetail)}"` : "";
+      const displayName = item.displayName || item.name;
+      const invokeName = item.invokeName || item.name;
+      return `<button type="button" class="tool-card" data-tool-kind="${esc(kind)}" data-tool-name="${esc(invokeName)}" data-tool-seat="${esc(catalog.seat)}">` +
+        `<b>${esc(displayName)}</b>${detail ? `<span${detailTitle}>${esc(detail)}</span>` : ""}</button>`;
     }).join("") : `<div class="tool-empty">${esc(tr("tools.noMatches", "No matching items"))}</div>`;
     return `<section class="tool-group"><h3>${label} · ${items.length}</h3>${rows}</section>`;
   }).join("");
 }
-async function loadToolCatalog(refresh = false) {
+async function loadToolCatalog(refresh = false, health = false) {
   renderToolTabs();
   const seat = toolSeat(toolsProvider);
   if (!seat) {
@@ -4160,11 +4407,14 @@ async function loadToolCatalog(refresh = false) {
   }
   const key = `${state.room}:${toolsProvider}`;
   if (!refresh && state.toolCatalogs[key]) { renderToolCatalog(state.toolCatalogs[key]); return; }
-  $("toolsStatus").textContent = tr("tools.loading", "Loading {provider} tools…", { provider: toolLabel(toolsProvider) });
+  $("toolsStatus").textContent = health
+    ? tr("tools.checkingConnections", "Checking {provider} MCP connections…", { provider: toolLabel(toolsProvider) })
+    : tr("tools.loading", "Loading {provider} tools…", { provider: toolLabel(toolsProvider) });
   $("toolsList").innerHTML = "";
   try {
     const params = new URLSearchParams({ room: state.room, provider: toolsProvider });
     if (refresh) params.set("refresh", "1");
+    if (health) params.set("health", "1");
     const catalog = await api(`/api/tools?${params}`);
     state.toolCatalogs[key] = catalog;
     if ($("toolsOverlay").classList.contains("open") && toolsProvider === catalog.provider) renderToolCatalog(catalog);
@@ -4199,6 +4449,7 @@ function closeTools() {
 $("toolsBtn").onclick = openTools;
 $("toolsClose").onclick = closeTools;
 $("toolsRefresh").onclick = () => loadToolCatalog(true);
+$("toolsHealth").onclick = () => loadToolCatalog(true, true);
 $("toolsTabs").addEventListener("click", (e) => {
   const tab = e.target.closest("[data-tool-provider]");
   if (!tab) return;
@@ -4261,6 +4512,7 @@ function openSettings() {
 function refreshLocalizedUi() {
   applyLocale();
   document.title = t("app.name");
+  renderAdjustmentDraft();
   syncSidebarVisibility();
   if (state.summary) {
     // Changing the display language is not a Save action. Preserve edits that
@@ -4273,6 +4525,7 @@ function refreshLocalizedUi() {
       const key = `${el.dataset.seat}:${el.dataset.f}`;
       if (pending.has(key)) el.value = pending.get(key);
     }
+    applySummary(state.summary);
   }
   if ($("toolsOverlay").classList.contains("open")) {
     renderToolTabs();

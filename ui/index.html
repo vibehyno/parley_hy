@@ -62,9 +62,9 @@
       <button class="hbtn" id="navToggle" aria-label="Hide rooms" aria-controls="sidebar" aria-expanded="true" title="Hide rooms">☰</button>
       <div id="connDot" title="connection"></div>
       <div id="roomTitle">default</div>
-      <div id="modeToggle" title="Talk: conversational, conservative defaults; explicit seat permission overrides remain active. Work: agents can write files in the workspace and run commands.">
-        <button class="mbtn active" data-m="talk" data-i18n="mode.talk">💬 Talk</button>
-        <button class="mbtn" data-m="work" data-i18n="mode.work">🔨 Work</button>
+      <div id="modeToggle" title="Choose how much the agents may do in this room." data-i18n-title="mode.toggleTitle">
+        <button class="mbtn active" data-m="talk" data-i18n="mode.talk" data-i18n-title="mode.talkTitle" title="Talk mode — best for discussion without changing files.">💬 Talk</button>
+        <button class="mbtn" data-m="work" data-i18n="mode.work" data-i18n-title="mode.workTitle" title="Work mode — agents may edit project files and run commands.">🔨 Work</button>
       </div>
       <div class="pills" id="pills"></div>
       <button class="hbtn" id="newConvBtn" title="Archive this conversation and start fresh" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">✨ New conversation</button>
@@ -91,6 +91,7 @@
 
     <div id="composerWrap">
       <div id="composer">
+        <div id="skillAutocomplete" role="listbox" aria-label="Skill autocomplete" data-i18n-aria-label="skillAutocomplete.label"></div>
         <div id="mention"></div>
         <div class="chips" id="chipsRow">
           <button class="chip active" data-t="auto" data-i18n="composer.auto">Auto</button>
@@ -133,6 +134,17 @@
           <span id="routeHint"></span>
         </div>
         <div id="busyStrip" aria-live="polite"></div>
+        <div id="adjustDraft" hidden>
+          <div class="adjust-head">
+            <span id="adjustDraftLabel"></span>
+            <button id="adjustDraftDelete" type="button" data-i18n-title="adjust.delete" aria-label="Delete saved instruction" data-i18n-aria-label="adjust.delete">🗑</button>
+          </div>
+          <textarea id="adjustDraftText" rows="2"></textarea>
+          <div class="adjust-actions">
+            <span data-i18n="adjust.help">The current response will continue. This instruction is delivered next with the same work context.</span>
+            <button id="adjustDraftSend" type="button" data-i18n="adjust.send">Add to current work</button>
+          </div>
+        </div>
         <div id="draftImages" aria-label="Attachments ready to send"></div>
         <div class="box">
           <input id="fileInput" type="file" multiple hidden aria-label="Choose files to attach">
@@ -211,7 +223,7 @@
   <div class="modal tools-modal" role="dialog" aria-modal="true" aria-labelledby="toolsTitle">
     <div class="tools-head">
       <div><h2 id="toolsTitle" data-i18n="tools.title">Provider tools</h2><div class="sub" data-i18n="tools.subtitle">Skills, MCP servers and plugins available to each CLI</div></div>
-      <div class="tools-actions"><button class="btn" id="toolsRefresh" type="button" data-i18n="common.refresh">Refresh</button><button class="btn" id="toolsClose" type="button" data-i18n="common.close">Close</button></div>
+      <div class="tools-actions"><button class="btn" id="toolsHealth" type="button" data-i18n="tools.checkConnections">Check connections</button><button class="btn" id="toolsRefresh" type="button" data-i18n="common.refresh">Refresh</button><button class="btn" id="toolsClose" type="button" data-i18n="common.close">Close</button></div>
     </div>
     <div id="toolsTabs" class="tool-tabs" role="tablist" aria-label="Provider" data-i18n-aria-label="tools.provider"></div>
     <input id="toolsSearch" class="tool-search" type="search" placeholder="Search skills, MCPs and plugins…" data-i18n-placeholder="tools.searchPlaceholder" spellcheck="false">
@@ -224,6 +236,8 @@
 <div id="toast"></div>
 
 <script src="/ui/i18n.js?v=__PARLEY_ASSET_VERSION__"></script>
+<script src="/ui/skill-autocomplete.js?v=__PARLEY_ASSET_VERSION__"></script>
+<script src="/ui/composer-adjustment.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
 </body>
 </html>

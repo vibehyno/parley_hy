@@ -6992,7 +6992,18 @@ function parseJsonPayload(stdout) {
   return null;
 }
 
-function parsePluginInventory(stdout) {
+function pluginSourceId(row, displayName) {
+  const marketplace = catalogText(row.marketplaceName, 80);
+  const preferred = marketplace && /-skills$/i.test(displayName) ? marketplace : displayName;
+  return catalogText(preferred, 80)
+    .toLowerCase()
+    .replace(/@.*$/, "")
+    .replace(/-skills$/i, "")
+    .replace(/[^\p{L}\p{N}_.+-]+/gu, "-")
+    .replace(/^-+|-+$/g, "") || "plugin";
+}
+
+function parsePluginInventory(stdout, providerId) {
   const parsed = parseJsonPayload(stdout);
   const rows = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.installed) ? parsed.installed : []);
   const items = [], roots = [];
@@ -7000,25 +7011,71 @@ function parsePluginInventory(stdout) {
     if (!row || typeof row !== "object") continue;
     const name = catalogText(row.name || row.pluginId || row.id, 100);
     if (!name) continue;
-    const item = { name, enabled: row.enabled !== false };
+    const sourceId = pluginSourceId(row, name);
+    const item = { name, enabled: row.enabled !== false, _sourceId: sourceId };
     const version = catalogText(row.version, 40);
     if (version) item.version = version;
     items.push(item);
-    for (const candidate of [row.installPath, row.path, row.source?.path]) {
-      if (typeof candidate === "string" && candidate.trim()) roots.push(candidate);
+    const marketplace = catalogText(row.marketplaceName || String(row.pluginId || "").split("@")[1], 100);
+    const cacheBase = providerId === "claude" ? ".claude" : providerId === "gemini" ? ".agy" : ".codex";
+    const cacheCandidates = marketplace && version ? [
+      path.join(os.homedir(), cacheBase, "plugins", "cache", marketplace, name, version),
+    ] : [];
+    for (const candidate of [row.installPath, row.path, row.source?.path, ...cacheCandidates]) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        roots.push({ path: candidate, source: { kind: "plugin", id: sourceId } });
+      }
     }
   }
   return { items: dedupeCatalog(items), roots };
 }
 
+function readCatalogJson(file) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
+}
+
+function mcpItemsFromObject(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.keys(value).slice(0, 500).map((name) => ({ name: catalogText(name, 80), status: "configured" }))
+    .filter((item) => item.name);
+}
+
+function configuredClaudeMcps(cwd, pluginRoots) {
+  const items = [];
+  const addConfig = (config) => items.push(...mcpItemsFromObject(config?.mcpServers));
+  addConfig(readCatalogJson(path.join(cwd, ".mcp.json")));
+  const global = readCatalogJson(path.join(os.homedir(), ".claude.json"));
+  addConfig(global);
+  if (global?.projects && typeof global.projects === "object") {
+    let realCwd = cwd;
+    try { realCwd = fs.realpathSync(cwd); } catch { /* use resolved input */ }
+    for (const [projectPath, config] of Object.entries(global.projects)) {
+      let realProject = path.resolve(projectPath);
+      try { realProject = fs.realpathSync(realProject); } catch { /* unavailable project */ }
+      const same = IS_WIN ? realProject.toLowerCase() === realCwd.toLowerCase() : realProject === realCwd;
+      if (same) addConfig(config);
+    }
+  }
+  for (const root of pluginRoots) {
+    const base = typeof root === "string" ? root : root.path;
+    addConfig(readCatalogJson(path.join(base, ".mcp.json")));
+    addConfig(readCatalogJson(path.join(base, ".claude-plugin", "plugin.json")));
+  }
+  return dedupeCatalog(items);
+}
+
+function mergeMcpItems(configured, live) {
+  return dedupeCatalog([...(live || []), ...(configured || [])]);
+}
+
 function dedupeCatalog(items) {
   const seen = new Set(), out = [];
   for (const item of items) {
-    const key = String(item.name || "").toLowerCase();
+    const key = String(item.displayName || item.name || "").toLowerCase();
     if (!key || seen.has(key)) continue;
     seen.add(key); out.push(item);
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return out.sort((a, b) => String(a.displayName || a.name).localeCompare(String(b.displayName || b.name)));
 }
 
 function skillMetadata(file) {
@@ -7036,12 +7093,14 @@ function skillMetadata(file) {
   return description ? { name, description } : { name };
 }
 
-function scanSkillRoots(roots) {
+function scanSkillRoots(roots, providerId) {
   const found = [];
-  const visited = new Set();
-  let inspected = 0;
-  function walk(dir, depth) {
-    if (depth > 6 || inspected >= 800) return;
+  function scanRoot(root) {
+    const visited = new Set();
+    let inspected = 0;
+    const source = root.source || { kind: "provider", id: providerId };
+    function walk(dir, depth) {
+      if (depth > 6 || inspected >= 800) return;
     let resolved;
     try { resolved = fs.realpathSync(dir); } catch { return; }
     const key = IS_WIN ? resolved.toLowerCase() : resolved;
@@ -7053,17 +7112,30 @@ function scanSkillRoots(roots) {
       if (inspected++ >= 800) return;
       if (entry.isFile() && entry.name.toLowerCase() === "skill.md") {
         const meta = skillMetadata(path.join(resolved, entry.name));
-        if (meta) found.push(meta);
+        if (meta) {
+          const displayName = `${source.id}:${meta.name}`;
+          found.push({
+            ...meta,
+            displayName,
+            invokeName: source.kind === "plugin" && providerId === "codex" ? displayName : meta.name,
+            source,
+          });
+        }
       } else if (entry.isDirectory() && ![".git", "node_modules", "dist", "build"].includes(entry.name)) {
         walk(path.join(resolved, entry.name), depth + 1);
       }
     }
+    }
+    walk(root.path, 0);
   }
-  for (const root of roots) walk(root, 0);
+  for (const root of roots) scanRoot(typeof root === "string" ? { path: root } : root);
   return dedupeCatalog(found);
 }
 
-async function providerToolCatalog(room, providerId, refresh = false) {
+async function providerToolCatalog(room, providerId, options = {}) {
+  if (typeof options === "boolean") options = { refresh: options };
+  const refresh = options.refresh === true;
+  const health = options.health === true;
   const def = TOOL_COMMANDS[providerId];
   if (!def) throw Object.assign(new Error(`unknown provider: ${providerId}`), { status: 400 });
   const seat = seatIds(room).find((id) => providerIdOf(room, id) === providerId);
@@ -7072,27 +7144,42 @@ async function providerToolCatalog(room, providerId, refresh = false) {
   const cwd = workDir(room);
   const cacheKey = `${room.name}\u0000${providerId}\u0000${seatCfg.command}\u0000${cwd}`;
   const cached = toolCatalogCache.get(cacheKey);
-  if (!refresh && cached && Date.now() - cached.at < TOOL_CATALOG_TTL_MS) return cached.value;
+  if (!refresh && !health && cached && Date.now() - cached.at < TOOL_CATALOG_TTL_MS) return cached.value;
 
   const spec = resolveCommand(seatCfg.command || PROVIDERS[providerId].defaults.command);
-  const invoke = (args) => runCli(spec, args, { cwd, timeoutMs: 10_000, input: "" });
-  const [mcpRun, pluginRun] = await Promise.all([invoke(def.mcp), invoke(def.plugins)]);
-  const pluginData = pluginRun.code === 0 ? parsePluginInventory(pluginRun.stdout) : { items: [], roots: [] };
+  const invoke = (args, timeoutMs = 10_000) => runCli(spec, args, { cwd, timeoutMs, input: "" });
+  const pluginRun = await invoke(def.plugins);
+  const pluginData = pluginRun.code === 0 ? parsePluginInventory(pluginRun.stdout, providerId) : { items: [], roots: [] };
+  let configuredMcps = [];
+  let mcpRun = null;
+  if (providerId === "claude") {
+    configuredMcps = configuredClaudeMcps(cwd, pluginData.roots);
+    if (health) mcpRun = await invoke(def.mcp, 30_000);
+  } else {
+    mcpRun = await invoke(def.mcp);
+  }
   const skillRoots = [];
   for (const base of [cwd, os.homedir()]) {
-    for (const dir of def.skillDirs) skillRoots.push(path.join(base, dir, "skills"));
+    for (const dir of def.skillDirs) {
+      skillRoots.push({ path: path.join(base, dir, "skills"), source: { kind: "provider", id: providerId } });
+    }
   }
   skillRoots.push(...pluginData.roots);
   const warnings = [];
-  if (mcpRun.code !== 0) warnings.push("MCP 목록을 불러오지 못했어.");
+  if (mcpRun && mcpRun.code !== 0) warnings.push("MCP 연결 상태를 확인하지 못했어. 설정 목록은 그대로 표시할게.");
   if (pluginRun.code !== 0) warnings.push("Plugin 목록을 불러오지 못했어.");
+  const skills = scanSkillRoots(skillRoots, providerId);
+  const plugins = pluginData.items.map(({ _sourceId, ...item }) => ({
+    ...item,
+    skillCount: skills.filter((skill) => skill.source?.kind === "plugin" && skill.source.id === _sourceId).length,
+  }));
   const value = {
     provider: providerId,
     label: PROVIDERS[providerId].label,
     seat,
-    skills: scanSkillRoots(skillRoots),
-    mcps: mcpRun.code === 0 ? parseMcpInventory(mcpRun.stdout) : [],
-    plugins: pluginData.items,
+    skills,
+    mcps: mergeMcpItems(configuredMcps, mcpRun?.code === 0 ? parseMcpInventory(mcpRun.stdout) : []),
+    plugins,
     warnings,
   };
   toolCatalogCache.set(cacheKey, { at: Date.now(), value });
@@ -7253,7 +7340,10 @@ const server = http.createServer(async (req, res) => {
     if (route === "GET /api/tools") {
       const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
       const provider = String(url.searchParams.get("provider") || "").toLowerCase();
-      const catalog = await providerToolCatalog(room, provider, url.searchParams.get("refresh") === "1");
+      const catalog = await providerToolCatalog(room, provider, {
+        refresh: url.searchParams.get("refresh") === "1",
+        health: url.searchParams.get("health") === "1",
+      });
       return json(res, 200, catalog);
     }
 

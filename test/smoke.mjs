@@ -1965,16 +1965,33 @@ async function main() {
 
   console.log("provider tool catalog");
   const toolProject = path.join(ROOT, "tool-project");
+  const mcpLog = path.join(toolProject, ".fake-mcp-list.log");
   const pluginSkill = path.join(toolProject, ".fake-plugin", "skills", "plugin-helper");
+  const superpowersSkill = path.join(toolProject, ".fake-superpowers", "skills", "brainstorming");
+  const mattpocockSkill = path.join(toolProject, ".fake-mattpocock", "skills", "writing-for-agents");
   fs.mkdirSync(path.join(toolProject, ".codex", "skills", "short-review"), { recursive: true });
   fs.mkdirSync(path.join(toolProject, ".claude", "skills", "short-review"), { recursive: true });
   fs.mkdirSync(path.join(toolProject, ".gemini", "skills", "short-review"), { recursive: true });
   fs.mkdirSync(pluginSkill, { recursive: true });
+  fs.mkdirSync(superpowersSkill, { recursive: true });
+  fs.mkdirSync(mattpocockSkill, { recursive: true });
+  fs.writeFileSync(path.join(toolProject, ".mcp.json"), JSON.stringify({
+    mcpServers: {
+      "configured-mcp": { command: "never-expose-this-command" },
+    },
+  }));
   const skillText = "---\nname: short-review\ndescription: Concise review at https://private.example/tool, C:\\\\Secret\\\\skill.md, C:\\\\Users\\\\Jane Doe\\\\private.md, /root/private/skill.md, /workspace/internal/tool, /workspace/My Project/file.txt, /Users/Jane Doe/private.md, /srv/parley/config, and /private/tmp/token\n---\nSECRET_SKILL_BODY\n";
   for (const providerDir of [".codex", ".claude", ".gemini"]) {
     fs.writeFileSync(path.join(toolProject, providerDir, "skills", "short-review", "SKILL.md"), skillText);
   }
   fs.writeFileSync(path.join(pluginSkill, "SKILL.md"), "---\nname: plugin-helper\ndescription: Plugin helper\n---\n");
+  fs.writeFileSync(path.join(toolProject, ".fake-plugin", ".mcp.json"), JSON.stringify({
+    mcpServers: {
+      "plugin-configured-mcp": { command: "also-never-expose" },
+    },
+  }));
+  fs.writeFileSync(path.join(superpowersSkill, "SKILL.md"), "---\nname: brainstorming\ndescription: Explore requirements before implementation\n---\n");
+  fs.writeFileSync(path.join(mattpocockSkill, "SKILL.md"), "---\nname: writing-for-agents\ndescription: Write concise documents for agents\n---\n");
   for (const [roomName, provider, peer] of [
     ["tools-codex", "codex", "claude"],
     ["tools-claude", "claude", "codex"],
@@ -1989,13 +2006,43 @@ async function main() {
         [peer]: { provider: peer, command: FAKE, lurk: false },
       },
     }, null, 2));
+    const mcpRunsBefore = fs.existsSync(mcpLog) ? fs.readFileSync(mcpLog, "utf8").trim().split(/\r?\n/).filter(Boolean).length : 0;
     const tools = await api("GET", `/api/tools?room=${roomName}&provider=${provider}&refresh=1`);
+    const mcpRunsAfter = fs.existsSync(mcpLog) ? fs.readFileSync(mcpLog, "utf8").trim().split(/\r?\n/).filter(Boolean).length : 0;
     const exposed = JSON.stringify(tools.data);
     ok(`${provider} tool catalog exposes safe skill, MCP and plugin names`,
       tools.status === 200 && tools.data.provider === provider &&
       tools.data.skills.some((item) => item.name === "short-review") &&
-      tools.data.mcps.some((item) => item.name === "fake-mcp") &&
+      tools.data.mcps.some((item) => item.name === (provider === "claude" ? "configured-mcp" : "fake-mcp")) &&
       tools.data.plugins.some((item) => item.name === "Fake Plugin"), exposed);
+    if (provider === "claude") {
+      ok("Claude default tool catalog reads configured MCPs without launching a health check",
+        mcpRunsAfter === mcpRunsBefore &&
+        tools.data.mcps.some((item) => item.name === "plugin-configured-mcp") &&
+        tools.data.mcps.every((item) => item.status === "configured"), exposed);
+      const checked = await api("GET", `/api/tools?room=${roomName}&provider=${provider}&refresh=1&health=1`);
+      const checkedRuns = fs.existsSync(mcpLog) ? fs.readFileSync(mcpLog, "utf8").trim().split(/\r?\n/).filter(Boolean).length : 0;
+      ok("Claude manual MCP health check launches the CLI and merges live status",
+        checked.status === 200 && checkedRuns === mcpRunsAfter + 1 &&
+        checked.data.mcps.some((item) => item.name === "configured-mcp") &&
+        checked.data.mcps.some((item) => item.name === "fake-mcp" && item.status === "available"), JSON.stringify(checked.data));
+    }
+    const defaultSkill = tools.data.skills.find((item) => item.name === "short-review");
+    const superpowers = tools.data.skills.find((item) => item.displayName === "superpowers:brainstorming");
+    const mattpocock = tools.data.skills.find((item) => item.displayName === "mattpocock:writing-for-agents");
+    ok(`${provider} skills expose display, invocation and source metadata`,
+      defaultSkill?.displayName === `${provider}:short-review` &&
+      defaultSkill?.invokeName === "short-review" &&
+      defaultSkill?.source?.kind === "provider" &&
+      defaultSkill?.source?.id === provider &&
+      superpowers?.invokeName === (provider === "codex" ? "superpowers:brainstorming" : "brainstorming") &&
+      superpowers?.source?.kind === "plugin" && superpowers?.source?.id === "superpowers" &&
+      mattpocock?.invokeName === (provider === "codex" ? "mattpocock:writing-for-agents" : "writing-for-agents") &&
+      mattpocock?.source?.id === "mattpocock", exposed);
+    const superpowersPlugin = tools.data.plugins.find((item) => item.name === "superpowers");
+    const mattpocockPlugin = tools.data.plugins.find((item) => item.name === "mattpocock-skills");
+    ok(`${provider} plugins expose their included skill counts`,
+      superpowersPlugin?.skillCount >= 1 && mattpocockPlugin?.skillCount >= 1, exposed);
     ok(`${provider} tool catalog withholds local paths, commands and skill bodies`,
       !exposed.includes(toolProject) && !exposed.includes("secret-command") &&
       !exposed.includes("SECRET_SKILL_BODY") && !exposed.includes(FAKE_TOOLS) &&

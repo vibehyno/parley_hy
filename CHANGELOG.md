@@ -1,13 +1,17 @@
 # Changelog
 
-Notable changes per published version. Dates are release dates on npm.
+Notable changes per repository version.
 
-## Unreleased — AGY compatibility fork
+## 1.2.2 — 2026-10-28
 
 - Replaced the retired consumer Gemini CLI invocation with Google Antigravity CLI (`agy`) while retaining the internal `gemini` provider id for saved-room compatibility.
 - Added AGY conversation resume, JSON response/error parsing, current model and effort controls, sandboxed Talk/Work modes, explicit Full access, and cumulative-to-per-turn usage accounting.
 - Added deterministic AGY adapter coverage without provider logins or token spend.
-- Added a searchable per-provider Tools drawer for Skills, MCP servers and plugins, with safe composer insertion and metadata-only browser exposure.
+- Added a searchable per-provider Tools drawer for Skills, MCP servers and plugins, with safe composer insertion, provider-qualified Skill names, included-Skill counts and metadata-only browser exposure.
+- Added `$` Skill autocomplete in the composer, including provider selection, partial-name search and keyboard navigation without automatic sending.
+- Changed Claude MCP discovery to show configured servers immediately and run the slower live connection check only when explicitly requested.
+- Added an editable current-work instruction card: messages aimed at a seat already responding are held above the composer, can be edited or deleted, and can join the same work context after the current response without stopping it.
+- Added Korean labels, tooltips and runtime messages across the main controls, wider settings/tool dialogs, and latest-message scrolling when a room opens.
 - Added a persistent desktop sidebar collapse control while preserving the mobile overlay.
 
 ## 1.2.1 — 2026-10-11
