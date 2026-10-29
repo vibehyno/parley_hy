@@ -5086,20 +5086,32 @@ async function loadUsage(force = false) {
 }
 function openUsage() {
   usageOpener = document.activeElement;
+  $("usageWrap").classList.add("preview-dismissed");
   $("usageOverlay").classList.add("open");
+  $("usageClose").focus();
   loadUsage();
 }
 function closeUsage() {
-  $("usageOverlay").classList.remove("open");
+  if (!$("usageOverlay").classList.contains("open")) return;
+  $("usageWrap").classList.add("preview-dismissed");
   renderUsageHover();
+  // Restore focus while the modal is still open so focusin cannot reopen
+  // its preview. A later pointer entry or keyboard visit may show it again.
   if (usageOpener && document.contains(usageOpener)) usageOpener.focus();
   usageOpener = null;
+  $("usageOverlay").classList.remove("open");
 }
 $("usageBtn").onclick = openUsage;
 $("usageClose").onclick = closeUsage;
 $("usageRefresh").onclick = () => loadUsage(true);
 $("usageWrap").addEventListener("mouseenter", () => {
   if ($("usageOverlay").classList.contains("open")) return;
+  $("usageWrap").classList.remove("preview-dismissed");
+  loadUsage();
+});
+$("usageWrap").addEventListener("focusin", () => {
+  if ($("usageOverlay").classList.contains("open")) return;
+  $("usageWrap").classList.remove("preview-dismissed");
   loadUsage();
 });
 $("usageOverlay").addEventListener("click", (e) => { if (e.target === $("usageOverlay")) closeUsage(); });

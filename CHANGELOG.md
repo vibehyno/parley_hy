@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.4.6 — 2026-10-29
+
+- Kept persona fields at a fixed height with internal scrolling instead of manual resizing.
+- Expanded room notes into a multiline field with internal scrolling and adjustable height.
+- Fixed the usage preview remaining visible after closing the dialog and restoring button focus.
+- Dismiss the preview on close and allow it on the next pointer entry or keyboard visit, preserving the five-minute cache.
+
 ## 1.4.5 — 2026-10-29
 
 - Added one-time setup via `setupParley.cmd` or `npm run setup` to register the global command and Windows user PATH.

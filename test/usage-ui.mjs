@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -9,6 +10,59 @@ const html = fs.readFileSync(path.join(root, "ui", "index.html"), "utf8");
 const app = fs.readFileSync(path.join(root, "ui", "app.js"), "utf8");
 const styles = fs.readFileSync(path.join(root, "ui", "styles.css"), "utf8");
 const server = fs.readFileSync(path.join(root, "parley.mjs"), "utf8");
+
+test("closing usage dismisses the preview without trapping focus or reopening it on focus restoration", () => {
+  const nodes = new Map();
+  const document = { activeElement: null, contains: () => true, addEventListener() {} };
+  function $(id) {
+    if (!nodes.has(id)) {
+      const classes = new Set();
+      const listeners = {};
+      nodes.set(id, {
+        classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name), contains: (name) => classes.has(name) },
+        addEventListener: (name, callback) => { listeners[name] = callback; },
+        fire: (name, event = {}) => listeners[name]?.(event),
+        focus() {
+          if (document.activeElement === this) return;
+          document.activeElement = this;
+          if (id === "usageBtn") $("usageWrap").fire("focusin");
+        },
+      });
+    }
+    return nodes.get(id);
+  }
+  let loads = 0;
+  const context = vm.createContext({ $, document, loadUsage: () => { loads++; }, renderUsageHover() {} });
+  const start = app.indexOf("function openUsage() {");
+  const end = app.indexOf("// The project manager", start);
+  vm.runInContext("let usageOpener = null;\n" + app.slice(start, end), context);
+  const suppressed = () => $("usageWrap").classList.contains("preview-dismissed");
+  const open = () => $("usageOverlay").classList.contains("open");
+  $("usageBtn").focus();
+  $("usageBtn").onclick();
+  assert.equal(open(), true);
+  assert.equal(suppressed(), true);
+  assert.equal(document.activeElement, $("usageClose"));
+  const beforeClose = loads;
+  $("usageClose").onclick();
+  assert.equal(open(), false);
+  assert.equal(document.activeElement, $("usageBtn"));
+  assert.equal(suppressed(), true);
+  assert.equal(loads, beforeClose, "restoring focus must not request usage again");
+  $("usageWrap").fire("mouseenter");
+  assert.equal(suppressed(), false);
+  $("usageBtn").onclick();
+  $("usageOverlay").fire("click", { target: $("usageOverlay") });
+  assert.equal(suppressed(), true);
+  $("elsewhere").focus();
+  $("usageBtn").focus();
+  assert.equal(suppressed(), false, "a new keyboard visit may show the preview");
+  $("usageClose").onclick();
+  assert.equal(document.activeElement, $("usageBtn"), "closing an already closed dialog must do nothing");
+  assert.doesNotMatch(styles, /#usageWrap:focus-within/);
+  assert.match(styles, /#usageBtn:focus-visible \+ #usageHover/);
+  assert.match(styles, /#usageWrap\.preview-dismissed #usageHover\s*\{\s*display: none/);
+});
 
 test("usage UI shares a five-minute cache across hover and open, with explicit refresh bypass", () => {
   for (const id of ["usageBtn", "usageHover", "usageOverlay", "usageRefresh", "usageCards"]) {

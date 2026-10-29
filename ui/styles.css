@@ -148,7 +148,9 @@
     padding: 12px; border: 1px solid var(--border2); border-radius: 12px; background: var(--bg2);
     box-shadow: 0 14px 38px rgba(0,0,0,.5); color: var(--text); z-index: 45;
   }
-  #usageWrap:hover #usageHover:not(:empty), #usageWrap:focus-within #usageHover:not(:empty) { display: block; }
+  #usageWrap:hover #usageHover:not(:empty), #usageBtn:focus-visible + #usageHover:not(:empty) { display: block; }
+  #usageWrap.preview-dismissed #usageHover { display: none; }
+  #usageHover { pointer-events: none; }
   .side-foot button:hover, .side-foot a:hover { background: var(--panel); color: var(--text); }
   .side-foot .ico { width: 16px; text-align: center; opacity: .8; }
   /* branch line: reads as a caption under Open workspace, never as an action */
@@ -917,6 +919,8 @@
     padding: 7px 10px; outline: none; font-size: 13.5px;
   }
   .fld textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
+  .seat-persona-prompt textarea { height: 98px; min-height: 98px; max-height: 98px; overflow-y: auto; resize: none; }
+  #s_roomnote { height: 156px; min-height: 120px; max-height: 360px; overflow-y: auto; resize: vertical; }
   .fld input:focus, .fld select:focus, .fld textarea:focus { border-color: rgba(122,162,247,.5); }
   .fld .note { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
   .fld .note.danger { color: #d99a72; line-height: 1.35; }
