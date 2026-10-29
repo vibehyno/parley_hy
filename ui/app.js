@@ -2091,7 +2091,7 @@ function renderSeatsUI(s) {
   const groupMention = seats.length > 2 ? "all" : "both";
   $("pills").innerHTML = seats.map((a) =>
     `<div class="pill" data-seat="${esc(a)}" id="pill_${esc(a)}"><span class="st"></span>` +
-    `<b style="color:${seatColor(a)}">${esc(seatLabel(a))}</b><span class="pinfo"></span>` +
+    `<b style="color:${seatColor(a)}">${esc(seatName(a))}</b>` +
     `${s.seatInfo?.[a]?.fastModeSupported ? `<button class="fast" data-seat="${esc(a)}">⚡</button>` : ""}` +
     `<button class="ear" data-seat="${esc(a)}">👂</button>` +
     `<button class="moon" data-seat="${esc(a)}">😴</button></div>`).join("");
@@ -2227,6 +2227,7 @@ function applySummary(s) {
     const health = (state.doctor && state.doctor[a]) || null;
     pill.title = [
       ag.command.ok ? `${seatLabel(a)} · ${ag.command.detail}` : `${seatLabel(a)}: ${ag.command.detail}`,
+      s.cfg.agents[a].model || "",
       health && !health.ok && health.stage === "auth" ? `${health.detail} — ${health.how}` : "",
       spent,
     ].filter(Boolean).join("\n");
@@ -2245,15 +2246,14 @@ function applySummary(s) {
       // undelivered, so the count stays until a turn moves the cursor.
       if (asleep) bits.push(ag.pending ? t("status.asleepPending", { count: ag.pending }) : t("status.asleep"));
       if (ag.held) bits.push(t("status.held", { count: ag.held }));
-      if (!bits.length && s.cfg.agents[a].model) bits.push(s.cfg.agents[a].model);
       txt = bits.join(" · ");
     }
-    pill.querySelector(".pinfo").textContent = txt ? " · " + txt : "";
-    pill.title = ag.command.ok
+    const sessionInfo = ag.command.ok
       ? (ag.linked
         ? t("seat.sessionLinked", { ref: ag.sessionRef, cursor: ag.cursor })
         : t("seat.sessionFresh"))
       : ag.command.detail;
+    pill.title = [pill.title, txt, sessionInfo].filter(Boolean).join("\n");
     const moon = pill.querySelector(".moon");
     moon.classList.toggle("on", asleep);
     moon.textContent = asleep ? "☀" : "😴";

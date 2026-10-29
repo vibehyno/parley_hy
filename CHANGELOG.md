@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.7 — 2026-10-29
+
+- Show only the seat name on one line in header pills; move roles, model names and status details into tooltips.
+- Fixed room notes at their existing height, removing manual resizing while retaining internal scrolling.
+
 ## 1.4.6 — 2026-10-29
 
 - Kept persona fields at a fixed height with internal scrolling instead of manual resizing.
