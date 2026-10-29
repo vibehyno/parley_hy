@@ -2,6 +2,79 @@
 
 Notable changes per repository version.
 
+## 1.4.3 — 2026-10-29
+
+- Added pasted or selected PNG, JPEG and WebP face images for each seat.
+- Added drag and zoom cropping, saving a compact 64×64 PNG in the existing C/X avatar frame.
+- Added `/note @call-name request` to ask one model to summarize durable shared rules and save the result as the room note.
+- Restricted model-authored room-note changes to explicit `/note` requests so ordinary replies cannot mutate settings.
+- Reduced repeated prompt tokens by delivering a room note once per native CLI session and only again after a change or new session.
+- Preserved every remaining model's native CLI session and existing transcript order when seats are added or removed; only a newly added seat starts fresh with recent room context.
+- Added a removal confirmation that distinguishes deleted seat settings/session state from the retained room transcript.
+- Localized Talk/Work mode confirmation dialogs according to the selected Korean or English UI language.
+- Fixed a server error when removing a Codex-provider seat with sandbox settings.
+
+## 1.4.2 — 2026-10-29
+
+- Added per-seat call aliases, including Unicode mentions such as `@지니`, while preserving stable legacy mentions.
+- Added a ten-character assigned-role label and a persistent persona for each seat.
+- Delivered the full persona only once per room-native CLI session, with one refresh after identity changes or a new session.
+- Applied names, roles and call aliases to the header, target chips, autocomplete and starter prompts.
+- Added Unicode alias routing for direct user calls, peer calls and Pair targeting.
+
+## 1.4.1 — 2026-10-29
+
+- Added Settings controls to add or remove a third Codex, Claude, or AGY seat.
+- Added per-seat display names, emoji avatars, and colors while keeping stable routing mentions.
+- Added `@all` for three-seat broadcasts while retaining `@both` compatibility.
+- Clarified in Settings and the guide that Extra CLI args are command options, not model prompts.
+- Applied customized seat presentation to the room list and conversation header.
+
+## 1.4.0 — 2026-10-29
+
+- Kept Codex and Claude Fast-mode tooltips concise while adding official usage and billing cautions.
+- Rebuilt the notification setting as an aligned checkbox, explanation and browser-storage scope block, removing the ambiguous background-tab wording.
+- Added a dismiss button to the full-access notice and stored dismissal per room.
+- Added an update badge that appears only for a newer release, with hover release notes and an optional install dialog.
+- Added guarded `git pull --ff-only` installation and automatic Parley restart for clean Git checkouts with no active or queued work.
+- Clearly separated optional remote updates from the page/server runtime mismatch safety warning.
+
+## 1.3.9 — 2026-10-29
+
+- Standardized Korean tooltips, guidance, status and error messages on polite formal wording.
+- Removed informal Korean phrasing from restart, folder, usage, settings and seat-control notices.
+- Linked the sidebar usage guide to the repository README and made its destination explicit in the tooltip.
+
+## 1.3.8 — 2026-10-29
+
+- Removed the old Fast response behavior that rewrote reasoning effort to `low`.
+- Connected Codex to its real `service_tier=fast` transport and Claude to its real CLI `fastMode` setting.
+- Preserved each seat's reasoning effort when Fast mode is toggled.
+- Hid the AGY seat toggle because the installed AGY 1.4.9 command catalog no longer exposes Fast mode.
+- Restored the pre-1.3.7 reasoning effort during migration and removed the legacy temporary setting.
+
+## 1.3.7 — 2026-10-29
+
+- Passed the room's current Codex sandbox policy to both fresh and resumed CLI invocations.
+- Fixed resumed Codex turns falling back to the CLI's default read-only policy after starting with full access.
+- Kept persisted room permissions aligned with the actual CLI process across native-session continuations.
+- Replaced the sidebar project button with a dedicated connected-project manager.
+- Added one-screen project add, select, open, path replacement and connection removal actions.
+- Kept project changes as a draft until Apply and never deleted the underlying folder when removing a connection.
+- Removed project management from Settings and added localized explanatory tooltips to the other sidebar actions.
+
+## 1.3.6 — 2026-10-29
+
+- Unified Codex and Claude usage cards around current-conversation tokens and quota charts.
+- Hid Claude-only recent request/session activity because Codex CLI does not expose an equivalent metric.
+- Kept parsing Claude's activity source data without affecting quota lookup behavior.
+
+## 1.3.5 — 2026-10-29
+
+- Recognized Claude `Current session` usage even when `/usage` omits its reset time.
+- Displayed both five-hour and weekly windows for Codex and Claude when supplied by their CLIs, while hiding unavailable windows.
+- Renamed Claude's session quota display to 5-hour limit for consistency.
+
 ## 1.3.4 — 2026-10-29
 
 - Simplified Usage open and hover behavior around one shared five-minute cache.

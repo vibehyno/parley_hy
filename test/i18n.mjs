@@ -16,12 +16,14 @@ function loadI18n({ language = "en-US", stored = null } = {}) {
   const nodes = {
     text: { dataset: { i18n: "settings.title" }, textContent: "", setAttribute() {} },
     placeholder: { dataset: { i18nPlaceholder: "composer.placeholder" }, setAttribute(name, value) { this[name] = value; } },
+    sideTip: { dataset: { i18nSideTip: "sidebar.toolsTip" }, setAttribute(name, value) { this[name] = value; } },
   };
   const document = {
     documentElement: { lang: "" },
     querySelectorAll(selector) {
       if (selector === "[data-i18n]") return [nodes.text];
       if (selector === "[data-i18n-placeholder]") return [nodes.placeholder];
+      if (selector === "[data-i18n-side-tip]") return [nodes.sideTip];
       return [];
     },
   };
@@ -49,6 +51,7 @@ test("Korean browser gets Korean UI by default and applies translated DOM text",
   api.applyLocale();
   assert.equal(nodes.text.textContent, "방 설정");
   assert.equal(nodes.placeholder.placeholder, "메시지를 입력하세요… (@claude, @codex, @both)");
+  assert.equal(nodes.sideTip["data-side-tip"], "모델별 Skill·MCP·Plugin 목록 확인 및 입력창에 추가");
   assert.equal(document.documentElement.lang, "ko");
 });
 
@@ -97,8 +100,8 @@ test("Korean catalog covers the main navigation, settings, tools and status surf
 
 test("automatic-turn projections and tooltips use translated UI strings", () => {
   const { api } = loadI18n({ language: "ko-KR" });
-  assert.equal(api.t("hop.projectionPair"), "페어 모드는 검토 라운드를 사용하므로 이 후속 발언 설정이 주기를 제어하지 않아요.");
-  assert.equal(api.t("hop.sendBoth"), "두 자리 모두에게 보내기");
+  assert.equal(api.t("hop.projectionPair"), "페어 모드는 검토 라운드를 사용하므로 이 후속 발언 설정이 주기를 제어하지 않습니다.");
+  assert.equal(api.t("hop.sendBoth"), "모든 자리에게 보내기");
   const appSource = fs.readFileSync(appFile, "utf8");
   for (const key of ["hop.soloAria", "hop.projectionPair", "hop.projectionUnavailable", "hop.projectionEstimate", "hop.soloTitle", "hop.defaultTitle", "hop.overrideTitle", "hop.soloBothTitle", "hop.sendBoth"]) {
     assert.match(appSource, new RegExp(`tr\\(\\"${key.replaceAll(".", "\\.")}\\"`), `${key} is wired through tr()`);
@@ -155,15 +158,15 @@ test("settings and tools modals use wider responsive layouts without wrapping bu
 
 test("Korean UI explains room modes and seat control icons in plain language", () => {
   const { api } = loadI18n({ language: "ko-KR" });
-  assert.equal(api.t("mode.talkTitle"), "대화 모드 — 파일을 수정하지 않고 의견을 나누는 데 적합해요.");
-  assert.equal(api.t("mode.workTitle"), "작업 모드 — 모델이 프로젝트 파일을 수정하고 명령을 실행할 수 있어요.");
+  assert.equal(api.t("mode.talkTitle"), "대화 모드 — 파일을 수정하지 않고 의견을 나누는 데 적합합니다.");
+  assert.equal(api.t("mode.workTitle"), "작업 모드 — 모델이 프로젝트 파일을 수정하고 명령을 실행할 수 있습니다.");
   assert.equal(
     api.t("seat.lurkEnabledTitle", { seat: "AGY" }),
-    "AGY 듣기 모드 켜짐 — 모든 대화를 듣고 필요한 경우 한 번 끼어들어요. 추가 호출이 발생할 수 있어요. 클릭하면 꺼져요.",
+    "AGY 듣기 모드 켜짐 — 모든 대화를 듣고 필요한 경우 한 번 개입합니다. 추가 호출이 발생할 수 있습니다. 클릭하면 꺼집니다.",
   );
   assert.equal(
     api.t("seat.lurkEnabledToast", { seat: "AGY" }),
-    "👂 AGY 듣기 모드가 켜졌어요 — 대화를 듣다가 필요한 경우 끼어들어요.",
+    "👂 AGY 듣기 모드가 켜졌습니다 — 대화를 듣다가 필요한 경우 개입합니다.",
   );
 
   const appSource = fs.readFileSync(appFile, "utf8");
@@ -174,12 +177,12 @@ test("Korean UI explains room modes and seat control icons in plain language", (
 
 test("runtime banners and folder notices use Korean UI strings while preserving variables", () => {
   const { api } = loadI18n({ language: "ko-KR" });
-  assert.equal(api.t("folder.workspaceOpened"), "📁 작업 폴더를 탐색기에서 열었어. 앞에 보이지 않으면 작업 표시줄을 확인해줘.");
-  assert.equal(api.t("folder.roomOpened"), "🗂️ 대화 저장 폴더를 탐색기에서 열었어. 앞에 보이지 않으면 작업 표시줄을 확인해줘.");
+  assert.equal(api.t("folder.workspaceOpened"), "📁 작업 폴더를 탐색기에서 열었습니다. 앞에 보이지 않으면 작업 표시줄을 확인해주세요.");
+  assert.equal(api.t("folder.roomOpened"), "🗂️ 대화 저장 폴더를 탐색기에서 열었습니다. 앞에 보이지 않으면 작업 표시줄을 확인해주세요.");
   assert.equal(api.t("banner.fullAccessTitle"), "전체 권한 사용 중");
   assert.equal(
     api.t("banner.fullAccessBody", { agents: "codex + claude", scope: "C:\\project", permissions: "codex: 전체 권한" }),
-    "codex + claude 모델이 현재 OS 계정 권한으로 C:\\project 범위 밖에도 작업할 수 있어요 (codex: 전체 권한).",
+    "codex + claude 모델이 현재 OS 계정 권한으로 C:\\project 범위 밖에도 작업할 수 있습니다 (codex: 전체 권한).",
   );
   const appSource = fs.readFileSync(appFile, "utf8");
   for (const key of ["runtime.restartTitle", "folder.workspaceOpened", "folder.roomOpened", "banner.fullAccessTitle", "banner.fullAccessBody", "folder.pickerOpening"]) {

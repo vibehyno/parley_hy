@@ -14,10 +14,12 @@ test("normalizes Codex percentage windows without exposing account metadata", ()
 
 test("parses Claude account limits and zero-token local usage statistics", () => {
   const stdout = JSON.stringify({ usage: { input_tokens: 0, output_tokens: 0 }, result:
-    "Current session: 62% used · resets Oct 29, 1:49pm (Asia/Seoul)\nCurrent week (all models): 10% used · resets Nov 1, 11:59am (Asia/Seoul)\n\nLast 24h · 103 requests · 6 sessions\nLast 7d · 186 requests · 10 sessions" });
+    "Current session: 0% used\nCurrent week (all models): 10% used · resets Nov 1, 11:59am (Asia/Seoul)\n\nLast 24h · 103 requests · 6 sessions\nLast 7d · 186 requests · 10 sessions" });
   const parsed = parseClaudeUsage(stdout);
-  assert.deepEqual(parsed.windows.map((item) => [item.id, item.remainingPercent]), [["claude:session", 38], ["claude:week", 90]]);
-  assert.equal(parsed.windows[0].resetLabel, "Oct 29, 1:49pm (Asia/Seoul)");
+  assert.deepEqual(parsed.windows.map((item) => [item.id, item.remainingPercent]), [["claude:session", 100], ["claude:week", 90]]);
+  assert.equal(parsed.windows[0].windowDurationMins, 300);
+  assert.equal(parsed.windows[0].resetLabel, "");
+  assert.equal(parsed.windows[1].resetLabel, "Nov 1, 11:59am (Asia/Seoul)");
   assert.deepEqual(parsed.stats.map((item) => [item.requests, item.sessions]), [[103, 6], [186, 10]]);
   assert.equal(parsed.zeroTokenLookup, true);
 });

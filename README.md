@@ -1,6 +1,6 @@
 # Parley HY
 
-**Claude Code, Codex and AGY in one local chat room — choose any two seats and let them hear each other.**
+**Claude Code, Codex and AGY in one local chat room — connect up to three seats and let them hear each other.**
 
 ![deps: zero](https://img.shields.io/badge/deps-zero-brightgreen)
 ![node: ≥20](https://img.shields.io/badge/node-%E2%89%A520-blue)
@@ -8,7 +8,7 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.3.4**
+- 최신 버전: **1.4.3**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -31,8 +31,12 @@ parley
 
 ### 기본 사용법
 
-- 방 생성 후 두 자리에 Codex, Claude, AGY 중 원하는 모델 배치
-- `@codex`, `@claude`, `@gemini`, `@both`로 응답 대상 지정
+- 방 생성 후 설정에서 Codex, Claude, AGY를 최대 3좌석까지 추가·제거. 기존 모델의 CLI 세션과 대화 순서는 유지하고 추가 모델만 최근 대화 맥락으로 새 세션 시작. 제거 전에는 설정·연결 세션 삭제 확인창 표시. 좌석별 표시 이름·맡은 업무(10자 이내)·호출명·페르소나·이모지·색상 변경 가능
+- 얼굴/이모지 칸에 이미지를 붙여넣거나 미리보기를 눌러 선택한 뒤 이동·확대하여 기존 C/X 아이콘 크기에 맞춘 얼굴 이미지 사용 가능
+- 호출명은 `@지니`처럼 직접 지정 가능하며 기존 `@codex`, `@claude`, `@gemini`도 계속 호환. 2좌석 전체 호출은 `@both`, 3좌석 전체 호출은 `@all` 사용
+- 페르소나는 같은 방의 같은 CLI 세션에서 최초 1회만 전달. 페르소나·이름·맡은 업무·호출명을 변경하거나 새 세션을 시작할 때만 다시 전달하여 반복 토큰 절감
+- 방 메모도 같은 CLI 세션에는 최초 1회만 전달하고 변경 또는 새 세션일 때만 다시 전달. 직접 저장은 `/note 공통 규칙`, 모델에게 요약·저장을 맡길 때는 `/note @지니 지금까지 합의한 공통 규칙만 짧게 정리해줘` 사용
+- 설정의 **추가 CLI 인자**는 모델에게 보내는 프롬프트가 아니라 실행 명령 뒤에 붙는 고급 옵션. 예: `--flag`, `-c key=value`
 - **대화(Talk)**: 의견 공유·판단·검토 중심 / **작업(Work)**: 연결한 프로젝트 파일 수정 및 명령 실행
 - 왼쪽 **도구**에서 모델별 Skill, MCP, Plugin 확인. Skill을 클릭하면 입력창에 실제 호출 배지 추가
 - 왼쪽 **사용량**을 열거나 메뉴에 마우스를 올리면 현재 방 모델의 CLI 사용량 조회. 조회 결과는 5분간 공유하고 새로고침으로 즉시 재조회 가능
@@ -41,9 +45,12 @@ parley
 - 모델이 응답 중일 때 새 메시지를 보내면 입력창 위에 **현재 작업 추가 지시**로 보관. 전달 대상을 자동·모델별·모두 중 선택할 수 있으며, 진행 중인 작업이 끝나면 같은 작업 맥락으로 자동 전달. 종료 전에 편집하거나 삭제 가능
 - 보관한 추가 지시는 `중단 없이 다음 작업으로 전달`을 눌러 즉시 대화와 모델 대기열에 등록 가능. 현재 일회성 CLI 호출은 계속 진행하며, 새 지시는 호출 종료 직후 처리
 - 응답 대기 중 말줄임표만 표시하지 않고 CLI가 보내는 실제 진행 단계와 도구·명령·파일 작업을 실시간 표시. 장시간 작업은 단계별 공개 진행 보고 후 완료 시 변경·검증·남은 제한을 하나의 결과로 정리. 제공자가 진행 이벤트를 보내지 않는 동안에는 공개 이벤트 대기 상태와 경과 시간 표시
-- 모델 좌석의 ⚡ 버튼으로 빠른 응답을 개별 설정. 다음 CLI 호출부터 추론 강도 `low` 적용, 해제 시 이전 강도 복원
+- Codex·Claude 좌석의 ⚡ 버튼으로 각 CLI가 제공하는 실제 Fast 모드를 개별 설정. 추론 강도는 변경하지 않으며, 현재 CLI에 Fast 명령이 없는 AGY에는 버튼을 표시하지 않음. 마우스를 올리면 공식 문서 기준 추가 사용량·과금 주의사항 표시
 - **설정 → 언어**에서 한국어/English 변경. 선택값은 해당 브라우저에 저장
-- **설정 → 연결된 프로젝트**에서 방 하나에 프로젝트 폴더를 여러 개 저장하고 현재 작업 경로를 선택·변경·제거. 경로가 없거나 실제 작업 경로와 다르면 ⚠ 표시
+- 왼쪽의 현재 프로젝트 이름을 누르면 **연결된 프로젝트** 모달이 열림. 방 하나에 여러 폴더를 추가하고 현재 작업 경로 선택·폴더 열기·경로 다시 선택·연결 삭제 가능. `반영` 전에는 임시 상태이며 실제 프로젝트 폴더는 삭제하지 않음
+- 왼쪽 메뉴에 마우스를 올리면 프로젝트·대화 내보내기·저장 폴더·도구·설정·사용 가이드의 용도를 존댓말 툴팁으로 확인. **사용 가이드** 선택 시 GitHub README를 새 창에서 열기
+- 작업/대화 전환 오른쪽에 새 버전이 있을 때만 **업데이트** 표시. 마우스를 올려 신규 기능을 확인하고, 눌러 `나중에` 또는 `업데이트 설치` 선택
+- 전체 권한 안내는 방별 최초 1회만 확인한 뒤 `×`로 닫아 다시 표시하지 않도록 저장
 - 방·대화·설정은 Git 저장소가 아닌 사용자 PC의 `~/.parley`에 별도 저장. 저장소를 다시 클론해도 기존 대화 유지
 - CLI 계정을 바꾸거나 새 CLI를 설치한 경우 Parley 재시작 필요
 
@@ -53,24 +60,36 @@ parley
 
 | 구분 | 원본 `auspex0/parley` | Parley HY |
 |---|---|---|
+| 방 좌석·역할 | 방당 2좌석, 제공자 기본 이름·아이콘 | 방당 최대 3좌석 추가·제거, 기존 좌석 세션·대화 순서 유지, 제거 확인, 표시 이름·맡은 업무·이모지·색상 설정, 3좌석 `@all` 호출 |
+| 호출명·페르소나 | 제공자 고정 호출명과 공통 지침 | `@지니` 같은 좌석별 호출명과 페르소나 설정, 기존 호출명 호환, 같은 CLI 세션에는 최초 1회만 전달 |
+| 얼굴 이미지 | 문자·이모지 중심 | 이미지 붙여넣기·파일 선택, 이동·확대 편집 후 기존 아이콘 틀에 맞춘 64×64 얼굴 저장 |
+| 공통 방 메모 | 매 호출에 상시 지시문 반복 | CLI 세션별 최초 1회만 전달, 변경 시 재전달, `/note @호출명 요청`으로 모델 요약 후 자동 저장 |
 | Gemini 계열 연결 | 기존 Gemini CLI 기준 | 현재 Google Antigravity CLI인 `agy` 사용 |
-| 화면 언어 | 영어 중심 | 한국어/English 전환 및 브라우저별 설정 저장 |
+| 화면 언어 | 영어 중심 | 한국어/English 전환, 브라우저별 설정 저장, 한국어 안내·툴팁 존댓말 통일 |
 | 왼쪽 메뉴 | 고정 표시 | 접기/펼치기 및 상태 저장 |
 | CLI 사용량 | 별도 터미널에서 직접 확인 | 현재 방 모델만 조회하고, 열기·마우스 오버는 5분 캐시 공유, 새로고침은 즉시 재조회. 잔여율 원형 그래프와 초기화 시각 표시 |
-| 프로젝트 연결 | 방마다 프로젝트 경로 하나만 연결 | 여러 프로젝트 저장, 현재 작업 경로 전환·제거, 경로 불일치 경고 |
+| 프로젝트 연결 | 방마다 프로젝트 경로 하나만 연결 | 전용 프로젝트 관리 모달에서 여러 프로젝트 추가·선택·폴더 열기·경로 재선택·연결 삭제, 반영 전 임시 편집, 경로 불일치 경고 |
+| 왼쪽 메뉴 설명 | 메뉴 이름만 표시 | 주요 메뉴에 마우스 오버·키보드 포커스 시 한글/영문 설명 툴팁 표시, 사용 가이드에서 GitHub README 열기 |
 | 모델 도구 확인 | 채팅 화면에서 별도 확인 어려움 | 모델별 Skill, MCP, Plugin 검색 및 실제 Skill 호출 기능 |
 | Skill 채팅 표시 | 일반 요청 문장과 구분 어려움 | `[$모델:Skill]` 입력과 색상 배지로 선택한 Skill을 명확히 구분 |
 | Skill 출처 확인 | Skill 이름만으로 기본·Plugin 포함 여부 구분 어려움 | `codex:openai-docs`, `superpowers:brainstorming`처럼 제공 주체와 내부 Skill을 함께 표시 |
 | Skill 설명 가독성 | 영문 설명과 작은 목록 글자 중심 | 현재 설치 Skill 설명을 한글로 표시하고, 창 크기는 유지하면서 글자·카드 간격 확대 |
 | 작업 중 추가 지시 | 새 메시지를 즉시 대기열에 전송 | 편집 가능한 임시 보관과 `중단 없이 다음 작업으로 전달`을 모두 지원 |
 | 응답 진행 표시 | 응답 전 말줄임표 중심 | CLI가 보낸 실제 판단 단계·도구·명령·파일 작업을 표시하고, 이벤트가 없으면 `응답 준비 중`으로 명확히 구분 |
-| 빠른 응답 | 설정에서 모델·추론 강도 직접 변경 | 좌석별 ⚡ 버튼으로 `low` 추론 강도를 켜고 끄며 해제 시 이전 값 복원 |
+| 빠른 응답 | 설정에서 모델·처리 방식을 직접 변경 | Codex는 `service_tier=fast`, Claude는 CLI `fastMode`를 사용하며 추론 강도는 그대로 유지. 현재 Fast 명령이 없는 AGY에는 ⚡ 미표시 |
+| Fast 사용량 안내 | 별도 문서에서 직접 확인 | ⚡ 툴팁에 공식 문서 기준 Codex 크레딧 배수와 Claude Usage Credits·문맥 재읽기 주의 표시 |
+| 알림 설정 | 간단한 체크박스 설명 | Windows 알림의 발생 조건과 브라우저별 저장 범위를 줄바꿈이 깨지지 않는 구조로 표시 |
+| 전체 권한 안내 | 작업 화면 위에 계속 표시 | 방별 최초 확인 후 `×`로 닫아 영구 숨김 |
+| 업데이트 확인 | 터미널에서 직접 `git pull` | 새 버전이 있을 때만 헤더에 표시하고 신규 기능 미리보기·선택형 자동 설치 지원 |
+| Codex 작업 권한 | 새 세션의 sandbox 설정에 의존 | 새 호출과 이어지는 세션 호출마다 현재 방의 sandbox 권한을 명시하여 풀 액세스가 읽기 전용으로 돌아가는 문제 방지 |
 | Claude MCP 확인 | 화면 진입 시 연결 확인으로 지연 가능 | 설정 목록은 즉시 표시하고 실제 연결 상태는 버튼을 눌렀을 때만 확인 |
 | 운영 방식 | 범용 다중 에이전트 대화 | Codex 주도 + Claude/AGY 검토 방식 가이드 제공 |
 | 공개 정보 보호 | 원본 기본 동작 | 도구 설명의 명령·URL·Windows/POSIX 로컬 경로 마스킹 강화 |
 | 브랜드·문서 | Parley | Parley HY 이름과 한국어 설치·사용·업데이트 가이드 |
 
-사용량 표시는 각 CLI가 실제 제공한 값만 사용함. Codex·AGY·Claude의 잔여율과 초기화 시각을 원형 그래프로 표시하며, Claude는 최근 24시간·7일 요청/세션 통계도 함께 표시함. 토큰은 현재 방 대화 응답이 실제 보고한 입력·출력·추론·캐시 토큰 합계이며 계정 전체 토큰으로 추정하지 않음. 긴 범위 설명은 각 항목의 `ⓘ` 툴팁으로 확인 가능함.
+사용량 표시는 각 CLI가 실제 제공한 값만 사용함. 5시간·주간 한도 중 CLI 응답에 포함된 항목만 원형 그래프로 표시함. 따라서 Codex Premium처럼 주간 한도만 제공되면 주간만 보이고, Standard 또는 Claude가 5시간 한도를 함께 제공하면 두 항목을 모두 표시함. 모델별 화면 형식을 맞추기 위해 Claude 전용 요청·세션 통계는 표시하지 않음. 토큰은 현재 방 대화 응답이 실제 보고한 입력·출력·추론·캐시 토큰 합계이며 계정 전체 토큰으로 추정하지 않음. 긴 범위 설명은 각 항목의 `ⓘ` 툴팁으로 확인 가능함.
+
+Fast 경고는 [OpenAI Fast mode 문서](https://developers.openai.com/ja-JP/docs/agent-configuration/speed)와 [Claude Code Fast mode 문서](https://code.claude.com/docs/en/fast-mode)를 기준으로 함. Codex의 지원 모델은 Fast에서 일반적으로 표준 크레딧의 약 2.5배(GPT-5.4는 2배)를 사용하며, Claude 구독 로그인은 포함 사용량이 아닌 별도 Usage Credits를 사용함. Claude는 대화 중간에 Fast를 켜면 기존 문맥을 Fast 요금으로 다시 읽을 수 있음. 이는 토큰 개수가 일괄 배수로 늘어난다는 뜻이 아니라, 같은 토큰에 적용되는 크레딧·요금 단가가 높아질 수 있다는 의미임.
 
 다음 핵심 동작은 원본과 동일하게 유지함.
 
@@ -111,13 +130,17 @@ Parley HY는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 
 
 ### 업데이트와 데이터 보관
 
+새 버전이 있으면 상단의 **업데이트** 표시에서 변경 내용을 먼저 확인하고 설치 여부를 선택할 수 있음. 자동 설치는 작업 중인 모델이나 대기 메시지가 없고, Git으로 복제한 소스에 미반영 변경사항이 없을 때만 실행됨. 설치를 선택하면 `git pull --ff-only` 후 Parley가 자동으로 다시 시작됨. 업데이트하지 않아도 기존 버전을 계속 사용할 수 있음.
+
+직접 업데이트하려면 다음 명령 사용:
+
 ```powershell
 cd parley_hy
 git pull --ff-only
 npm.cmd start
 ```
 
-- 업데이트 적용을 위해 실행 중인 Parley 종료 후 재실행 필요
+- 직접 업데이트한 경우 실행 중인 Parley 종료 후 재실행 필요. 화면의 선택형 자동 설치를 사용하면 자동 재시작
 - 방·대화·설정 저장 위치: `~/.parley`
 - 소스 저장소를 삭제하거나 다시 클론해도 `~/.parley`를 지우지 않으면 기존 대화 유지
 - 삭제한 방의 임시 보관 위치: `~/.parley/.trash`
@@ -125,7 +148,7 @@ npm.cmd start
 
 > 이 저장소는 [auspex0/parley](https://github.com/auspex0/parley)를 기반으로 한 개인화 버전이며 원본 MIT 라이선스를 유지함.
 
-Most multi-agent tools are work queues — worktrees, kanban boards, parallel terminals. Parley is a *conversation*: one local page, one shared thread, two agents who hear each other. `@claude`, `@codex`, `@both` — or just type, and it goes to whoever you were last talking to. Ask Claude something, then ask Codex what it thinks of the answer; they agree, disagree, and build on each other in one thread.
+Most multi-agent tools are work queues — worktrees, kanban boards, parallel terminals. Parley is a *conversation*: one local page, one shared thread, and up to three agents who hear each other. Give each seat a call alias such as `@지니`; stable mentions such as `@claude`, `@codex`, and `@gemini` remain compatible. Use `@both` for two seats or `@all` for three — or just type, and it goes to whoever you were last talking to.
 
 It drives the **official Claude Code, Codex and Google Antigravity (`agy`) CLIs through your existing CLI logins**. No API key, no proxy; Parley never reads or stores provider credentials — if a CLI isn't authenticated, you see its own error in the chat. The internal provider id remains `gemini` so older room files still open, but the retired consumer `gemini` command is no longer launched.
 
@@ -195,7 +218,10 @@ Your rooms, transcripts and settings live in `~/.parley` (override with `--root`
 | `@claude <text>` | Claude only |
 | `@codex <text>` | Codex only |
 | `@gemini <text>` | AGY only when the seat keeps the compatible `gemini` name |
+| `@지니 <text>` | The seat whose custom call name is `지니` (example) |
 | `@both <text>` | Both, **in parallel** — replies stream in as they land |
+| `@all <text>` | All seats in a three-seat room, **in parallel** (`@both` remains compatible) |
+| `/note @지니 <request>` | Ask the selected seat to write durable shared rules and save its response as the room note |
 | `<text>` | Whoever you last addressed |
 
 Each agent has its own **lane**: tag them back-to-back and they genuinely work at the same time. Everything you send is accepted and posted the instant you send it — only *delivery* waits on a busy agent (⏳ badge, delivered in order). The badge opens the queue — one card per *dispatch*, the batch of deliveries one send created — and its ✕ withdraws whatever that dispatch still has waiting.
@@ -216,7 +242,7 @@ Each agent has its own **lane**: tag them back-to-back and they genuinely work a
 - **Receipt dots** — under every message: who heard it live, who lurked it, who is queued to catch up, who caught up later, where a causal answer was returned, and where a cap or structural terminal deliberately ended the exchange — including deliveries you cancelled and terminal lurk outcomes.
 - **Per-reply token counts** — provider-reported input, output, reasoning and cache-read counts where available. AGY's cumulative conversation counters are converted to per-turn deltas.
 - **Provider tool drawer 🧰** — inspect the Skills, MCP servers and plugins reported by each CLI seated in the room. Search an item and click it to insert an addressed request into the composer; Parley never auto-sends it and never exposes tool commands, local paths, server URLs or environment values to the page.
-- **Two seats, extensible providers** — adding another CLI agent is one adapter function and a registry entry.
+- **Two or three seats, extensible providers** — add or remove a third seat in Settings and personalize each seat's name, assigned role, Unicode call alias, persona, emoji, cropped image and color. Stable routing mentions remain compatible, and persona/room notes are sent once per native CLI session unless they change.
 
 ## Why you can trust it
 

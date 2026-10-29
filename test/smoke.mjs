@@ -2336,7 +2336,8 @@ async function main() {
   const freshJsonFlag = freshImageArgs.indexOf("--json");
   ok("Codex image argv: fresh exec terminates variadic --image before the stdin prompt",
     freshExec > 0 && freshImageArgs[freshExec + 1] !== "resume" &&
-      freshImageArgs[0] === "--add-dir" && freshImageFlag >= 0 &&
+      hasArg(freshImageArgs, "--sandbox", "read-only") &&
+      freshImageArgs.indexOf("--add-dir") < freshExec && freshImageFlag >= 0 &&
       freshImageFlag + 1 < freshJsonFlag && freshImageArgs[freshImageFlag + 1] !== "-" &&
       freshImageArgs.at(-1) === "-",
     JSON.stringify(freshImageArgs));
@@ -2348,7 +2349,8 @@ async function main() {
   const resumedJsonFlag = resumedImageArgs.indexOf("--json");
   ok("Codex image argv: resumed exec keeps the same unambiguous ordering",
     resumedExec > 0 && resumedImageArgs[resumedExec + 1] === "resume" &&
-      resumedImageArgs[0] === "--add-dir" && resumedImageFlag >= 0 &&
+      hasArg(resumedImageArgs, "--sandbox", "read-only") &&
+      resumedImageArgs.indexOf("--add-dir") < resumedExec && resumedImageFlag >= 0 &&
       resumedImageFlag + 1 < resumedJsonFlag && resumedImageArgs[resumedImageFlag + 1] !== "-" &&
       resumedImageArgs.at(-1) === "-",
     JSON.stringify(resumedImageArgs));
@@ -2489,7 +2491,8 @@ async function main() {
   const freshFileExec = freshFileArgs.indexOf("exec");
   const freshInputDir = argValue(freshFileArgs, "--add-dir");
   ok("Codex file argv: fresh exec grants only the disposable staging directory",
-    freshFileArgs[0] === "--add-dir" && freshFileExec === 2 &&
+    hasArg(freshFileArgs, "--sandbox", "read-only") &&
+      freshFileArgs.indexOf("--add-dir") < freshFileExec &&
       freshFileArgs[freshFileExec + 1] !== "resume" && freshInputDir && !fs.existsSync(freshInputDir),
     JSON.stringify(freshFileArgs));
   await fileArgMessage();
@@ -2498,7 +2501,8 @@ async function main() {
   const resumedFileExec = resumedFileArgs.indexOf("exec");
   const resumedInputDir = argValue(resumedFileArgs, "--add-dir");
   ok("Codex file argv: resume keeps --add-dir in the required global position",
-    resumedFileArgs[0] === "--add-dir" && resumedFileExec === 2 &&
+    hasArg(resumedFileArgs, "--sandbox", "read-only") &&
+      resumedFileArgs.indexOf("--add-dir") < resumedFileExec &&
       resumedFileArgs[resumedFileExec + 1] === "resume" && resumedInputDir &&
       !fs.existsSync(resumedInputDir), JSON.stringify(resumedFileArgs));
   await api("POST", "/api/message", {

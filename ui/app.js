@@ -66,6 +66,7 @@ const state = {
   toolCatalogs: {},  // provider -> safe display metadata from /api/tools
   usage: null,       // last /api/usage snapshot from open, Refresh, or one locked hover entry
   adjustDraft: null, // one editable instruction waiting to join the active work
+  update: null,      // optional GitHub update metadata; absent means no badge
 };
 
 // ------------------------------------------------------------ helpers
@@ -83,7 +84,8 @@ function toast(msg, isErr) {
 // This blocks blind/cross-origin requests; it is not a secret from local
 // processes, which can fetch the public page and read the embedded token.
 const TOKEN = (document.querySelector('meta[name="parley-token"]') || {}).content || "";
-const REQUIRED_RUNTIME_PROTOCOL = "19";
+const CURRENT_VERSION = (document.querySelector('meta[name="parley-version"]') || {}).content || "unknown";
+const REQUIRED_RUNTIME_PROTOCOL = "27";
 const PAGE_RUNTIME_PROTOCOL = (document.querySelector('meta[name="parley-runtime-protocol"]') || {}).content || "";
 const withToken = (url) => url + (url.includes("?") ? "&" : "?") +
   "token=" + encodeURIComponent(TOKEN) + "&protocol=" + encodeURIComponent(REQUIRED_RUNTIME_PROTOCOL);
@@ -119,11 +121,72 @@ async function api(path, body) {
     });
   if (res.headers.get("x-parley-runtime-protocol") !== REQUIRED_RUNTIME_PROTOCOL) {
     showRuntimeMismatch();
-    throw new Error("Restart Parley to finish applying the update.");
+    throw new Error(t("runtime.restartError"));
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+function updateNotesMarkup(notes) {
+  const rows = Array.isArray(notes) && notes.length ? notes : [t("update.noNotes")];
+  return `<ul>${rows.map((note) => `<li>${esc(note)}</li>`).join("")}</ul>`;
+}
+function renderAvailableUpdate() {
+  const update = state.update;
+  const wrap = $("updateWrap");
+  if (!update || !update.available) { wrap.hidden = true; return; }
+  wrap.hidden = false;
+  $("updateVersion").textContent = update.latestVersion;
+  $("updatePreview").innerHTML = `<b>${esc(t("update.previewTitle", { version: update.latestVersion }))}</b>${updateNotesMarkup(update.notes)}`;
+  $("updateVersions").textContent = t("update.versionLine", { current: update.currentVersion, latest: update.latestVersion });
+  $("updateNotes").innerHTML = (update.notes && update.notes.length
+    ? update.notes : [t("update.noNotes")]).map((note) => `<li>${esc(note)}</li>`).join("");
+  $("updateGithub").href = update.repository || "https://github.com/vibehyno/parley_hy";
+  $("updateApply").hidden = false;
+  $("updateApply").disabled = false;
+  $("updateApplyStatus").textContent = update.canApply ? "" : t("update.manual");
+  if (!update.canApply) $("updateApply").hidden = true;
+}
+async function checkForUpdate() {
+  try {
+    state.update = await api("/api/update/status");
+    renderAvailableUpdate();
+  } catch { $("updateWrap").hidden = true; }
+}
+function openUpdate() {
+  if (!state.update?.available) return;
+  renderAvailableUpdate();
+  $("updateOverlay").classList.add("open");
+}
+function closeUpdate() { $("updateOverlay").classList.remove("open"); }
+async function waitForUpdatedServer(version) {
+  const deadline = Date.now() + 45000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    try {
+      const response = await fetch("/", { cache: "no-store" });
+      const html = await response.text();
+      const found = /name="parley-version" content="([^"]+)"/.exec(html)?.[1];
+      if (response.ok && found === version) { location.reload(); return; }
+    } catch { /* expected while the local server restarts */ }
+  }
+  $("updateApplyStatus").textContent = t("runtime.restartMessage");
+  $("updateApply").disabled = false;
+}
+async function applyUpdate() {
+  if (!state.update?.available) return;
+  $("updateApply").disabled = true;
+  $("updateApplyStatus").textContent = t("update.applying");
+  try {
+    const result = await api("/api/update/apply", {});
+    $("updateApplyStatus").textContent = t("update.restarting");
+    await waitForUpdatedServer(result.version || state.update.latestVersion);
+  } catch (error) {
+    const dirty = /local source changes/i.test(error.message || "");
+    $("updateApplyStatus").textContent = dirty ? t("update.dirty") : error.message;
+    $("updateApply").disabled = false;
+  }
 }
 
 function clearAttachmentUrls() {
@@ -1041,7 +1104,7 @@ function entryEl(e) {
   const label = e.kind === "user"
     ? `You <span style="opacity:.65">→ @${esc(e.target)}${e.meta && e.meta.discussion ? " · 💬 discussion" : ""}${userPair}</span>${askTag}`
     : esc(seatLabel(e.author)) + lurkTag + provenanceBadges(e.meta);
-  const av = e.kind === "user" ? "" : `<span class="avatar">${esc(seatAvatar(e.author))}</span>`;
+  const av = e.kind === "user" ? "" : seatAvatarHTML(e.author);
   div.innerHTML = `<div class="meta">${av}<span class="who">${label}</span><span title="${esc(String(e.ts || "").replace("T", " "))}">${hhmm(e.ts)}${dur}${tok}</span>` +
     `<button class="ask" title="Ask about this message">↪</button>` +
     `<button class="cpy" title="Copy message">📋</button></div>` +
@@ -1657,7 +1720,7 @@ function ensureLive(agent, startedAt, label) {
   const div = document.createElement("div");
   div.className = "msg agent " + agent;
   div.dataset.liveAgent = agent;
-  div.innerHTML = `<div class="meta"><span class="avatar">${esc(seatAvatar(agent))}</span>` +
+  div.innerHTML = `<div class="meta">${seatAvatarHTML(agent)}` +
     `<span class="who">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>` +
     `<span class="live-label">${label || t("live.thinking")} <span class="elapsed"></span></span></div>` +
     `<div class="quote-slot"></div>` +
@@ -1942,6 +2005,13 @@ const titleCaseSeat = (a) => String(a).charAt(0).toUpperCase() + String(a).slice
 function seatAvatar(a) {
   return seatMeta(a).avatar || String(a)[0].toUpperCase();
 }
+function seatAvatarImage(a) { return String(seatMeta(a).avatarImage || ""); }
+function seatAvatarHTML(a, className = "avatar") {
+  const image = seatAvatarImage(a);
+  return image
+    ? `<span class="${className}"><img src="${esc(image)}" alt=""></span>`
+    : `<span class="${className}">${esc(seatAvatar(a))}</span>`;
+}
 // What this room has actually spent, per seat. The numbers are already on every
 // reply (ground truth from the CLI, not model self-reporting); nothing summed
 // them, so the only cost signal was one bubble at a time — in an app whose Sleep
@@ -1974,18 +2044,40 @@ function usageSummaryText(a) {
 function seatColor(a) {
   return (seatMeta(a).color) || "#7aa2f7";
 }
-function seatLabel(a) {
+function seatName(a) {
   const meta = seatMeta(a);
+  if (meta.displayName) return meta.displayName;
   // A seat's own name wins over its provider's label whenever they differ:
   // that name is what you @mention, and in a room with two seats on one
   // provider "Claude" and "Claude" would be indistinguishable.
   if (meta.provider && meta.provider !== a) return titleCaseSeat(a);
   return meta.label || titleCaseSeat(a);
 }
+function seatRole(a) { return String(seatMeta(a).role || "").trim(); }
+function seatMention(a) { return String(seatMeta(a).mentionAlias || a).trim().replace(/^@+/, "").toLowerCase(); }
+function seatLabel(a) {
+  const role = seatRole(a);
+  return role ? `${seatName(a)} · ${role}` : seatName(a);
+}
+function mentionSeatMap() {
+  const map = new Map();
+  for (const id of state.summary?.seats || []) {
+    map.set(String(id).toLowerCase(), id);
+    map.set(seatMention(id), id);
+  }
+  return map;
+}
+function mentionAlt() {
+  return [...mentionSeatMap().keys()].sort((a, b) => b.length - a.length)
+    .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+}
+function seatForMention(term) { return mentionSeatMap().get(String(term || "").toLowerCase()) || null; }
+const MENTION_END = `(?![\\p{L}\\p{N}_-])`;
 function injectSeatStyles() {
   let css = "";
-  for (const [id, p] of Object.entries(state.providers)) {
-    const c = p.color || "#7aa2f7";
+  const seats = state.summary?.seats || Object.keys(state.providers || {});
+  for (const id of seats) {
+    const c = seatColor(id);
     css += `.msg.${id} .who{color:${c}} .msg.${id} .avatar{background:${c}} ` +
       `.msg.${id} .bubble{border-left:2px solid ${c}88} .activity.${id} .adot{background:${c}} ` +
       `.hdot.${id}{--hc:${c}} .chip.active[data-t="${id}"]{background:${c};border-color:${c}}\n`;
@@ -1996,20 +2088,24 @@ function injectSeatStyles() {
 }
 function renderSeatsUI(s) {
   const seats = s.seats;
+  const groupMention = seats.length > 2 ? "all" : "both";
   $("pills").innerHTML = seats.map((a) =>
     `<div class="pill" data-seat="${esc(a)}" id="pill_${esc(a)}"><span class="st"></span>` +
     `<b style="color:${seatColor(a)}">${esc(seatLabel(a))}</b><span class="pinfo"></span>` +
-    `<button class="fast" data-seat="${esc(a)}">⚡</button>` +
+    `${s.seatInfo?.[a]?.fastModeSupported ? `<button class="fast" data-seat="${esc(a)}">⚡</button>` : ""}` +
     `<button class="ear" data-seat="${esc(a)}">👂</button>` +
     `<button class="moon" data-seat="${esc(a)}">😴</button></div>`).join("");
-  $("seatChips").innerHTML = seats.map((a) => `<button class="chip" data-t="${esc(a)}">@${esc(a)}</button>`).join("");
+  $("pills").dataset.signature = JSON.stringify(seats.map((id) => [id, seatLabel(id), seatMention(id), seatAvatar(id), seatAvatarImage(id), seatColor(id)]));
+  $("seatChips").innerHTML = seats.map((a) => `<button class="chip" data-t="${esc(a)}">@${esc(seatMention(a))}</button>`).join("");
+  const groupChip = document.querySelector('.chip[data-t="both"]');
+  if (groupChip) groupChip.textContent = `@${groupMention}`;
   document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset.t === state.chip));
-  $("tagline").textContent = `you · ${seats.join(" · ")}`;
-  input.placeholder = `Message the table…  (@${seats.join(", @")}, @both)`;
+  $("tagline").textContent = `you · ${seats.map(seatLabel).join(" · ")}`;
+  input.placeholder = `Message the table…  (@${seats.map(seatMention).join(", @")}, @${groupMention})`;
   $("starters").innerHTML =
-    `<button class="starter" data-fill="@both Introduce yourselves in one sentence each."><b class="c3">@both</b> Introduce yourselves in one sentence each.</button>` +
-    seats.map((a, i) => `<button class="starter" data-fill="@${esc(a)} "><b class="${i ? "c2" : "c1"}">@${esc(a)}</b> ask ${esc(seatLabel(a))} something…</button>`).join("") +
-    `<button class="starter" data-fill="/pair start @${esc(seats[0])} "><b class="c1">/pair start</b> one builds, the other reviews…</button>`;
+    `<button class="starter" data-fill="@${groupMention} Introduce yourselves in one sentence each."><b class="c3">@${groupMention}</b> Introduce yourselves in one sentence each.</button>` +
+    seats.map((a, i) => `<button class="starter" data-fill="@${esc(seatMention(a))} "><b class="${i ? "c2" : "c1"}">@${esc(seatMention(a))}</b> ask ${esc(seatLabel(a))} something…</button>`).join("") +
+    `<button class="starter" data-fill="/pair start @${esc(seatMention(seats[0]))} "><b class="c1">/pair start</b> one builds, the other reviews…</button>`;
 }
 function syncChipUI() {
   document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset.t === state.chip));
@@ -2042,6 +2138,10 @@ function effectiveSeatPermission(a, cfg, roomMode) {
     const configured = cfg.sandbox || "read-only";
     return roomMode === "work" && configured === "read-only" ? "workspace-write" : configured;
   }
+  if ("approvalMode" in cfg) {
+    const configured = cfg.approvalMode || "auto";
+    return configured === "auto" ? (roomMode === "work" ? "accept-edits" : "plan") : configured;
+  }
   return "provider default";
 }
 function permissionLabel(mode) {
@@ -2050,7 +2150,8 @@ function permissionLabel(mode) {
   return label === key ? mode : label;
 }
 function isFullAccess(mode) {
-  return String(mode).toLowerCase() === "bypasspermissions" || mode === "danger-full-access";
+  const normalized = String(mode).toLowerCase();
+  return normalized === "bypasspermissions" || normalized === "danger-full-access" || normalized === "full";
 }
 function isConservative(mode) {
   return ["default", "manual", "plan", "read-only"].includes(mode);
@@ -2088,6 +2189,16 @@ async function refreshGitId() {
   } catch { /* keep the last line rather than blanking on a transport hiccup */ }
 }
 
+const accessBannerKey = (room) => `parley.accessBannerDismissed:${room}`;
+function accessBannerDismissed(room) {
+  try { return localStorage.getItem(accessBannerKey(room)) === "1"; }
+  catch { return false; }
+}
+function dismissAccessBanner() {
+  try { localStorage.setItem(accessBannerKey(state.room), "1"); } catch { /* storage unavailable */ }
+  $("workBanner").style.display = "none";
+}
+
 function applySummary(s) {
   s.busy = s.busy || [];
   s.busyInfo = s.busyInfo || [];
@@ -2097,7 +2208,8 @@ function applySummary(s) {
   state.summary = s;
   state.providers = s.providers || state.providers;
   injectSeatStyles();
-  if (!$("pill_" + s.seats[0]) || !$("pill_" + s.seats[1])) renderSeatsUI(s);
+  const seatUiSignature = JSON.stringify(s.seats.map((id) => [id, seatLabel(id), seatMention(id), seatAvatar(id), seatAvatarImage(id), seatColor(id)]));
+  if ($("pills").dataset.signature !== seatUiSignature) renderSeatsUI(s);
   syncChipUI();
   $("roomTitle").textContent = s.name;
   for (const a of s.seats) {
@@ -2161,12 +2273,19 @@ function applySummary(s) {
       ? t("seat.lurkEnabledTitle", { seat: seatLabel(a) })
       : t("seat.lurkDisabledTitle", { seat: seatLabel(a) });
     const fast = pill.querySelector(".fast");
-    const fastMode = !!s.cfg.agents[a].fastMode;
-    fast.classList.toggle("on", fastMode);
-    fast.setAttribute("aria-pressed", String(fastMode));
-    fast.title = fastMode
-      ? t("seat.fastEnabledTitle", { seat: seatLabel(a) })
-      : t("seat.fastDisabledTitle", { seat: seatLabel(a) });
+    if (fast) {
+      const fastMode = !!s.cfg.agents[a].fastMode;
+      const provider = seatMeta(a).provider || a;
+      const warningKey = provider === "codex" ? "seat.fastWarningCodex"
+        : provider === "claude" ? "seat.fastWarningClaude" : null;
+      const warning = warningKey ? t(warningKey) : "";
+      fast.classList.toggle("on", fastMode);
+      fast.setAttribute("aria-pressed", String(fastMode));
+      const action = fastMode
+        ? t("seat.fastEnabledTitle", { seat: seatLabel(a) })
+        : t("seat.fastDisabledTitle", { seat: seatLabel(a) });
+      fast.title = [action, warning ? `⚠ ${warning}` : ""].filter(Boolean).join("\n\n");
+    }
   }
   const mode = s.cfg.mode || "talk";
   document.querySelectorAll(".mbtn").forEach((b) => b.classList.toggle("active", b.dataset.m === mode));
@@ -2178,17 +2297,18 @@ function applySummary(s) {
     `${agent}: ${permissionLabel(permission)}`).join(" · ");
   const full = access.filter(({ mode: permission }) => isFullAccess(permission)).map(({ agent }) => agent);
   const talkOverride = mode === "talk" && access.some(({ mode: permission }) => !isConservative(permission));
-  $("workBanner").style.display = mode === "work" || talkOverride ? "block" : "none";
+  const showAccessBanner = (mode === "work" || talkOverride) && !accessBannerDismissed(s.name);
+  $("workBanner").style.display = showAccessBanner ? "flex" : "none";
   if (full.length) {
     const scope = s.cfg.projectDir || t("banner.roomWorkspace");
-    $("workBanner").innerHTML = `⚠ <b>${esc(t("banner.fullAccessTitle"))}</b> — ${esc(t("banner.fullAccessBody", {
+    $("workBannerContent").innerHTML = `⚠ <b>${esc(t("banner.fullAccessTitle"))}</b> — ${esc(t("banner.fullAccessBody", {
       agents: full.join(" + "), scope, permissions: how,
     }))}`;
   } else if (mode === "work") {
     const scope = s.cfg.projectDir || t("banner.sharedWorkspace");
-    $("workBanner").innerHTML = `🔨 <b>${esc(t("banner.workTitle"))}</b> — ${esc(t("banner.workBody", { scope, permissions: how }))}`;
+    $("workBannerContent").innerHTML = `🔨 <b>${esc(t("banner.workTitle"))}</b> — ${esc(t("banner.workBody", { scope, permissions: how }))}`;
   } else if (talkOverride) {
-    $("workBanner").innerHTML = `⚠ <b>${esc(t("banner.talkOverrideTitle"))}</b> — ${esc(t("banner.talkOverrideBody", { permissions: how }))}`;
+    $("workBannerContent").innerHTML = `⚠ <b>${esc(t("banner.talkOverrideTitle"))}</b> — ${esc(t("banner.talkOverrideBody", { permissions: how }))}`;
   }
   const pair = s.pair;
   $("pairBanner").style.display = pair ? "block" : "none";
@@ -2214,11 +2334,14 @@ function applySummary(s) {
     ? s.cfg.projectDir.split(/[\\/]/).filter(Boolean).pop()
     : t("workspace.sandbox");
   if (projectMismatch) $("openWsLabel").textContent += " ⚠";
-  wsBtn.title = s.cfg.projectDir
+  const workspaceTip = s.cfg.projectDir
     ? (projectMismatch
       ? t("workspace.mismatchTitle", { path: s.cfg.projectDir, runtime: s.projectLinks?.runtime || s.workspace })
       : t("workspace.linkedTitle", { path: s.cfg.projectDir }))
     : t("workspace.sandboxTitle", { path: s.workspace });
+  wsBtn.removeAttribute("title");
+  wsBtn.setAttribute("aria-label", workspaceTip);
+  wsBtn.setAttribute("data-side-tip", workspaceTip);
   renderGitId(s.git);
   // A tab that loads mid-run knows each run's phase and start time from
   // busyInfo; without them every bubble read "is thinking · 0s" — for a
@@ -2455,6 +2578,7 @@ wireMenuKeys("askMenu", () => closeAskMenu());
 // Tab used to walk straight out of the settings dialog and through the page
 // behind it, and closing left focus on nothing.
 let settingsOpener = null;
+let settingsSeatDraft = null;
 function trapSettingsTab(e) {
   if (e.key !== "Tab" || $("overlay").style.display === "none") return;
   const focusable = [...$("overlay").querySelectorAll(
@@ -2466,6 +2590,16 @@ function trapSettingsTab(e) {
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 }
 document.addEventListener("keydown", trapSettingsTab);
+function trapProjectTab(e) {
+  if (e.key !== "Tab" || !$("projectOverlay").classList.contains("open")) return;
+  const focusable = [...$("projectOverlay").querySelectorAll(
+    'button:not([disabled]), input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')];
+  if (!focusable.length) return;
+  const first = focusable[0], last = focusable.at(-1);
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+document.addEventListener("keydown", trapProjectTab);
 
 $("pills").addEventListener("click", async (e) => {
   const fast = e.target.closest(".fast");
@@ -2524,10 +2658,12 @@ document.querySelectorAll(".mbtn").forEach((b) => {
     if (!state.summary || (state.summary.cfg.mode || "talk") === mode) return;
     const pd = state.summary.cfg.projectDir;
     if (mode === "work" && pd &&
-        !confirm(`⚠ This room is linked to a real project:\n${pd}\n\nWork mode may let configured agents EDIT files there and run commands. Continue?`)) return;
+        !confirm(`⚠ ${tr("mode.projectWarning", "This room is linked to a real project:\n{path}\n\nWork mode may let configured agents edit files there and run commands. Continue?", { path: pd })}`)) return;
     const anyLinked = state.summary.seats.some((a) => state.summary.agents[a].linked);
     if (!(mode === "work" && pd) && anyLinked &&
-        !confirm(`Switch to ${mode} mode? Affected agents start fresh sessions so the permission change applies (the transcript keeps the room history).`)) return;
+        !confirm(tr("mode.sessionResetConfirm", "Switch to {mode} mode? Affected models start fresh sessions so the permission change applies. The room transcript stays intact.", {
+          mode: tr(`mode.${mode}`, mode).replace(/^[^\p{L}\p{N}]+/u, ""),
+        }))) return;
     try { await api("/api/config", { room: state.room, config: { mode } }); refreshRooms(); }
     catch (e) { toast(e.message, true); }
   };
@@ -2793,12 +2929,14 @@ function guessTextTarget(raw) {
   const seats = state.summary.seats;
   // Mirror server textTarget exactly. User text routing is intentionally
   // separate from the masked agent-mention grammar used for automatic calls.
-  const alt = seats.map((s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  const tags = new Set([...text.matchAll(new RegExp(`@(${alt}|both)\\b`, "gi"))].map((m) => m[1].toLowerCase()));
-  if (tags.has("both") || seats.every((s) => tags.has(s))) return "both";
-  const lead = new RegExp(`^[*_~]*@(${alt})\\b[*_~]*[\\s:,]*`, "i").exec(text);
-  if (lead) return lead[1].toLowerCase();
-  for (const s of seats) if (tags.has(s)) return s;
+  const alt = mentionAlt();
+  const rawTags = [...text.matchAll(new RegExp(`@(${alt}|both|all)${MENTION_END}`, "giu"))]
+    .map((m) => m[1].toLowerCase());
+  const targets = new Set(rawTags.map((term) => term === "both" || term === "all" ? "both" : seatForMention(term)).filter(Boolean));
+  if (targets.has("both") || seats.every((s) => targets.has(s))) return "both";
+  const lead = new RegExp(`^[*_~]*@(${alt})${MENTION_END}[*_~]*[\\s:,]*`, "iu").exec(text);
+  if (lead) return seatForMention(lead[1]);
+  for (const s of seats) if (targets.has(s)) return s;
   return null;
 }
 function seatAsleep(a) {
@@ -2873,7 +3011,7 @@ function freshTurnEstimate(choice, route = draftRoute()) {
   const budget = choice === "default" ? roomHopBudget() : normalizedHopBudget(choice);
   const limit = effectiveHopLimit(budget);
   if (limit === null) return null;
-  if (automaticAccounting()) return (route.target === "both" ? 2 : 1) + limit;
+  if (automaticAccounting()) return route.targets.length + limit;
   return (route.target === "both" ? 5 : route.listeners.length ? 4 : 1) + 2 * limit;
 }
 function renderHopProjections() {
@@ -2925,7 +3063,8 @@ function pairControlOnly(raw, hasAttachments = false) {
   const target = guessTextTarget(body);
   if (target && target !== "both") {
     // Mirror textTarget's leading-tag grammar, including Markdown emphasis.
-    body = body.replace(new RegExp(`^[*_~]*@${target}\\b[*_~]*[\\s:,]*`, "i"), "").trim();
+    const lead = new RegExp(`^[*_~]*@(${mentionAlt()})${MENTION_END}[*_~]*[\\s:,]*`, "iu").exec(body);
+    if (lead && seatForMention(lead[1]) === target) body = body.slice(lead[0].length).trim();
   }
   return !body;
 }
@@ -3251,7 +3390,7 @@ async function refreshDoctor(roomName) {
 }
 
 async function loadRoom(name) {
-  retireSettingsPick(); // a folder dialog open for the old room must not land here
+  retireProjectPick(); // a folder dialog open for the old room must not land here
   let data;
   try {
     data = await api("/api/room?name=" + encodeURIComponent(name));
@@ -3372,7 +3511,9 @@ async function refreshRooms() {
     // The listing carries each seat's provider, because a room in the sidebar
     // is not the open room and seatMeta has no summary to resolve against.
     const rowProviders = (typeof r === "string" ? null : r.providers) || {};
+    const presentation = (typeof r === "string" ? null : r.presentation) || {};
     const rowAvatar = (a) => {
+      if (presentation[a]?.avatar) return presentation[a].avatar;
       const p = state.providers[rowProviders[a] || a];
       return (p && p.avatar) || String(a)[0].toUpperCase();
     };
@@ -3746,9 +3887,28 @@ async function handleSlash(text) {
   const rest = text.slice(cmd.length).trim();
   if (cmd === "/pair") return false; // server handles
   if (cmd === "/note") {
+    const generated = /^@([\p{L}\p{N}_-]+)(?:\s+([\s\S]+))?$/u.exec(rest);
+    if (generated) {
+      const agent = seatForMention(generated[1]);
+      const request = String(generated[2] || "").trim();
+      if (!agent || !request) {
+        localSystemNote(esc(tr("note.generateUsage", "Use /note @call-name followed by what should be summarized into shared rules.")));
+        return true;
+      }
+      try {
+        await api("/api/message", {
+          room: state.room, text: `@${generated[1]} ${request}`, target: "auto",
+          hopBudget: 0, solo: true, roomNoteRequest: true,
+        });
+        toast(tr("note.generateQueued", "The selected model will write and save the shared room note after this response."));
+      } catch (e) { toast(e.message, true); }
+      return true;
+    }
     try {
       await api("/api/config", { room: state.room, config: { roomNote: rest || null } });
-      toast(rest ? "📌 Room note set — both agents will see it on every turn." : "📌 Room note cleared.");
+      toast(rest
+        ? tr("note.saved", "Room note saved. Each current CLI session receives it once, and again after a change or new session.")
+        : tr("note.cleared", "Room note cleared."));
     } catch (e) { toast(e.message, true); }
     return true;
   }
@@ -3793,7 +3953,7 @@ async function handleSlash(text) {
       "<b>Agent calls:</b> @name always hands off · a plain direct call ('Codex, …') hands off when that agent is lurking or your message addressed both<br>" +
       "<b>/pair start @agent [task]</b> — pair mode: that agent works, the other reviews every message you send<br>" +
       "<b>/pair end</b> — leave pair mode (also the End button in the banner)<br>" +
-      "<b>/note [text]</b> — standing room note both agents see every turn (empty clears)<br>" +
+      "<b>/note [text]</b> — save shared standing rules; empty clears · <b>/note @agent [request]</b> asks that model to write and save them<br>" +
       "<b>/sleep @agent [reason]</b> — stop launching that seat (rate limited?); <b>/wake @agent</b> brings it back<br>" +
       "<b>/summarize [@agent]</b> — ask for a recap of the room<br>" +
       "<b>👂</b> on a pill = lurk · <b>😴</b> = sleep/wake that seat · <b>💬/🔨</b> = talk/work mode · dots under messages = who heard what");
@@ -4168,15 +4328,15 @@ function skillAutocompleteKeydown(e) {
 function mentionOptions() {
   const seats = state.summary ? state.summary.seats : [];
   return [
-    ...seats.map((a) => ({ tag: "@" + a, color: seatColor(a) })),
-    { tag: "@both", color: "var(--user)" },
+    ...seats.map((a) => ({ tag: "@" + seatMention(a), color: seatColor(a) })),
+    { tag: seats.length > 2 ? "@all" : "@both", color: "var(--user)" },
   ];
 }
 let mItems = [], mSel = 0;
 function mentionCheck() {
   const pos = input.selectionStart;
   const before = input.value.slice(0, pos);
-  const m = /(^|\s)@([a-z0-9]*)$/i.exec(before);
+  const m = /(^|\s)@([\p{L}\p{N}_-]*)$/iu.exec(before);
   if (!m) return hideMention();
   const prefix = m[2].toLowerCase();
   mItems = mentionOptions().filter((x) => x.tag.slice(1).startsWith(prefix));
@@ -4191,7 +4351,7 @@ function mentionCheck() {
 function hideMention() { $("mention").style.display = "none"; mItems = []; }
 function pickMention(i) {
   const pos = input.selectionStart;
-  const before = input.value.slice(0, pos).replace(/@[a-z0-9]*$/i, mItems[i].tag + " ");
+  const before = input.value.slice(0, pos).replace(/@[\p{L}\p{N}_-]*$/iu, mItems[i].tag + " ");
   input.value = before + input.value.slice(pos);
   input.selectionStart = input.selectionEnd = before.length;
   hideMention(); updateRouteHint(); input.focus();
@@ -4303,18 +4463,6 @@ async function browseFolder(start, btn) {
   } catch (e) { toast(e.message, true); return null; }
   finally { if (btn) { btn.disabled = false; if (label) label.textContent = original; } }
 }
-$("s_browse").onclick = async () => {
-  const pick = ++settingsPick;
-  const openedFor = state.room;
-  const picked = await browseFolder(settingsActiveProject, $("s_browse"));
-  if (pick !== settingsPick || state.room !== openedFor || !picked) return;
-  if (!settingsProjectDirs.some((value) => settingsPathKey(value) === settingsPathKey(picked))) settingsProjectDirs.push(picked);
-  settingsActiveProject = picked;
-  renderSettingsProjects();
-};
-$("openWs").onclick = () => api("/api/open", { room: state.room, what: "workspace" })
-  .then(() => toast(t("folder.workspaceOpened")))
-  .catch((e) => toast(e.message, true));
 $("openRoomDir").onclick = () => api("/api/open", { room: state.room, what: "room" })
   .then(() => toast(t("folder.roomOpened")))
   .catch((e) => toast(e.message, true));
@@ -4371,7 +4519,9 @@ function seatFieldHTML(a, field, p) {
     `<option value="read-only">read-only (default)</option><option value="workspace-write">workspace-write</option>` +
     `<option value="danger-full-access">danger-full-access</option></select>` +
     `<div class="note">${esc(tr("settings.sandboxChangeHelp", "Changing this restarts the seat's session."))}</div></div>`;
-  if (field === "extraArgs") return `<div class="fld"><label>${esc(tr("settings.extraArgs", "Extra CLI args"))}</label><input ${d(a, "extraArgs")} spellcheck="false"></div>`;
+  if (field === "extraArgs") return `<div class="fld"><label>${esc(tr("settings.extraArgs", "Extra CLI args"))}</label>` +
+    `<input ${d(a, "extraArgs")} spellcheck="false">` +
+    `<div class="note">${esc(tr("settings.extraArgsHelp", "Advanced options appended to the CLI command, not a prompt sent to the model. Example: --flag, -c key=value"))}</div></div>`;
   return "";
 }
 function setFreeComboOpen(combo, open, query = "") {
@@ -4407,6 +4557,18 @@ function chooseFreeCombo(option) {
   input.focus();
 }
 $("seatCards").addEventListener("click", (e) => {
+  const remove = e.target.closest("[data-remove-seat]");
+  if (remove && settingsSeatDraft) {
+    if (settingsSeatDraft.length <= 2) return;
+    captureSeatDraftValues();
+    const seat = settingsSeatDraft.find((item) => item.id === remove.dataset.removeSeat);
+    const label = seat?.cfg?.displayName || seat?.cfg?.mentionAlias || seat?.id || remove.dataset.removeSeat;
+    if (!confirm(tr("settings.removeSeatConfirm", "Remove {seat}? Its settings and linked session in this room will be deleted. The room transcript stays intact.", { seat: label }))) return;
+    settingsSeatDraft = settingsSeatDraft.filter((item) => item.id !== remove.dataset.removeSeat);
+    renderSeatCards(state.summary);
+    refreshDefaultSeatOptions();
+    return;
+  }
   const toggle = e.target.closest(".freecombo-toggle");
   if (toggle) {
     const combo = toggle.closest(".freecombo");
@@ -4457,29 +4619,195 @@ document.addEventListener("click", (e) => {
     document.querySelectorAll(".freecombo.open").forEach((combo) => setFreeComboOpen(combo, false));
   }
 });
+function newSeatConfig(provider) {
+  return {
+    provider,
+    command: provider === "gemini" ? "agy" : provider,
+    model: provider === "gemini" ? "gemini-3.8-flash-low" : null,
+    effort: provider === "gemini" ? "low" : null,
+    fastMode: false,
+    extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null,
+    ...(provider === "codex" ? { sandbox: "read-only" } : {}),
+    ...(provider === "claude" ? { permissionMode: "auto" } : {}),
+    ...(provider === "gemini" ? { approvalMode: "auto" } : {}),
+    displayName: null, role: null, mentionAlias: null, persona: null, avatar: null, avatarImage: null, color: null,
+  };
+}
+function captureSeatDraftValues() {
+  if (!settingsSeatDraft) return;
+  for (const item of settingsSeatDraft) {
+    for (const el of document.querySelectorAll(`#seatCards [data-seat="${item.id}"][data-f]`)) {
+      const field = el.dataset.f;
+      let value = el.value;
+      if (field === "extraArgs") value = value.trim() ? value.trim().split(/\s+/) : [];
+      else if (typeof value === "string" && value.trim() === "") value = null;
+      item.cfg[field] = value;
+    }
+  }
+}
+function refreshDefaultSeatOptions(preferred) {
+  const seats = settingsSeatDraft || [];
+  const before = preferred || $("s_default").value;
+  $("s_default").innerHTML = seats.map((item) => {
+    const name = item.cfg.displayName || item.id;
+    const role = String(item.cfg.role || "").trim();
+    const alias = String(item.cfg.mentionAlias || item.id).replace(/^@+/, "").toLowerCase();
+    return `<option value="${esc(item.id)}">${esc(role ? `${name} · ${role}` : name)} (@${esc(alias)})</option>`;
+  }).join("");
+  $("s_default").value = seats.some((item) => item.id === before) ? before : (seats[0]?.id || "");
+}
+function nextSeatId(provider) {
+  const used = new Set((settingsSeatDraft || []).map((item) => item.id));
+  if (!used.has(provider)) return provider;
+  for (let i = 2; i < 100; i++) if (!used.has(`${provider}${i}`)) return `${provider}${i}`;
+  return `${provider}-${Date.now().toString(36).slice(-4)}`;
+}
 function renderSeatCards(s) {
-  $("seatCards").innerHTML = s.seats.map((a) => {
-    const p = (s.seatInfo && s.seatInfo[a]) || s.providers[a] || {};
+  const draft = settingsSeatDraft || s.seats.map((id) => ({
+    id,
+    provider: s.seatInfo?.[id]?.provider || s.cfg.agents[id]?.provider || id,
+    cfg: { ...(s.cfg.agents[id] || {}) },
+    existing: true,
+  }));
+  $("seatCards").innerHTML = draft.map((item) => {
+    const a = item.id;
+    const providerMeta = state.providers[item.provider] || {};
+    const p = item.existing ? { ...providerMeta, ...(s.seatInfo?.[a] || {}) } : providerMeta;
     const ag = s.agents[a];
-    let f = (p.fields || []).map((field) => seatFieldHTML(a, field, p)).join("");
+    const color = item.cfg.color || p.color || "#7aa2f7";
+    const removable = draft.length > 2;
+    const avatarImage = String(item.cfg.avatarImage || "");
+    const avatarPreview = avatarImage
+      ? `<img src="${esc(avatarImage)}" alt="">`
+      : esc(item.cfg.avatar || p.avatar || String(a)[0].toUpperCase());
+    let f = `<div class="seat-persona">` +
+      `<div class="fld"><label>${esc(tr("settings.displayName", "Display name"))}</label><input data-seat="${esc(a)}" data-f="displayName" maxlength="30" spellcheck="false"></div>` +
+      `<div class="fld"><label>${esc(tr("settings.role", "Assigned role"))}</label><input data-seat="${esc(a)}" data-f="role" maxlength="10" spellcheck="false"><div class="note">${esc(tr("settings.roleHelp", "Up to 10 characters."))}</div></div>` +
+      `<div class="fld"><label>${esc(tr("settings.callName", "Call name"))}</label><input data-seat="${esc(a)}" data-f="mentionAlias" maxlength="20" placeholder="${esc(a)}" spellcheck="false"><div class="note">${esc(tr("settings.callNameHelp", "Type without @. The original mention stays compatible."))}</div></div>` +
+      `<div class="fld"><label>${esc(tr("settings.avatar", "Face / emoji"))}</label><div class="avatar-edit-row">` +
+      `<input data-seat="${esc(a)}" data-f="avatar" maxlength="8" spellcheck="false" title="${esc(tr("settings.avatarPaste", "Paste an image here or use the preview button."))}">` +
+      `<button type="button" class="seat-avatar-picker" data-avatar-seat="${esc(a)}" title="${esc(tr("settings.avatarPaste", "Paste an image here or use the preview button."))}">${avatarPreview}</button>` +
+      (avatarImage ? `<button type="button" class="seat-avatar-clear" data-avatar-clear="${esc(a)}" title="${esc(tr("settings.avatarClear", "Remove image"))}">×</button>` : "") +
+      `</div><div class="note">${esc(tr("settings.avatarHelp", "Paste or choose an image, then move and zoom it to fit."))}</div></div>` +
+      `<div class="fld seat-color"><label>${esc(tr("settings.color", "Color"))}</label><input type="color" data-seat="${esc(a)}" data-f="color" value="${esc(color)}"></div>` +
+      `</div>`;
+    f += `<div class="fld seat-persona-prompt"><label>${esc(tr("settings.persona", "Persona"))}</label>` +
+      `<textarea data-seat="${esc(a)}" data-f="persona" maxlength="1000" rows="4" placeholder="${esc(tr("settings.personaPlaceholder", "Describe this model's responsibilities, style and decision criteria."))}"></textarea>` +
+      `<div class="note">${esc(tr("settings.personaHelp", "Sent once per room session, then only again after a change or new session."))}</div></div>`;
+    f += (p.fields || []).map((field) => seatFieldHTML(a, field, p)).join("");
     f += `<div class="fld"><label>${esc(tr("settings.lurkStyle", "Lurk assertiveness (when 👂 is on)"))}</label><select data-seat="${esc(a)}" data-f="lurkStyle">` +
       `<option value="quiet">${esc(tr("settings.lurkQuiet", "quiet — only uncorrected errors"))}</option>` +
       `<option value="balanced">${esc(tr("settings.lurkBalanced", "balanced — errors, real disagreements, critical caveats"))}</option>` +
       `<option value="vocal">${esc(tr("settings.lurkVocal", "vocal — anything with real signal"))}</option></select></div>`;
     f += `<div class="fld"><label>${esc(tr("settings.lurkPrompt", "Custom lurk criteria (optional, overrides preset; [pass] protocol stays active)"))}</label>` +
       `<input data-seat="${esc(a)}" data-f="lurkPrompt" placeholder="${esc(tr("settings.lurkPlaceholder", "e.g. Interject whenever you disagree."))}" spellcheck="false"></div>`;
-    const sess = ag.linked
+    const sess = ag?.linked
       ? tr("settings.sessionLinked", "Session linked ({ref}…), seen through turn {cursor}.", { ref: ag.sessionRef, cursor: ag.cursor })
       : tr("settings.sessionEmpty", "No session yet — next message starts one.");
-    return `<div class="mgroup"><h3><span class="agc" style="color:${seatColor(a)}">${esc(seatLabel(a))}</span> · ${esc(p.sub || "")}</h3>${f}<div class="sess">${sess}</div></div>`;
+    const shownName = item.cfg.displayName || p.displayName || p.label || titleCaseSeat(a);
+    return `<div class="mgroup" data-seat-card="${esc(a)}"><div class="seat-card-head"><h3>` +
+      `<span class="seat-face" style="background:${esc(color)}">${avatarPreview}</span>` +
+      `<span class="agc" style="color:${esc(color)}">${esc(shownName)}</span> · ${esc(p.sub || p.label || item.provider)}` +
+      `<small>@${esc(item.cfg.mentionAlias || a)} · ${esc(tr("settings.stableMention", "compatible: @{id}", { id: a }))}</small></h3>` +
+      (removable ? `<button type="button" class="seat-remove" data-remove-seat="${esc(a)}" title="${esc(tr("settings.removeSeat", "Remove seat"))}" aria-label="${esc(tr("settings.removeSeat", "Remove seat"))}">✕</button>` : "") +
+      `</div>${f}<div class="sess">${sess}</div></div>`;
   }).join("");
-  for (const a of s.seats) {
-    for (const el of document.querySelectorAll(`#seatCards [data-seat="${a}"][data-f]`)) {
-      const v = s.cfg.agents[a][el.dataset.f];
-      el.value = el.dataset.f === "extraArgs" ? (v || []).join(" ") : (v ?? "");
+  for (const item of draft) {
+    const p = state.providers[item.provider] || {};
+    for (const el of document.querySelectorAll(`#seatCards [data-seat="${item.id}"][data-f]`)) {
+      let value = item.cfg[el.dataset.f];
+      if (el.dataset.f === "color") value = value || p.color || "#7aa2f7";
+      el.value = el.dataset.f === "extraArgs" ? (value || []).join(" ") : (value ?? "");
     }
   }
+  if ($("s_addSeat")) $("s_addSeat").disabled = draft.length >= 3;
+  if ($("s_seatLimit")) $("s_seatLimit").textContent = draft.length >= 3
+    ? tr("settings.seatLimitReached", "Three seats are connected.")
+    : tr("settings.seatLimit", "Up to three seats per room.");
 }
+
+function avatarDraft(seat) { return (settingsSeatDraft || []).find((item) => item.id === seat) || null; }
+function avatarFilePicker(seat) {
+  const picker = document.createElement("input");
+  picker.type = "file";
+  picker.accept = "image/png,image/jpeg,image/webp";
+  picker.onchange = () => { if (picker.files?.[0]) openAvatarCrop(seat, picker.files[0]); };
+  picker.click();
+}
+function openAvatarCrop(seat, file) {
+  if (!file || !/^image\/(?:png|jpeg|webp)$/i.test(file.type)) {
+    toast(tr("settings.avatarInvalid", "Choose a PNG, JPEG or WebP image."), true); return;
+  }
+  captureSeatDraftValues();
+  const url = URL.createObjectURL(file);
+  const overlay = document.createElement("div");
+  overlay.className = "avatar-crop-overlay";
+  overlay.innerHTML = `<div class="avatar-crop-modal" role="dialog" aria-modal="true">` +
+    `<h3>${esc(tr("settings.avatarCropTitle", "Fit face image"))}</h3>` +
+    `<p>${esc(tr("settings.avatarCropHelp", "Drag the image and adjust zoom to fit the square."))}</p>` +
+    `<canvas width="240" height="240"></canvas>` +
+    `<label>${esc(tr("settings.avatarZoom", "Zoom"))}<input type="range" min="1" max="3" step="0.01" value="1"></label>` +
+    `<div class="avatar-crop-actions"><button type="button" data-avatar-cancel>${esc(tr("common.cancel", "Cancel"))}</button>` +
+    `<button type="button" class="primary" data-avatar-save>${esc(tr("common.apply", "Apply"))}</button></div></div>`;
+  document.body.appendChild(overlay);
+  const canvas = overlay.querySelector("canvas"), ctx = canvas.getContext("2d");
+  const slider = overlay.querySelector('input[type="range"]');
+  const image = new Image();
+  let zoom = 1, offsetX = 0, offsetY = 0, dragging = false, lastX = 0, lastY = 0;
+  const metrics = () => {
+    const cover = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+    const scale = cover * zoom;
+    const width = image.naturalWidth * scale, height = image.naturalHeight * scale;
+    const x = Math.min(0, Math.max(canvas.width - width, (canvas.width - width) / 2 + offsetX));
+    const y = Math.min(0, Math.max(canvas.height - height, (canvas.height - height) / 2 + offsetY));
+    return { width, height, x, y };
+  };
+  const draw = () => {
+    if (!image.naturalWidth) return;
+    const m = metrics();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(image, m.x, m.y, m.width, m.height);
+  };
+  const close = () => { URL.revokeObjectURL(url); overlay.remove(); };
+  image.onload = draw;
+  image.src = url;
+  slider.oninput = () => { zoom = Number(slider.value); draw(); };
+  canvas.onpointerdown = (e) => { dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId); };
+  canvas.onpointermove = (e) => {
+    if (!dragging) return;
+    offsetX += e.clientX - lastX; offsetY += e.clientY - lastY; lastX = e.clientX; lastY = e.clientY; draw();
+  };
+  canvas.onpointerup = canvas.onpointercancel = () => { dragging = false; };
+  overlay.querySelector("[data-avatar-cancel]").onclick = close;
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.querySelector("[data-avatar-save]").onclick = () => {
+    const out = document.createElement("canvas"); out.width = out.height = 64;
+    const m = metrics();
+    out.getContext("2d").drawImage(image, m.x * 64 / 240, m.y * 64 / 240, m.width * 64 / 240, m.height * 64 / 240);
+    const item = avatarDraft(seat);
+    if (item) item.cfg.avatarImage = out.toDataURL("image/png");
+    close();
+    if (state.summary) renderSeatCards(state.summary);
+  };
+}
+$("seatCards").addEventListener("click", (e) => {
+  const pick = e.target.closest("[data-avatar-seat]");
+  if (pick) { avatarFilePicker(pick.dataset.avatarSeat); return; }
+  const clear = e.target.closest("[data-avatar-clear]");
+  if (!clear) return;
+  captureSeatDraftValues();
+  const item = avatarDraft(clear.dataset.avatarClear);
+  if (item) item.cfg.avatarImage = null;
+  if (state.summary) renderSeatCards(state.summary);
+});
+$("seatCards").addEventListener("paste", (e) => {
+  const field = e.target.closest('[data-f="avatar"], [data-avatar-seat]');
+  if (!field) return;
+  const file = [...(e.clipboardData?.items || [])].find((item) => item.type.startsWith("image/"))?.getAsFile();
+  if (!file) return;
+  e.preventDefault();
+  openAvatarCrop(field.dataset.seat || field.dataset.avatarSeat, file);
+});
 
 // ---- provider tool catalog ----
 // The server has already stripped commands, paths, URLs and environment data.
@@ -4649,7 +4977,7 @@ function usageRing(percent, provider) {
   return `<div class="usage-ring" style="--pct:${safe};--ring-color:${usageColor(provider)}" role="img" aria-label="${esc(tr("usage.remainingAria", "{percent}% remaining", { percent: Math.round(safe) }))}"><span>${label}</span></div>`;
 }
 function usageWindowLabel(window) {
-  if (window.id === "claude:session") return tr("usage.windowSession", "Session limit");
+  if (window.id === "claude:session") return tr("usage.window5h", "5-hour limit");
   if (window.id === "claude:week") return tr("usage.windowWeekly", "Weekly limit");
   const minutes = Number(window.windowDurationMins);
   if (minutes === 300) return tr("usage.window5h", "5-hour limit");
@@ -4666,13 +4994,6 @@ function usageWindowRows(provider) {
     `<span>${esc(tr("usage.remaining", "{percent}% remaining", { percent: Math.round(window.remainingPercent) }))}</span>` +
     `<span>${esc(usageReset(window.resetsAt, window.resetLabel))}</span></div></div>`;
   }).join("");
-}
-function usageStats(provider) {
-  if (!(provider.stats || []).length) return "";
-  return `<div class="usage-section-title">${esc(tr("usage.activity", "Requests and sessions"))} ` +
-    `<span class="usage-info" tabindex="0" title="${esc(tr("usage.claudeStatsScope", "Claude request/session contribution details are approximate and based on sessions on this machine."))}">ⓘ</span></div>` +
-    `<div class="usage-stat-grid">${provider.stats.map((stat) => `<div class="usage-stat"><b>${esc(stat.label)}</b>` +
-    `<span>${esc(tr("usage.requestsSessions", "{requests} requests · {sessions} sessions", { requests: stat.requests, sessions: stat.sessions }))}</span></div>`).join("")}</div>`;
 }
 function usageTokenStats(provider) {
   const total = { input: 0, out: 0, reasoning: 0, cacheRead: 0, replies: 0 };
@@ -4702,7 +5023,7 @@ function renderUsage() {
   $("usageStatus").textContent = usageAgo(usageCheckedAt(snapshot));
   $("usageCards").innerHTML = (snapshot.providers || []).map((provider) => {
     const stale = provider.stale ? ` · ${tr("usage.stale", "previous result")}` : "";
-    const content = usageStats(provider) + usageTokenStats(provider) + usageWindowRows(provider) || `<div class="tool-empty">${esc(tr("usage.noData", "No usage data returned."))}</div>`;
+    const content = usageTokenStats(provider) + usageWindowRows(provider) || `<div class="tool-empty">${esc(tr("usage.noData", "No usage data returned."))}</div>`;
     return `<section class="usage-provider"><div class="usage-provider-head"><h3 style="color:${usageColor(provider.provider)}">${esc(provider.label || provider.provider)}</h3>` +
       `<span>${esc((provider.source || "CLI") + stale)}</span></div>${provider.error ? `<div class="usage-error">${esc(provider.error)}</div>` : ""}${content}</section>`;
   }).join("") || `<div class="tool-empty">${esc(tr("usage.noProviders", "No providers are seated in this room."))}</div>`;
@@ -4784,75 +5105,140 @@ $("usageOverlay").addEventListener("click", (e) => { if (e.target === $("usageOv
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUsage(); });
 renderUsageHover();
 
-// The folder dialog is not modal to this page, so Settings can be closed,
-// saved, or pointed at a different room while it is still open. Every one of
-// those retires the stamp, and a result that comes back against a retired stamp
-// is dropped rather than written into whatever room is on screen by then.
-let settingsPick = 0;
-let settingsProjectDirs = [];
-let settingsActiveProject = null;
-function settingsPathKey(value) { return String(value || "").replace(/[\\/]+$/, "").toLowerCase(); }
-function renderSettingsProjects() {
-  const activeKey = settingsPathKey(settingsActiveProject);
-  $("s_projdir").value = settingsActiveProject || "";
-  if (!settingsProjectDirs.length) {
-    $("projectLinks").innerHTML = `<div class="project-link-empty">${esc(tr("settings.projectSandbox", "No connected project — using this room's sandbox workspace."))}</div>`;
+// The project manager edits a draft. Closing it drops the draft; Apply is the
+// only action that writes projectDir/projectDirs back to the room config.
+let projectPick = 0;
+let projectDraftDirs = [];
+let projectDraftActive = null;
+let projectOpener = null;
+function projectPathKey(value) { return String(value || "").replace(/[\\/]+$/, "").toLowerCase(); }
+function retireProjectPick() { projectPick++; }
+function renderProjectManager() {
+  const activeKey = projectPathKey(projectDraftActive);
+  if (!projectDraftDirs.length) {
+    $("projectLinks").innerHTML = `<div class="project-link-empty">${esc(tr("project.empty", "No connected project — this room uses its sandbox workspace."))}</div>`;
     return;
   }
   const knownLinks = state.summary?.projectLinks?.links || [];
-  $("projectLinks").innerHTML = settingsProjectDirs.map((projectPath) => {
-    const key = settingsPathKey(projectPath);
+  $("projectLinks").innerHTML = projectDraftDirs.map((projectPath) => {
+    const key = projectPathKey(projectPath);
     const current = key === activeKey;
-    const known = knownLinks.find((link) => settingsPathKey(link.path) === key);
+    const known = knownLinks.find((link) => projectPathKey(link.path) === key);
     const missing = known && !known.exists;
-    const mismatch = current && settingsPathKey(state.summary?.cfg?.projectDir) === key && !!state.summary?.projectLinks?.mismatch;
-    const status = missing ? tr("settings.projectMissing", "Path not found")
-      : mismatch ? tr("settings.projectMismatch", "Current path mismatch")
-        : current ? tr("settings.projectCurrent", "Current working path")
-          : tr("settings.projectSaved", "Connected · not current");
+    const mismatch = current && projectPathKey(state.summary?.cfg?.projectDir) === key && !!state.summary?.projectLinks?.mismatch;
+    const status = missing ? tr("project.missing", "Path not found")
+      : mismatch ? tr("project.mismatch", "Current path mismatch")
+        : current ? tr("project.current", "Current working path")
+          : tr("project.saved", "Connected · not current");
     const statusClass = missing || mismatch ? " warn" : current ? " current" : "";
     const name = projectPath.split(/[\\/]/).filter(Boolean).pop() || projectPath;
+    const canOpen = !!known && !missing;
     return `<div class="project-link-row${current ? " active" : ""}" data-project-path="${esc(projectPath)}">` +
       `<div class="project-link-copy"><b>${esc(name)}</b><span title="${esc(projectPath)}">${esc(projectPath)}</span><em class="project-link-status${statusClass}">${esc(status)}</em></div>` +
-      `<div class="project-link-actions">${current ? "" : `<button type="button" class="btn" data-project-use>${esc(tr("settings.projectUse", "Use"))}</button>`}` +
-      `<button type="button" class="btn danger" data-project-remove>${esc(tr("settings.projectRemove", "Remove"))}</button></div></div>`;
+      `<div class="project-link-actions">${current ? "" : `<button type="button" class="btn" data-project-use>${esc(tr("project.use", "Use"))}</button>`}` +
+      `<button type="button" class="btn" data-project-open${canOpen ? "" : " disabled"}>${esc(tr("project.open", "Open folder"))}</button>` +
+      `<button type="button" class="btn" data-project-edit><span data-picker-label>${esc(tr("project.edit", "Change path"))}</span></button>` +
+      `<button type="button" class="btn danger" data-project-remove>${esc(tr("project.remove", "Remove"))}</button></div></div>`;
   }).join("");
 }
-$("projectLinks").addEventListener("click", (event) => {
+async function editProjectPath(projectPath, button) {
+  const pick = ++projectPick;
+  const openedFor = state.room;
+  const picked = await browseFolder(projectPath, button);
+  if (pick !== projectPick || state.room !== openedFor || !picked) return;
+  const oldKey = projectPathKey(projectPath);
+  projectDraftDirs = projectDraftDirs.filter((value) => projectPathKey(value) !== oldKey);
+  if (!projectDraftDirs.some((value) => projectPathKey(value) === projectPathKey(picked))) projectDraftDirs.push(picked);
+  if (projectPathKey(projectDraftActive) === oldKey) projectDraftActive = picked;
+  renderProjectManager();
+}
+$("projectLinks").addEventListener("click", async (event) => {
   const row = event.target.closest("[data-project-path]");
   if (!row) return;
   const projectPath = row.dataset.projectPath;
-  if (event.target.closest("[data-project-use]")) settingsActiveProject = projectPath;
+  if (event.target.closest("[data-project-use]")) projectDraftActive = projectPath;
   else if (event.target.closest("[data-project-remove]")) {
-    settingsProjectDirs = settingsProjectDirs.filter((value) => settingsPathKey(value) !== settingsPathKey(projectPath));
-    if (settingsPathKey(settingsActiveProject) === settingsPathKey(projectPath)) settingsActiveProject = settingsProjectDirs[0] || null;
+    projectDraftDirs = projectDraftDirs.filter((value) => projectPathKey(value) !== projectPathKey(projectPath));
+    if (projectPathKey(projectDraftActive) === projectPathKey(projectPath)) projectDraftActive = projectDraftDirs[0] || null;
+  } else if (event.target.closest("[data-project-open]")) {
+    if (event.target.closest("[data-project-open]").disabled) return;
+    try {
+      await api("/api/open", { room: state.room, what: "project", path: projectPath });
+      toast(t("folder.workspaceOpened"));
+    } catch (e) { toast(e.message, true); }
+    return;
+  } else if (event.target.closest("[data-project-edit]")) {
+    await editProjectPath(projectPath, event.target.closest("[data-project-edit]"));
+    return;
   } else return;
-  renderSettingsProjects();
+  renderProjectManager();
 });
-function retireSettingsPick() { settingsPick++; }
+function closeProjectManager() {
+  retireProjectPick();
+  $("projectOverlay").classList.remove("open");
+  if (projectOpener && document.contains(projectOpener)) projectOpener.focus();
+  projectOpener = null;
+}
+function openProjectManager() {
+  const s = state.summary; if (!s) return;
+  projectOpener = document.activeElement;
+  retireProjectPick();
+  projectDraftDirs = (s.projectLinks?.links || []).map((link) => link.path);
+  if (!projectDraftDirs.length) projectDraftDirs = [...(s.cfg.projectDirs || [])];
+  projectDraftActive = s.cfg.projectDir || null;
+  renderProjectManager();
+  $("projectOverlay").classList.add("open");
+  $("projectClose").focus();
+}
+$("openWs").onclick = openProjectManager;
+$("projectAdd").onclick = async () => {
+  const pick = ++projectPick;
+  const openedFor = state.room;
+  const picked = await browseFolder(projectDraftActive, $("projectAdd"));
+  if (pick !== projectPick || state.room !== openedFor || !picked) return;
+  if (!projectDraftDirs.some((value) => projectPathKey(value) === projectPathKey(picked))) projectDraftDirs.push(picked);
+  projectDraftActive = picked;
+  renderProjectManager();
+};
+$("projectApply").onclick = async () => {
+  try {
+    const saved = await api("/api/config", { room: state.room, config: {
+      projectDir: projectDraftActive || null,
+      projectDirs: [...projectDraftDirs],
+    } });
+    if (saved?.room) { state.summary = saved.room; applySummary(saved.room); }
+    closeProjectManager();
+    toast(tr("project.savedToast", "Connected projects updated."));
+  } catch (e) { toast(e.message, true); }
+};
+$("projectCancel").onclick = closeProjectManager;
+$("projectClose").onclick = closeProjectManager;
+$("projectOverlay").addEventListener("click", (event) => { if (event.target === $("projectOverlay")) closeProjectManager(); });
 function closeSettings() {
-  retireSettingsPick();
   $("overlay").classList.remove("open");
   // Closing a dialog used to leave focus on nothing at all.
   if (settingsOpener && document.contains(settingsOpener)) settingsOpener.focus();
   settingsOpener = null;
+  settingsSeatDraft = null;
 }
 function openSettings() {
   const s = state.summary; if (!s) return;
   settingsOpener = document.activeElement;
-  retireSettingsPick();
+  settingsSeatDraft = s.seats.map((id) => ({
+    id,
+    provider: s.seatInfo?.[id]?.provider || s.cfg.agents[id]?.provider || id,
+    cfg: { ...(s.cfg.agents[id] || {}), extraArgs: [...(s.cfg.agents[id]?.extraArgs || [])] },
+    existing: true,
+  }));
   $("roomPath").textContent = s.dir;
   $("s_locale").value = currentLocale();
   $("mDelete").hidden = s.name === "default"; // the fallback room can't be removed
+  $("s_addProvider").innerHTML = Object.entries(state.providers || {}).map(([id, provider]) =>
+    `<option value="${esc(id)}">${esc(provider.label || id)}</option>`).join("");
   renderSeatCards(s);
   $("s_notify").checked = notifyEnabled();
-  settingsProjectDirs = (s.projectLinks?.links || []).map((link) => link.path);
-  if (!settingsProjectDirs.length) settingsProjectDirs = [...(s.cfg.projectDirs || [])];
-  settingsActiveProject = s.cfg.projectDir || null;
-  renderSettingsProjects();
   $("s_roomnote").value = s.cfg.roomNote || "";
-  $("s_default").innerHTML = s.seats.map((x) => `<option>${esc(x)}</option>`).join("");
-  $("s_default").value = s.cfg.defaultAgent || s.seats[0];
+  refreshDefaultSeatOptions(s.cfg.defaultAgent || s.seats[0]);
   $("s_timeout").value = Math.round((s.cfg.timeoutMs || 300000) / 1000);
   $("s_hopbudget").value = String(normalizedHopBudget(s.cfg.hopBudget, -1));
   const previousAccounting = s.cfg.accounting !== "automatic";
@@ -4868,6 +5254,15 @@ function openSettings() {
   $("s_pairrounds").value = s.cfg.pairRounds || 0;
   $("overlay").classList.add("open");
 }
+$("s_addSeat").onclick = () => {
+  if (!settingsSeatDraft || settingsSeatDraft.length >= 3) return;
+  captureSeatDraftValues();
+  const provider = $("s_addProvider").value;
+  const id = nextSeatId(provider);
+  settingsSeatDraft.push({ id, provider, cfg: newSeatConfig(provider), existing: false });
+  renderSeatCards(state.summary);
+  refreshDefaultSeatOptions();
+};
 function refreshLocalizedUi() {
   applyLocale();
   document.title = t("app.name");
@@ -4891,8 +5286,9 @@ function refreshLocalizedUi() {
     const catalog = state.toolCatalogs[`${state.room}:${toolsProvider}`];
     if (catalog) renderToolCatalog(catalog);
   }
-  if ($("overlay").classList.contains("open")) renderSettingsProjects();
+  if ($("projectOverlay").classList.contains("open")) renderProjectManager();
   renderUsage();
+  renderAvailableUpdate();
 }
 $("s_locale").onchange = () => {
   setLocale($("s_locale").value);
@@ -4900,39 +5296,68 @@ $("s_locale").onchange = () => {
 };
 $("settingsBtn").onclick = openSettings;
 $("settingsBtn2").onclick = openSettings;
+$("workBannerClose").onclick = dismissAccessBanner;
+$("updateBtn").onclick = openUpdate;
+$("updateClose").onclick = closeUpdate;
+$("updateLater").onclick = closeUpdate;
+$("updateApply").onclick = applyUpdate;
+$("updateOverlay").addEventListener("click", (e) => { if (e.target === $("updateOverlay")) closeUpdate(); });
 $("mCancel").onclick = () => closeSettings();
 $("overlay").addEventListener("click", (e) => { if (e.target === $("overlay")) closeSettings(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeSettings(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("updateOverlay").classList.contains("open")) closeUpdate();
+  else if ($("projectOverlay").classList.contains("open")) closeProjectManager();
+  else closeSettings();
+});
 $("mSave").onclick = async () => {
   const s = state.summary; if (!s) return;
+  captureSeatDraftValues();
+  const draft = settingsSeatDraft || [];
+  const reservedMentions = new Set(["both", "all", "user", "system", "none", ...draft.map((item) => item.id.toLowerCase())]);
+  for (const item of draft) {
+    const role = String(item.cfg.role || "").trim();
+    const persona = String(item.cfg.persona || "").trim();
+    const alias = String(item.cfg.mentionAlias || "").trim().replace(/^@+/, "").toLowerCase();
+    if (Array.from(role).length > 10) {
+      toast(tr("settings.roleTooLong", "Assigned role must be 10 characters or fewer."), true); return;
+    }
+    if (Array.from(persona).length > 1000) {
+      toast(tr("settings.personaTooLong", "Persona must be 1,000 characters or fewer."), true); return;
+    }
+    if (alias && alias !== item.id.toLowerCase() && !/^[\p{L}][\p{L}\p{N}_-]{0,19}$/u.test(alias)) {
+      toast(tr("settings.callNameInvalid", "Call names must start with a letter and use letters, numbers, _ or -."), true); return;
+    }
+    if (alias && alias !== item.id.toLowerCase() && reservedMentions.has(alias)) {
+      toast(tr("settings.callNameDuplicate", "That call name is already used or reserved."), true); return;
+    }
+    item.cfg.role = role || null;
+    item.cfg.persona = persona || null;
+    item.cfg.mentionAlias = alias && alias !== item.id.toLowerCase() ? alias : null;
+    if (item.cfg.mentionAlias) reservedMentions.add(item.cfg.mentionAlias);
+  }
   const roomHopBudget = Number($("s_hopbudget").value);
   if (!Number.isSafeInteger(roomHopBudget) || roomHopBudget < -1) {
     toast("Hop budget must be -1 (until settled) or a non-negative whole number.", true);
     return;
   }
   const agents = {};
-  for (const a of s.seats) {
-    agents[a] = {};
-    for (const el of document.querySelectorAll(`#seatCards [data-seat="${a}"][data-f]`)) {
-      const f = el.dataset.f;
-      let v = el.value;
-      if (f === "extraArgs") v = v.trim() ? v.trim().split(/\s+/) : [];
-      else if (f === "command") v = v.trim() || undefined; // blank keeps the default
-      else if (typeof v === "string" && v.trim() === "") v = null;
-      if (v !== undefined) agents[a][f] = v;
-    }
+  for (const item of draft) {
+    agents[item.id] = { ...item.cfg, provider: item.provider };
   }
   // Every seat, not the one that happens to be called "claude": a seat can be
   // named anything, and the warned escalation has to follow the seat actually
   // being elevated.
-  for (const a of s.seats) {
-    if (!agents[a] || !s.cfg.agents[a]) continue;
+  for (const item of draft) {
+    const a = item.id;
+    if (!agents[a]) continue;
     const roomMode = s.cfg.mode || "talk";
-    const before = effectiveSeatPermission(a, s.cfg.agents[a], roomMode);
-    const after = effectiveSeatPermission(a, { ...s.cfg.agents[a], ...agents[a] }, roomMode);
+    const previous = s.cfg.agents[a] || newSeatConfig(item.provider);
+    const before = effectiveSeatPermission(a, previous, roomMode);
+    const after = effectiveSeatPermission(a, { ...previous, ...agents[a] }, roomMode);
     if (isFullAccess(before) || !isFullAccess(after)) continue;
-    const who = seatLabel(a);
-    const scope = $("s_projdir").value.trim() || "the room workspace";
+    const who = item.cfg.displayName || seatLabel(a);
+    const scope = s.cfg.projectDir || "the room workspace";
     const accepted = confirm(
       `⚠ Give ${who} Full access in this room?\n\n` +
       `${who} will bypass its ordinary permission prompts and checks. It can modify protected paths such as .git; it can also run commands, use inherited credentials and network access, and change files outside:\n${scope}\n\n` +
@@ -4942,17 +5367,12 @@ $("mSave").onclick = async () => {
     );
     if (!accepted) return;
   }
-  // Build the request from what is on screen now, then retire the picker: a
-  // dialog that resolves while the save is in flight would otherwise fill the
-  // field with a folder this request did not carry.
   const config = {
     defaultAgent: $("s_default").value,
     timeoutMs: Math.max(10, Number($("s_timeout").value) || 300) * 1000,
     hopBudget: roomHopBudget,
     accounting: $("s_accounting").value,
     pairRounds: Math.min(99, Math.max(0, Number($("s_pairrounds").value) || 0)),
-    projectDir: $("s_projdir").value.trim() || null,
-    projectDirs: [...settingsProjectDirs],
     roomNote: $("s_roomnote").value.trim() || null,
     agents,
   };
@@ -4966,9 +5386,10 @@ $("mSave").onclick = async () => {
   } else if (!wantNotify) {
     setNotifyEnabled(false);
   }
-  retireSettingsPick();
   try {
-    const saved = await api("/api/config", { room: state.room, config });
+    const seats = draft.map(({ id, provider }) => ({ id, provider }));
+    const saved = await api("/api/config", { room: state.room, seats, config });
+    if (saved?.room) { state.summary = saved.room; applySummary(saved.room); }
     closeSettings();
     // The panel above already shows the new permission, but a CLI process that
     // has launched cannot be changed. Say what the user is actually watching —
@@ -5039,4 +5460,5 @@ $("mNewConv").onclick = newConversation;
 
 // ------------------------------------------------------------ boot
 loadRoom(state.room).catch((e) => toast(e.message, true));
+checkForUpdate();
 input.focus();

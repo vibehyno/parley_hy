@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--PARLEY_TOKEN-->
 <!--PARLEY_RUNTIME_PROTOCOL-->
+<!--PARLEY_VERSION-->
 <title>Parley HY</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="%23555c6b" stroke-width="2"/><circle cx="16" cy="7" r="4" fill="%237aa2f7"/><circle cx="8" cy="22" r="4" fill="%23e8845c"/><circle cx="24" cy="22" r="4" fill="%232fd6a8"/></svg>'>
 <link rel="stylesheet" href="/ui/styles.css?v=__PARLEY_ASSET_VERSION__">
@@ -47,17 +48,17 @@
     </form>
     <nav id="roomList"></nav>
     <div class="side-foot">
-      <button id="openWs"><span class="ico">📁</span> <span id="openWsLabel" data-i18n="sidebar.openWorkspace">Open workspace</span></button>
+      <button id="openWs" type="button" data-side-tip="Manage the projects connected to this room" data-i18n-side-tip="sidebar.openWorkspaceTip"><span class="ico">📁</span> <span id="openWsLabel" data-i18n="sidebar.openWorkspace">Open workspace</span></button>
       <div id="gitId" style="display:none"></div>
-      <a id="dlTranscript" href="#"><span class="ico">📄</span> <span data-i18n="sidebar.downloadTranscript">Download transcript</span></a>
-      <button id="openRoomDir"><span class="ico">🗂️</span> <span data-i18n="sidebar.roomFolder">Room folder</span></button>
+      <a id="dlTranscript" href="#" data-side-tip="Save this room's conversation as a Markdown file" data-i18n-side-tip="sidebar.downloadTranscriptTip"><span class="ico">📄</span> <span data-i18n="sidebar.downloadTranscript">Download transcript</span></a>
+      <button id="openRoomDir" data-side-tip="Open this room's local conversation storage folder" data-i18n-side-tip="sidebar.roomFolderTip"><span class="ico">🗂️</span> <span data-i18n="sidebar.roomFolder">Room folder</span></button>
       <div id="usageWrap">
         <button id="usageBtn" type="button"><span class="ico">◔</span> <span data-i18n="sidebar.usage">Usage</span></button>
         <div id="usageHover" role="tooltip" aria-live="polite"></div>
       </div>
-      <button id="toolsBtn"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
-      <button id="settingsBtn2"><span class="ico">⚙️</span> <span data-i18n="sidebar.settings">Settings</span></button>
-      <a href="https://github.com/vibehyno/parley_hy#readme" target="_blank" rel="noreferrer noopener"><span class="ico">?</span> <span data-i18n="sidebar.docs">Docs</span></a>
+      <button id="toolsBtn" data-side-tip="Browse Skills, MCP servers and plugins available to each model" data-i18n-side-tip="sidebar.toolsTip"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
+      <button id="settingsBtn2" data-side-tip="Change this room's models, permissions and conversation rules" data-i18n-side-tip="sidebar.settingsTip"><span class="ico">⚙️</span> <span data-i18n="sidebar.settings">Settings</span></button>
+      <a href="https://github.com/vibehyno/parley_hy#readme" target="_blank" rel="noreferrer noopener" data-side-tip="Open the Parley HY usage guide" data-i18n-side-tip="sidebar.docsTip"><span class="ico">?</span> <span data-i18n="sidebar.docs">Docs</span></a>
     </div>
   </aside>
 
@@ -70,6 +71,10 @@
         <button class="mbtn active" data-m="talk" data-i18n="mode.talk" data-i18n-title="mode.talkTitle" title="Talk mode — best for discussion without changing files.">💬 Talk</button>
         <button class="mbtn" data-m="work" data-i18n="mode.work" data-i18n-title="mode.workTitle" title="Work mode — agents may edit project files and run commands.">🔨 Work</button>
       </div>
+      <div id="updateWrap" hidden>
+        <button id="updateBtn" type="button"><span class="update-dot"></span><span data-i18n="update.available">Update</span> <span id="updateVersion"></span></button>
+        <div id="updatePreview" role="tooltip"></div>
+      </div>
       <div class="pills" id="pills"></div>
       <button class="hbtn" id="newConvBtn" title="Archive this conversation and start fresh" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">✨ New conversation</button>
       <button class="hbtn" id="settingsBtn" title="Settings" data-i18n-title="sidebar.settings">⚙️</button>
@@ -80,7 +85,7 @@
     </div>
     <div id="runtimeBanner" role="alert" style="display:none;padding:8px 20px;font-size:12.5px;color:var(--danger-fg);background:var(--danger-wash);border-bottom:1px solid var(--danger-edge)"></div>
     <div id="setupBanner" role="status" style="display:none;padding:8px 20px;font-size:12.5px;color:var(--warn);background:var(--warn-wash);border-bottom:1px solid var(--warn-edge)"></div>
-    <div id="workBanner">🔨 <span data-i18n="work.banner">Work room — agents can write files in the shared workspace and run commands. Their actions show as inline activity lines.</span></div>
+    <div id="workBanner"><span id="workBannerContent">🔨 <span data-i18n="work.banner">Work room — agents can write files in the shared workspace and run commands. Their actions show as inline activity lines.</span></span><button id="workBannerClose" type="button" aria-label="Close" data-i18n-aria-label="common.close" title="Close" data-i18n-title="common.close">×</button></div>
 
     <div id="chatWrap">
       <div id="chat" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
@@ -177,6 +182,16 @@
 <div id="wakeMenu" role="menu"></div>
 <div id="askMenu" role="menu"></div>
 
+<div id="updateOverlay">
+  <div class="modal update-modal" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+    <div class="update-modal-head"><div><h2 id="updateTitle" data-i18n="update.title">Parley HY update</h2><div class="sub" id="updateVersions"></div></div><button class="hbtn" id="updateClose" type="button" data-i18n="common.close">Close</button></div>
+    <p data-i18n="update.choiceHelp">Updates are optional. Review the changes, then decide whether to install them.</p>
+    <ul id="updateNotes"></ul>
+    <div id="updateApplyStatus" class="note"></div>
+    <div class="mactions"><a class="btn" id="updateGithub" href="https://github.com/vibehyno/parley_hy" target="_blank" rel="noreferrer noopener" data-i18n="update.github">View on GitHub</a><button class="btn" id="updateLater" type="button" data-i18n="update.later">Later</button><button class="btn primary" id="updateApply" type="button" data-i18n="update.apply">Install update</button></div>
+  </div>
+</div>
+
 <div id="overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="mrow" style="align-items:center"><h2 id="settingsTitle" data-i18n="settings.title">Room settings</h2>
@@ -185,19 +200,19 @@
     </div>
     <div class="sub" id="roomPath"></div>
     <div class="mgrid" id="seatCards"></div>
-    <div class="fld" style="margin-top:14px"><label data-i18n="settings.roomNote">Room note (standing instruction both agents see on every turn — also /note)</label>
+    <div class="seat-manager" id="seatManager">
+      <select id="s_addProvider" aria-label="Provider to add" data-i18n-aria-label="settings.addSeatProvider"></select>
+      <button class="btn" id="s_addSeat" type="button" data-i18n="settings.addSeat">+ Add seat</button>
+      <span class="note" id="s_seatLimit" data-i18n="settings.seatLimit">Up to three seats per room.</span>
+    </div>
+    <div class="fld" style="margin-top:14px"><label data-i18n="settings.roomNote">Room note (shared rules delivered once per CLI session — also /note)</label>
       <input id="s_roomnote" placeholder="e.g. We're building a YT-transcription app; keep answers short." data-i18n-placeholder="settings.roomNotePlaceholder" spellcheck="false"></div>
-    <div class="fld"><label data-i18n="settings.notifications">Notifications</label>
-      <label style="display:flex;gap:8px;align-items:flex-start;font-size:12.5px;color:var(--text-dim);cursor:pointer">
-        <input type="checkbox" id="s_notify" style="margin-top:3px">
-        <span data-i18n="settings.notificationsHelp">Tell me when a reply lands, a pair cycle needs my decision, or a turn fails — only while this tab is in the background.</span>
+    <div class="fld notification-field"><label data-i18n="settings.notifications">Notifications</label>
+      <label class="notification-toggle">
+        <input type="checkbox" id="s_notify">
+        <span><b data-i18n="settings.notificationsToggle">Use Windows notifications</b><small data-i18n="settings.notificationsHelp">Show a Windows notification when this Parley tab is not visible and a reply finishes, a pair decision is needed, or work fails.</small></span>
       </label>
       <div class="note" data-i18n="settings.notificationsScope">Per browser, not per room. Your browser will ask for permission the first time.</div></div>
-    <div class="fld project-links-field" style="margin-top:14px"><label data-i18n="settings.projectFolders">Connected projects</label>
-      <input id="s_projdir" type="hidden">
-      <div id="projectLinks" class="project-links"></div>
-      <button class="btn" id="s_browse" type="button"><span data-picker-label data-i18n="settings.addProject">Add project folder…</span></button>
-      <div class="note" data-i18n="settings.projectFoldersHelp">Save several project folders and choose one current working path. Changing the current path starts fresh agent sessions.</div></div>
     <div class="mgrid" style="margin-top:14px">
       <div class="fld"><label data-i18n="settings.defaultAgent">Default agent (first message, before any tag)</label>
         <select id="s_default"></select></div>
@@ -225,6 +240,21 @@
         <button class="btn primary" id="mSave" data-i18n="common.save">Save</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="projectOverlay">
+  <div class="modal project-modal" role="dialog" aria-modal="true" aria-labelledby="projectTitle">
+    <div class="project-head">
+      <div><h2 id="projectTitle" data-i18n="project.title">Connected projects</h2><div class="sub" data-i18n="project.subtitle">Choose the project this room works in, or manage its saved project folders.</div></div>
+      <button class="btn" id="projectClose" type="button" data-i18n="common.close">Close</button>
+    </div>
+    <div id="projectLinks" class="project-links"></div>
+    <div class="project-bottom">
+      <button class="btn" id="projectAdd" type="button"><span data-picker-label data-i18n="project.add">Add project…</span></button>
+      <div class="project-actions"><button class="btn" id="projectCancel" type="button" data-i18n="common.cancel">Cancel</button><button class="btn primary" id="projectApply" type="button" data-i18n="common.apply">Apply</button></div>
+    </div>
+    <div class="note" data-i18n="project.removeHelp">Removing a connection never deletes the actual project folder.</div>
   </div>
 </div>
 

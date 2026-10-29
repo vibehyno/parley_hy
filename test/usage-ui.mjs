@@ -32,14 +32,15 @@ test("usage endpoint is room-scoped and does not return account identity", () =>
   assert.doesNotMatch(server.slice(server.indexOf("async function providerUsageSnapshot"), server.indexOf("function catalogText")), /accountId/);
 });
 
-test("usage cards place activity and conversation tokens before quota charts", () => {
-  assert.match(app, /usageStats\(provider\) \+ usageTokenStats\(provider\) \+ usageWindowRows\(provider\)/);
+test("usage cards use the same token and quota layout without provider-only activity stats", () => {
+  assert.match(app, /usageTokenStats\(provider\) \+ usageWindowRows\(provider\)/);
+  assert.doesNotMatch(app, /function usageStats\(provider\)/);
   assert.match(app, /function usageTokenStats\(provider\)/);
   assert.match(app, /usage\.tokenScope/);
   assert.match(styles, /\.usage-token-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(html, /class="usage-info"[^>]*data-i18n-title="usage\.autoRefresh"/);
   assert.doesNotMatch(html, /class="note usage-note"/);
-  assert.match(app, /claude:session[\s\S]*?usage\.windowSession/);
+  assert.match(app, /claude:session[\s\S]*?usage\.window5h/);
   assert.match(app, /claude:week[\s\S]*?usage\.windowWeekly/);
 });
 
