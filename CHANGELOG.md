@@ -2,6 +2,60 @@
 
 Notable changes per repository version.
 
+## 1.3.4 — 2026-10-29
+
+- Simplified Usage open and hover behavior around one shared five-minute cache.
+- Reused fresh results and in-flight requests within five minutes; Refresh remains the only immediate recheck.
+- Moved long usage-scope explanations into info tooltips and aligned Codex/Claude token summaries in two columns.
+- Simplified Claude quota labels to Session limit and Weekly limit, with localized reset labels in Korean.
+
+## 1.3.3 — 2026-10-29
+
+- Added a fresh current-room usage lookup when the pointer enters the closed Usage menu.
+- Locked hover-triggered lookup until the pointer leaves to prevent duplicate CLI calls while moving inside the tooltip.
+- Kept explicit lookups on dialog open and Refresh, with another hover lookup after re-entry.
+- Simplified the dialog note to explain the Refresh action directly.
+
+## 1.3.2 — 2026-10-29
+
+- Parsed Claude `/usage` current-session and current-week percentages with their reset labels.
+- Kept Claude's last-24-hour and last-7-day request/session activity summaries.
+- Placed request/session activity and reported current-conversation token totals above the circular quota charts.
+- Explicitly labeled token totals as room-conversation metadata rather than estimated account-wide usage.
+
+## 1.3.1 — 2026-10-29
+
+- Added multiple saved project folders per room with one selectable current CLI working path.
+- Added project selection and removal controls to room settings.
+- Added mismatch warnings in settings, the room list and workspace action when the active path is missing or differs from the runtime path.
+- Migrated existing single-project room configuration into the compatible project list automatically.
+
+## 1.3.0 — 2026-10-29
+
+- Added a current-room CLI usage view to the sidebar.
+- Usage is fetched once when the view opens and checked again only through the Refresh button or a later reopen.
+- The closed menu hover shows the last circular quota summary and check time without background polling.
+- Displayed exact Codex and AGY remaining/reset windows separately from Claude CLI's local request/session statistics; no unavailable quota is estimated.
+- Opened workspace and room folders through Explorer directly on Windows and stopped reporting success when the launcher fails.
+
+## 1.2.9 — 2026-10-29
+
+- Replaced the prose `Use the "..." skill to` insertion with a visible `[$seat:skill]` marker.
+- Rendered selected skills as distinct colored badges in chat bubbles.
+- Converted the marker to each provider's native invocation prefix before launch: `/skill` for Claude and AGY, `$skill` for Codex.
+- Preserved surrounding composer text when a skill is selected in the middle of a message.
+
+## 1.2.8 — 2026-10-29
+
+- Expanded Korean descriptions across the currently installed Codex and Claude skills, including Matt Pocock, Superpowers, Notion, Figma, Sentry and artifact-template entries.
+- Increased tool-card title, description and spacing sizes without changing the tools modal dimensions; fewer entries are shown at once and remain accessible by scrolling.
+
+## 1.2.7 — 2026-10-29
+
+- Restored the immediate queue action on the editable current-work instruction card.
+- The new `Queue as next task` button posts the message to the conversation and target lane immediately without stopping the active invocation; delivery to the CLI begins as soon as that invocation finishes.
+- Kept the editable auto-send-after-completion option as a separate choice instead of replacing the original queue behavior.
+
 ## 1.2.6 — 2026-10-28
 
 - Added a per-seat Fast response toggle. It applies each provider's real `low` reasoning-effort option on the next CLI invocation and restores the previous effort when disabled.

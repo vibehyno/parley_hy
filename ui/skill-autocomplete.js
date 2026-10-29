@@ -40,7 +40,7 @@
   }
 
   function prompt(seat, skillName) {
-    return `@${seat} Use the "${skillName}" skill to `;
+    return `@${seat} [$${seat}:${skillName}] `;
   }
 
   global.ParleySkillAutocomplete = { parse, filterSkills, replace, prompt };

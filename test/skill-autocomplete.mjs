@@ -38,7 +38,7 @@ test("replacement preserves text after the cursor and prompt uses the selected s
   const parsed = api.parse(text, cursor);
   const replacement = api.prompt("reviewer", "superpowers:brainstorming");
   const result = api.replace(text, cursor, parsed, replacement);
-  assert.equal(replacement, '@reviewer Use the "superpowers:brainstorming" skill to ');
-  assert.equal(result.text, '검토 @reviewer Use the "superpowers:brainstorming" skill to  뒤 문장');
-  assert.equal(result.cursor, '검토 @reviewer Use the "superpowers:brainstorming" skill to '.length);
+  assert.equal(replacement, "@reviewer [$reviewer:superpowers:brainstorming] ");
+  assert.equal(result.text, "검토 @reviewer [$reviewer:superpowers:brainstorming]  뒤 문장");
+  assert.equal(result.cursor, "검토 @reviewer [$reviewer:superpowers:brainstorming] ".length);
 });

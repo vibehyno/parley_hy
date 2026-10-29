@@ -51,6 +51,10 @@
       <div id="gitId" style="display:none"></div>
       <a id="dlTranscript" href="#"><span class="ico">📄</span> <span data-i18n="sidebar.downloadTranscript">Download transcript</span></a>
       <button id="openRoomDir"><span class="ico">🗂️</span> <span data-i18n="sidebar.roomFolder">Room folder</span></button>
+      <div id="usageWrap">
+        <button id="usageBtn" type="button"><span class="ico">◔</span> <span data-i18n="sidebar.usage">Usage</span></button>
+        <div id="usageHover" role="tooltip" aria-live="polite"></div>
+      </div>
       <button id="toolsBtn"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
       <button id="settingsBtn2"><span class="ico">⚙️</span> <span data-i18n="sidebar.settings">Settings</span></button>
       <a href="https://github.com/vibehyno/parley_hy#readme" target="_blank" rel="noreferrer noopener"><span class="ico">?</span> <span data-i18n="sidebar.docs">Docs</span></a>
@@ -145,6 +149,7 @@
               <div id="adjustDraftPreview"></div>
             </div>
             <div class="adjust-actions">
+              <button id="adjustDraftSendNow" class="adjust-send-now" type="button" data-i18n="adjust.sendNow">Queue as next task</button>
               <button id="adjustDraftEdit" type="button" data-i18n="adjust.edit">Edit</button>
               <button id="adjustDraftDelete" type="button" data-i18n="adjust.delete">Delete</button>
             </div>
@@ -188,12 +193,11 @@
         <span data-i18n="settings.notificationsHelp">Tell me when a reply lands, a pair cycle needs my decision, or a turn fails — only while this tab is in the background.</span>
       </label>
       <div class="note" data-i18n="settings.notificationsScope">Per browser, not per room. Your browser will ask for permission the first time.</div></div>
-    <div class="fld" style="margin-top:14px"><label data-i18n="settings.projectFolder">Project folder (blank = room's own sandbox workspace)</label>
-      <div style="display:flex;gap:8px">
-        <input id="s_projdir" placeholder="e.g. D:\Projects\my-app" data-i18n-placeholder="settings.projectFolderPlaceholder" spellcheck="false" style="flex:1">
-        <button class="btn" id="s_browse" type="button" style="white-space:nowrap"><span data-picker-label data-i18n="settings.browse">Browse…</span></button>
-      </div>
-      <div class="note" data-i18n="settings.projectFolderHelp">Point this room at a real project — the agents work and read there, and pick up its CLAUDE.md / AGENTS.md automatically. Changing it resets both agents' sessions.</div></div>
+    <div class="fld project-links-field" style="margin-top:14px"><label data-i18n="settings.projectFolders">Connected projects</label>
+      <input id="s_projdir" type="hidden">
+      <div id="projectLinks" class="project-links"></div>
+      <button class="btn" id="s_browse" type="button"><span data-picker-label data-i18n="settings.addProject">Add project folder…</span></button>
+      <div class="note" data-i18n="settings.projectFoldersHelp">Save several project folders and choose one current working path. Changing the current path starts fresh agent sessions.</div></div>
     <div class="mgrid" style="margin-top:14px">
       <div class="fld"><label data-i18n="settings.defaultAgent">Default agent (first message, before any tag)</label>
         <select id="s_default"></select></div>
@@ -235,6 +239,17 @@
     <div id="toolsStatus" class="tool-status" aria-live="polite"></div>
     <div id="toolsList" class="tool-groups"></div>
     <div class="note tool-note" data-i18n="tools.clickHelp">Clicking an item only inserts a request into the composer. Review it, add the task, then send.</div>
+  </div>
+</div>
+
+<div id="usageOverlay">
+  <div class="modal usage-modal" role="dialog" aria-modal="true" aria-labelledby="usageTitle">
+    <div class="usage-head">
+      <div><h2 id="usageTitle" data-i18n="usage.title">CLI usage</h2><div class="sub"><span data-i18n="usage.subtitle">Current room providers only</span> <span class="usage-info" tabindex="0" data-i18n-title="usage.autoRefresh" title="Press Refresh to check the usage limits again.">ⓘ</span></div></div>
+      <div class="usage-actions"><button class="btn" id="usageRefresh" type="button" data-i18n="common.refresh">Refresh</button><button class="btn" id="usageClose" type="button" data-i18n="common.close">Close</button></div>
+    </div>
+    <div id="usageStatus" class="usage-status" aria-live="polite"></div>
+    <div id="usageCards" class="usage-cards"></div>
   </div>
 </div>
 

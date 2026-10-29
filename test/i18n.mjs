@@ -109,6 +109,8 @@ test("Korean UI localizes known skill descriptions without changing invocation n
   const korean = loadI18n({ language: "ko-KR" }).api;
   assert.equal(korean.toolDescription("skill-creator", "Create or update a Codex skill."), "Codex Skill을 새로 만들거나 기존 Skill을 수정");
   assert.equal(korean.toolDescription("setup-uiautomator2", "Prepare Appium UiAutomator2."), "Appium UiAutomator2 환경 준비 및 검증");
+  assert.equal(korean.toolDescription("migrate-to-shoehorn", "Migrate test files."), "테스트의 as 타입 단언을 @total-typescript/shoehorn 방식으로 변경");
+  assert.equal(korean.toolDescription("writing-for-agents", "Write for agents."), "에이전트가 빠르게 이해할 수 있는 짧고 명확한 문서 작성");
   assert.equal(korean.toolDescription("unknown-new-skill", "New upstream description"), "New upstream description");
 
   const english = loadI18n({ language: "en-US" }).api;
@@ -136,12 +138,17 @@ test("composer Skill autocomplete loads before the app and owns selection before
   assert.match(appSource, /skillAutocompleteCheck\(\)/);
   assert.match(appSource, /if \(skillAutocompleteKeydown\(e\)\) return;[\s\S]*?if \(mentionKeydown\(e\)\) return;/);
   assert.match(appSource, /item\.invokeName\s*\|\|\s*item\.name/);
+  assert.match(appSource, /\[\$\$\{seat\}:\$\{name\}\]/);
+  assert.match(appSource, /class="skill-chip"/);
 });
 
 test("settings and tools modals use wider responsive layouts without wrapping button labels", () => {
   const styles = fs.readFileSync(stylesFile, "utf8");
   assert.match(styles, /\.modal\s*\{[^}]*width:\s*min\(880px,\s*calc\(100vw - 32px\)\)/s);
   assert.match(styles, /\.tools-modal\s*\{[^}]*width:\s*min\(1120px,\s*calc\(100vw - 32px\)\)/s);
+  assert.match(styles, /\.tool-card\s*\{[^}]*padding:\s*11px 12px[^}]*margin-top:\s*8px/s);
+  assert.match(styles, /\.tool-card b\s*\{[^}]*font-size:\s*14px/s);
+  assert.match(styles, /\.tool-card span\s*\{[^}]*font-size:\s*12\.5px[^}]*line-height:\s*1\.5/s);
   assert.match(styles, /\.btn\s*\{[^}]*white-space:\s*nowrap/s);
   assert.match(styles, /@media\s*\(max-width:\s*700px\)[\s\S]*?\.mgrid,\s*\.tool-groups\s*\{\s*grid-template-columns:\s*1fr/);
 });

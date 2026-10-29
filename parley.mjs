@@ -26,6 +26,9 @@ import { relayAllowanceNote } from "./lib/budget-prompts.mjs";
 import { snapshotClientAssets } from "./lib/client-assets.mjs";
 import { claudeLoggedIn } from "./lib/claude-auth.mjs";
 import { normalizeFastMode, updateFastMode } from "./lib/fast-mode.mjs";
+import { extractSkillMessage, applySkillInvocationPrompt } from "./lib/skill-invocation.mjs";
+import { readProviderUsage } from "./lib/provider-usage.mjs";
+import { normalizeProjectDirs, projectLinksStatus } from "./lib/project-links.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -69,7 +72,7 @@ const UI_HTML = UI_SNAPSHOT.html;
 // 13: the provider-tool catalog is available and browser responses contain
 //     display metadata only. Older pages do not know this endpoint or drawer.
 // 14: the startup UI includes the version-pinned localization asset.
-const RUNTIME_PROTOCOL = "14";
+const RUNTIME_PROTOCOL = "19";
 const IS_WIN = process.platform === "win32";
 
 const IMAGE_TYPES = new Map([
@@ -494,6 +497,7 @@ function defaultConfig(seats = DEFAULT_SEATS) {
     accounting: "automatic",
     pairRounds: 0,    // review rounds per message in pair mode (0 = until the reviewer approves)
     projectDir: null, // absolute path of a real project to work in (null = room's own sandbox workspace)
+    projectDirs: [],  // saved project choices; projectDir is the one currently used as the CLI cwd
     roomNote: null,   // standing instruction prepended to every prompt (set via Settings or /note)
     timeoutMs: 900000,
     // `provider` is written first so it reads first in room.json, and it is a
@@ -1580,7 +1584,7 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   const protectedTurn = !!(discussion || readOnly);
   const sess = room.state.agents[seat].sessionRef;
   const extraArgs = checkedExtraArgs(room, seat, cfg.extraArgs);
-  const args = ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands"];
+  const args = ["--input-format", "stream-json", "--output-format", "stream-json"];
   if (sess) args.push("--conversation", sess);
   if (cfg.model) args.push("--model", cfg.model);
   if (cfg.effort) args.push("--effort", cfg.effort);
@@ -1756,6 +1760,11 @@ function loadRoom(name, seatChoice, create = false) {
   let cfgMigrated = false;
   if (fs.existsSync(cfgFile)) {
     const raw = readJSON(cfgFile); // throws on bad JSON — never clobber
+    const normalizedProjects = normalizeProjectDirs(raw.projectDirs, raw.projectDir);
+    if (JSON.stringify(raw.projectDirs || []) !== JSON.stringify(normalizedProjects)) {
+      raw.projectDirs = normalizedProjects;
+      cfgMigrated = true;
+    }
     if (!raw.accounting) { raw.accounting = "exchanges"; cfgMigrated = true; }
     // `maxHops: 0` meant "until settled" through 1.0.x. A new key makes the
     // migration idempotent: once `hopBudget` exists, a genuine zero stays zero
@@ -1779,6 +1788,7 @@ function loadRoom(name, seatChoice, create = false) {
       .map(([k, v]) => ({ id: k, provider: providerIdFor(v, k) }));
     if (seats.some(({ id, provider }) => (raw.agents[id] || {}).provider !== provider)) cfgMigrated = true;
     cfg = pruneSeats(deepMerge(defaultConfig(seats.length === 2 ? seats : DEFAULT_SEATS), raw));
+    cfg.projectDirs = normalizeProjectDirs(cfg.projectDirs, cfg.projectDir);
     cfg.hopBudget = normalizeHopBudget(cfg.hopBudget, -1);
     // A hand-edited unknown value must fail closed to Parley's room default,
     // rather than becoming an ambiguous permission state in the UI. Which
@@ -2507,11 +2517,13 @@ function roomSummary(room) {
     const spec = resolveCommand(room.cfg.agents[a].command);
     cmdStatus[a] = spec.error ? { ok: false, detail: spec.error } : { ok: true, detail: spec.via };
   }
+  const projectLinks = projectLinksStatus(room.cfg.projectDirs, room.cfg.projectDir, workDir(room));
   return {
     name: room.name,
     cfg: room.cfg,
     dir: room.dir,
     workspace: workDir(room),
+    projectLinks,
     git: gitIdentity(workDir(room)),
     lastAddressed: room.state.lastAddressed,
     seats,
@@ -3189,13 +3201,16 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
     // discussion note does: appended to the prompt, never baked into the
     // briefing, so it applies to exactly this turn.
     const noted = (p) => opts.instruction ? `${p}\n\n${opts.instruction}` : p;
+    const selectedSkill = extractSkillMessage(userTurn.text, agent);
+    const promptTurn = selectedSkill ? { ...userTurn, text: selectedSkill.text } : userTurn;
     const attemptPrompt = (dlv, ts) => {
-      const base = buildPrompt(room, delta, userTurn, providerInputs,
+      const base = buildPrompt(room, delta, promptTurn, providerInputs,
         opts.heldCount || 0, askBlock, noteBlock(room, agent, dlv), opts.heldReason || "sleep");
       const allowance = rootAllowanceNote(room, userTurn, { root: true });
-      return dlv.prefix + noted(ts.discussion
+      const assembled = dlv.prefix + noted(ts.discussion
         ? `${base}\n\n${discussionBlock(room, agent, dlv)}` : base) +
         (allowance ? `\n\n(${allowance})` : "");
+      return applySkillInvocationPrompt(providerIdOf(room, agent), selectedSkill, assembled);
     };
     let turnScope = scopeNow();
     retireOutdatedSession(room, agent, turnScope);
@@ -6977,11 +6992,50 @@ function handleNewConversation(room) {
 // a page just because the page wants a convenient tool picker.
 const TOOL_CATALOG_TTL_MS = 45_000;
 const toolCatalogCache = new Map();
+const USAGE_CACHE_TTL_MS = 5 * 60_000;
+const usageCache = new Map();
+const usagePending = new Map();
 const TOOL_COMMANDS = {
   codex: { mcp: ["mcp", "list"], plugins: ["plugin", "list", "--json"], skillDirs: [".codex"] },
   claude: { mcp: ["mcp", "list"], plugins: ["plugin", "list", "--json"], skillDirs: [".claude"] },
   gemini: { mcp: ["mcp", "list"], plugins: ["plugins", "list", "--json"], skillDirs: [".gemini", ".agy"] },
 };
+
+async function providerUsageSnapshot(room, providerId, refresh = false) {
+  const seats = seatIds(room).filter((seat) => providerIdOf(room, seat) === providerId);
+  if (!seats.length) return null;
+  const cfg = room.cfg.agents[seats[0]];
+  const key = `${providerId}:${cfg.command || providerId}`;
+  const prior = usageCache.get(key);
+  if (!refresh && prior && Date.now() - prior.at < USAGE_CACHE_TTL_MS) {
+    return { ...prior.data, seats, label: PROVIDERS[providerId].label };
+  }
+  if (usagePending.has(key)) {
+    const data = await usagePending.get(key);
+    return { ...data, seats, label: PROVIDERS[providerId].label };
+  }
+  const lookup = readProviderUsage(providerId, {
+    spec: resolveCommand(cfg.command || providerId),
+    cwd: workDir(room),
+  }).then((data) => {
+    const safe = { ...data, error: null, stale: false };
+    usageCache.set(key, { at: Date.now(), data: safe });
+    return safe;
+  }).catch((error) => {
+    const message = catalogText(error && error.message || error, 240) || "사용량 조회 실패";
+    if (prior?.data) return { ...prior.data, error: message, stale: true };
+    return { provider: providerId, checkedAt: new Date().toISOString(), windows: [], stats: [], error: message, stale: true };
+  }).finally(() => usagePending.delete(key));
+  usagePending.set(key, lookup);
+  const data = await lookup;
+  return { ...data, seats, label: PROVIDERS[providerId].label };
+}
+
+async function roomUsageSnapshot(room, refresh = false) {
+  const providers = [...new Set(seatIds(room).map((seat) => providerIdOf(room, seat)))];
+  const results = (await Promise.all(providers.map((provider) => providerUsageSnapshot(room, provider, refresh)))).filter(Boolean);
+  return { room: room.name, refreshAfterMs: USAGE_CACHE_TTL_MS, providers: results };
+}
 
 function catalogText(value, max = 120) {
   return String(value || "")
@@ -7321,6 +7375,9 @@ function roomsWithModes() {
         name: n,
         mode: cfg.mode || "talk",
         linked: !!cfg.projectDir,
+        projectCount: normalizeProjectDirs(cfg.projectDirs, cfg.projectDir).length,
+        projectMismatch: projectLinksStatus(cfg.projectDirs, cfg.projectDir,
+          cfg.projectDir || path.join(ROOT, n, "workspace")).mismatch,
         seats: seats.length ? seats : [...DEFAULT_SEATS],
         // The sidebar draws a seat avatar per room, and it has no summary to
         // resolve a renamed seat against.
@@ -7375,6 +7432,11 @@ const server = http.createServer(async (req, res) => {
 
     if (route === "GET /api/rooms") return json(res, 200, { rooms: roomsWithModes(), providers: providerCatalog() });
 
+    if (route === "GET /api/usage") {
+      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      return json(res, 200, await roomUsageSnapshot(room, url.searchParams.get("refresh") === "1"));
+    }
+
     if (route === "GET /api/tools") {
       const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
       const provider = String(url.searchParams.get("provider") || "").toLowerCase();
@@ -7420,7 +7482,11 @@ const server = http.createServer(async (req, res) => {
         }
       }
       const created = loadRoom(roomName, picked, true);
-      if (linked) { created.cfg.projectDir = linked; saveConfig(created); }
+      if (linked) {
+        created.cfg.projectDir = linked;
+        created.cfg.projectDirs = normalizeProjectDirs(created.cfg.projectDirs, linked);
+        saveConfig(created);
+      }
       return json(res, 200, { ok: true, rooms: roomsWithModes() });
     }
 
@@ -7778,6 +7844,12 @@ const server = http.createServer(async (req, res) => {
       } else {
         next.projectDir = null;
       }
+      next.projectDirs = normalizeProjectDirs(next.projectDirs, next.projectDir);
+      for (const projectPath of next.projectDirs) {
+        let isDir = false;
+        try { isDir = fs.statSync(projectPath).isDirectory(); } catch { /* missing */ }
+        if (!isDir) return json(res, 400, { error: `Saved project folder not found (or not a directory): ${projectPath}` });
+      }
 
       // Settings fixed at native-session creation must not change underneath a
       // running turn, which could otherwise finish later and reattach the old
@@ -7981,31 +8053,11 @@ const server = http.createServer(async (req, res) => {
       const { room: name, what } = await readBody(req);
       const room = loadRoom(name || "default");
       const target = what === "room" ? room.dir : workDir(room);
+      if (!fs.existsSync(target)) throw Object.assign(new Error(`folder not found: ${target}`), { status: 404 });
       if (IS_WIN) {
-        // Reuse the folder's existing Explorer window if there is one, else
-        // open it — then wait for the window and explicitly bring it forward,
-        // because a window opened by a background process lands behind the
-        // browser. `Start-Process -FilePath` takes the path as one argument,
-        // so folder names with spaces survive; -EncodedCommand avoids quoting
-        // problems in the script itself.
-        const script = `
-$ErrorActionPreference = 'SilentlyContinue'
-$p = '${target.replace(/'/g, "''")}'
-$u = ([uri]$p).AbsoluteUri
-$sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);'
-$W = Add-Type -MemberDefinition $sig -Name PW -Namespace Parley -PassThru
-function Find-Win { $sh = New-Object -ComObject Shell.Application; @($sh.Windows() | Where-Object { $_.LocationURL -eq $u })[0] }
-$w = Find-Win
-if (-not $w) {
-  Start-Process -FilePath $p
-  for ($i = 0; $i -lt 20 -and -not $w; $i++) { Start-Sleep -Milliseconds 150; $w = Find-Win }
-}
-if ($w) { $h = [IntPtr]$w.HWND; [void]$W::ShowWindow($h, 9); [void]$W::SetForegroundWindow($h) }
-`;
-        const enc = Buffer.from(script, "utf16le").toString("base64");
-        await launchDetached("powershell.exe",
-          ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-EncodedCommand", enc],
-          { windowsHide: true });
+        // Explorer is the visible program the user asked for. The previous
+        // PowerShell helper swallowed every error and still returned success.
+        await launchDetached(path.join(process.env.WINDIR || "C:\\Windows", "explorer.exe"), [target]);
       } else {
         const opener = process.platform === "darwin" ? "open" : "xdg-open";
         await launchDetached(opener, [target]);

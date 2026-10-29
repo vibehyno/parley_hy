@@ -60,12 +60,15 @@ test("the composer exposes a targetable auto-send card whose edit action restore
   assert.match(html, /id="adjustDraftPreview"/);
   assert.match(html, /id="adjustDraftEdit"/);
   assert.match(html, /id="adjustDraftDelete"/);
+  assert.match(html, /id="adjustDraftSendNow"/);
   assert.ok(html.indexOf("composer-adjustment.js") < html.indexOf("app.js"));
   assert.match(app, /mode:\s*"queue"/);
   assert.match(app, /api\("\/api\/ask", body\)/);
   assert.match(app, /ComposerAdjustment\.workFinished/);
   assert.match(app, /input\.value = draft\.text/);
+  assert.match(app, /adjustDraftSendNow[\s\S]{0,500}sendAdjustmentDraft\(\)/);
   assert.doesNotMatch(app, /sendAdjustmentDraft[\s\S]{0,1800}mode:\s*"stop"/);
   assert.match(i18n, /"adjust\.edit": "편집"/);
+  assert.match(i18n, /"adjust\.sendNow": "중단 없이 다음 작업으로 전달"/);
   assert.match(i18n, /현재 진행 중인 작업이 끝난 후 자동으로 전달됩니다/);
 });

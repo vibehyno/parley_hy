@@ -64,6 +64,7 @@ const state = {
   eventVersion: 0,   // any newer SSE event makes a reconnect snapshot stale for live UI state
   resyncVersion: 0,
   toolCatalogs: {},  // provider -> safe display metadata from /api/tools
+  usage: null,       // last /api/usage snapshot from open, Refresh, or one locked hover entry
   adjustDraft: null, // one editable instruction waiting to join the active work
 };
 
@@ -82,7 +83,7 @@ function toast(msg, isErr) {
 // This blocks blind/cross-origin requests; it is not a secret from local
 // processes, which can fetch the public page and read the embedded token.
 const TOKEN = (document.querySelector('meta[name="parley-token"]') || {}).content || "";
-const REQUIRED_RUNTIME_PROTOCOL = "14";
+const REQUIRED_RUNTIME_PROTOCOL = "19";
 const PAGE_RUNTIME_PROTOCOL = (document.querySelector('meta[name="parley-runtime-protocol"]') || {}).content || "";
 const withToken = (url) => url + (url.includes("?") ? "&" : "?") +
   "token=" + encodeURIComponent(TOKEN) + "&protocol=" + encodeURIComponent(REQUIRED_RUNTIME_PROTOCOL);
@@ -422,6 +423,8 @@ function renderMD(src) {
     return SENT_A + (blocks.length - 1) + SENT_B;
   });
   let t = esc(src);
+  t = t.replace(/\[\$([a-z][a-z0-9_-]*):([a-z0-9][a-z0-9:_-]*)\]/gi,
+    '<span class="skill-chip" title="$1 모델에서 $2 Skill 사용"><span>$1</span>$2</span>');
   t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
   t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/g, "$1<em>$2</em>");
@@ -2206,11 +2209,15 @@ function applySummary(s) {
   }
   // say what this room actually works in, rather than a vague "workspace"
   const wsBtn = $("openWs");
+  const projectMismatch = !!s.projectLinks?.mismatch;
   $("openWsLabel").textContent = s.cfg.projectDir
     ? s.cfg.projectDir.split(/[\\/]/).filter(Boolean).pop()
     : t("workspace.sandbox");
+  if (projectMismatch) $("openWsLabel").textContent += " ⚠";
   wsBtn.title = s.cfg.projectDir
-    ? t("workspace.linkedTitle", { path: s.cfg.projectDir })
+    ? (projectMismatch
+      ? t("workspace.mismatchTitle", { path: s.cfg.projectDir, runtime: s.projectLinks?.runtime || s.workspace })
+      : t("workspace.linkedTitle", { path: s.cfg.projectDir }))
     : t("workspace.sandboxTitle", { path: s.workspace });
   renderGitId(s.git);
   // A tab that loads mid-run knows each run's phase and start time from
@@ -3358,6 +3365,8 @@ async function refreshRooms() {
     const name = typeof r === "string" ? r : r.name;
     const mode = typeof r === "string" ? "talk" : r.mode;
     const linked = typeof r === "string" ? false : r.linked;
+    const projectCount = typeof r === "string" ? 0 : Number(r.projectCount) || 0;
+    const projectMismatch = typeof r === "string" ? false : !!r.projectMismatch;
     const seats = (typeof r === "string" ? null : r.seats) || [];
     const nonDefault = seats.length && seats.join(",") !== "claude,codex";
     // The listing carries each seat's provider, because a room in the sidebar
@@ -3379,7 +3388,7 @@ async function refreshRooms() {
     row.innerHTML =
       `<button type="button" class="ropen"><span class="dot"></span>` +
       `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
-      `<span class="rmeta">${seatTag}${linked ? "📁" : ""}${mode === "work" ? "🔨" : ""}</span></button>` +
+      `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : (linked ? `📁${projectCount > 1 ? projectCount : ""}` : "")}${mode === "work" ? "🔨" : ""}</span></button>` +
       `<span class="racts"><button type="button" class="ract" data-act="rename" title="Rename room" aria-label="Rename ${esc(name)}">✎</button>` +
       // the default room is the app's fallback; it can be emptied, not removed
       (name === "default" ? "" : `<button type="button" class="ract del" data-act="delete" title="Delete room" aria-label="Delete ${esc(name)}">✕</button>`) +
@@ -3620,22 +3629,25 @@ function resolvedAdjustmentTarget(draft) {
 function renderAdjustmentDraft() {
   const draft = state.adjustDraft;
   const wrap = $("adjustDraft");
+  const draftSending = !!(draft && (draft.autoSending || draft.sendingNow));
   wrap.hidden = !draft;
   $("input").disabled = !!draft;
   $("attachBtn").disabled = !!draft;
   $("sendBtn").disabled = !!draft || state.sending;
-  wrap.classList.toggle("sending", !!(draft && draft.autoSending));
-  $("adjustDraftEdit").disabled = !!(draft && draft.autoSending);
-  $("adjustDraftDelete").disabled = state.sending;
+  wrap.classList.toggle("sending", draftSending);
+  $("adjustDraftSendNow").disabled = draftSending || state.sending;
+  $("adjustDraftEdit").disabled = draftSending;
+  $("adjustDraftDelete").disabled = draftSending || state.sending;
   if (!draft) return;
-  $("adjustDraftStatus").textContent = t(draft.autoSending ? "adjust.sending" : "adjust.waiting");
+  $("adjustDraftStatus").textContent = t(draft.sendingNow
+    ? "adjust.sendingNow" : draft.autoSending ? "adjust.sending" : "adjust.waiting");
   $("adjustDraftPreview").textContent = draft.text;
   const seats = state.summary?.seats || [];
   const options = ["auto", ...seats, ...(seats.length > 1 ? ["both"] : [])];
   $("adjustDraftTargets").innerHTML = options.map((target) => {
     const label = target === "auto" ? t("adjust.auto") : target === "both" ? t("adjust.both") : seatLabel(target);
     return `<button type="button" data-adjust-target="${esc(target)}" class="${draft.targetMode === target ? "active" : ""}"` +
-      `${draft.autoSending ? " disabled" : ""}>${esc(label)}</button>`;
+      `${draftSending ? " disabled" : ""}>${esc(label)}</button>`;
   }).join("");
 }
 
@@ -3660,6 +3672,7 @@ function stageAdjustment(text, route) {
     text,
     hopChoice: state.hopChoice,
     autoSending: false,
+    sendingNow: false,
   };
   input.value = "";
   autosize();
@@ -3677,7 +3690,7 @@ function scheduleAdjustmentDelivery() {
   queueMicrotask(() => {
     adjustmentDeliveryQueued = false;
     const draft = state.adjustDraft;
-    if (!draft || draft.autoSending || draft.room !== state.room || state.sending) return;
+    if (!draft || draft.autoSending || draft.sendingNow || draft.room !== state.room || state.sending) return;
     if (!ComposerAdjustment.workFinished(state.summary, draft.waitRunIds)) return;
     draft.autoSending = true;
     renderAdjustmentDraft();
@@ -3707,6 +3720,7 @@ async function sendAdjustmentDraft() {
       : t("adjust.added"));
   } catch (error) {
     draft.autoSending = false;
+    draft.sendingNow = false;
     toast(error.message, true);
   } finally {
     state.sending = false;
@@ -3863,13 +3877,20 @@ async function send() {
 $("sendBtn").onclick = send;
 $("adjustDraftTargets").addEventListener("click", (event) => {
   const button = event.target.closest("[data-adjust-target]");
-  if (!button || !state.adjustDraft || state.adjustDraft.autoSending) return;
+  if (!button || !state.adjustDraft || state.adjustDraft.autoSending || state.adjustDraft.sendingNow) return;
   state.adjustDraft.targetMode = button.dataset.adjustTarget;
   renderAdjustmentDraft();
 });
+$("adjustDraftSendNow").onclick = () => {
+  const draft = state.adjustDraft;
+  if (!draft || draft.autoSending || draft.sendingNow || state.sending) return;
+  draft.sendingNow = true;
+  renderAdjustmentDraft();
+  sendAdjustmentDraft();
+};
 $("adjustDraftEdit").onclick = () => {
   const draft = state.adjustDraft;
-  if (!draft || draft.autoSending) return;
+  if (!draft || draft.autoSending || draft.sendingNow) return;
   clearAdjustmentDraft();
   input.value = draft.text;
   state.chipRevision++;
@@ -4285,9 +4306,11 @@ async function browseFolder(start, btn) {
 $("s_browse").onclick = async () => {
   const pick = ++settingsPick;
   const openedFor = state.room;
-  const picked = await browseFolder($("s_projdir").value.trim() || null, $("s_browse"));
+  const picked = await browseFolder(settingsActiveProject, $("s_browse"));
   if (pick !== settingsPick || state.room !== openedFor || !picked) return;
-  $("s_projdir").value = picked;
+  if (!settingsProjectDirs.some((value) => settingsPathKey(value) === settingsPathKey(picked))) settingsProjectDirs.push(picked);
+  settingsActiveProject = picked;
+  renderSettingsProjects();
 };
 $("openWs").onclick = () => api("/api/open", { room: state.room, what: "workspace" })
   .then(() => toast(t("folder.workspaceOpened")))
@@ -4537,7 +4560,9 @@ async function loadToolCatalog(refresh = false, health = false) {
 }
 function insertToolPrompt(seat, kind, name) {
   const phrases = { skill: "skill", "MCP server": "MCP server", plugin: "plugin" };
-  const phrase = `@${seat} Use the "${name}" ${phrases[kind] || kind} to `;
+  const phrase = kind === "skill"
+    ? `@${seat} [$${seat}:${name}] `
+    : `@${seat} Use the "${name}" ${phrases[kind] || kind} to `;
   const input = $("input");
   input.value = input.value.trim() ? `${input.value.trimEnd()}\n${phrase}` : phrase;
   closeTools();
@@ -4580,11 +4605,230 @@ $("toolsList").addEventListener("click", (e) => {
 $("toolsOverlay").addEventListener("click", (e) => { if (e.target === $("toolsOverlay")) closeTools(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTools(); });
 
+// ---- provider usage ----
+// Hover and dialog open share one five-minute client cache. Refresh is the only
+// action that bypasses it. Concurrent triggers reuse the same in-flight lookup.
+const USAGE_COLORS = { codex: "var(--codex)", claude: "var(--claude)", gemini: "#8ab4f8" };
+const USAGE_CACHE_MS = 5 * 60_000;
+let usageOpener = null;
+let usageRequest = null;
+function usageColor(provider) { return USAGE_COLORS[provider] || "var(--user)"; }
+function usageCheckedAt(snapshot = state.usage) {
+  const times = (snapshot?.providers || []).map((provider) => Date.parse(provider.checkedAt)).filter(Number.isFinite);
+  return times.length ? Math.max(...times) : null;
+}
+function usageAgo(value) {
+  const then = typeof value === "number" ? value : Date.parse(value);
+  if (!Number.isFinite(then)) return tr("usage.notChecked", "Not checked yet");
+  const minutes = Math.max(0, Math.floor((Date.now() - then) / 60_000));
+  if (minutes < 1) return tr("usage.checkedNow", "Checked just now");
+  return tr("usage.checkedMinutes", "Checked {minutes} min ago", { minutes });
+}
+function usageReset(value, resetLabel = "") {
+  if (resetLabel) {
+    let label = resetLabel;
+    if (currentLocale() === "ko") {
+      const months = { Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6, Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12 };
+      const match = /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),\s+(\d{1,2})(?::(\d{2}))?(am|pm)\s+\(([^)]+)\)$/i.exec(resetLabel);
+      if (match) label = `${months[match[1][0].toUpperCase() + match[1].slice(1).toLowerCase()]}월 ${Number(match[2])}일 ${match[5].toLowerCase() === "am" ? "오전" : "오후"} ${Number(match[3])}:${match[4] || "00"} (${match[6]})`;
+    }
+    return tr("usage.resetsAt", "Resets {date}", { date: label });
+  }
+  if (value === null || value === undefined || value === "") return tr("usage.resetUnknown", "Reset time unavailable");
+  const date = new Date(typeof value === "number" ? value * 1000 : value);
+  if (!Number.isFinite(date.getTime())) return tr("usage.resetUnknown", "Reset time unavailable");
+  return tr("usage.resetsAt", "Resets {date}", {
+    date: new Intl.DateTimeFormat(currentLocale() === "ko" ? "ko-KR" : "en", {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    }).format(date),
+  });
+}
+function usageRing(percent, provider) {
+  const safe = Math.max(0, Math.min(100, Number(percent) || 0));
+  const label = `${Math.round(safe)}%`;
+  return `<div class="usage-ring" style="--pct:${safe};--ring-color:${usageColor(provider)}" role="img" aria-label="${esc(tr("usage.remainingAria", "{percent}% remaining", { percent: Math.round(safe) }))}"><span>${label}</span></div>`;
+}
+function usageWindowLabel(window) {
+  if (window.id === "claude:session") return tr("usage.windowSession", "Session limit");
+  if (window.id === "claude:week") return tr("usage.windowWeekly", "Weekly limit");
+  const minutes = Number(window.windowDurationMins);
+  if (minutes === 300) return tr("usage.window5h", "5-hour limit");
+  if (minutes === 1_440) return tr("usage.windowDaily", "Daily limit");
+  if (minutes === 10_080) return tr("usage.windowWeekly", "Weekly limit");
+  return window.label || tr("usage.windowOther", "Usage limit");
+}
+function usageWindowRows(provider) {
+  return (provider.windows || []).map((window) => {
+    const label = usageWindowLabel(window);
+    return `<div class="usage-window">` +
+    usageRing(window.remainingPercent, provider.provider) +
+    `<div class="usage-window-copy"><b>${esc(window.group && window.group !== provider.label ? `${window.group} · ${label}` : label)}</b>` +
+    `<span>${esc(tr("usage.remaining", "{percent}% remaining", { percent: Math.round(window.remainingPercent) }))}</span>` +
+    `<span>${esc(usageReset(window.resetsAt, window.resetLabel))}</span></div></div>`;
+  }).join("");
+}
+function usageStats(provider) {
+  if (!(provider.stats || []).length) return "";
+  return `<div class="usage-section-title">${esc(tr("usage.activity", "Requests and sessions"))} ` +
+    `<span class="usage-info" tabindex="0" title="${esc(tr("usage.claudeStatsScope", "Claude request/session contribution details are approximate and based on sessions on this machine."))}">ⓘ</span></div>` +
+    `<div class="usage-stat-grid">${provider.stats.map((stat) => `<div class="usage-stat"><b>${esc(stat.label)}</b>` +
+    `<span>${esc(tr("usage.requestsSessions", "{requests} requests · {sessions} sessions", { requests: stat.requests, sessions: stat.sessions }))}</span></div>`).join("")}</div>`;
+}
+function usageTokenStats(provider) {
+  const total = { input: 0, out: 0, reasoning: 0, cacheRead: 0, replies: 0 };
+  for (const seat of provider.seats || []) {
+    const usage = seatUsage(seat);
+    for (const key of Object.keys(total)) total[key] += usage[key] || 0;
+  }
+  if (!total.replies) return `<div class="note">${esc(tr("usage.noConversationTokens", "No token usage has been reported for this provider in the current conversation."))}</div>`;
+  const items = [
+    total.input ? [tr("usage.inputTokens", "Input"), total.input] : null,
+    [tr("usage.outputTokens", "Output"), total.out],
+    total.reasoning ? [tr("usage.reasoningTokens", "Reasoning"), total.reasoning] : null,
+    total.cacheRead ? [tr("usage.cacheReadTokens", "Cache read"), total.cacheRead] : null,
+  ].filter(Boolean);
+  return `<div class="usage-section-title">${esc(tr("usage.conversationTokens", "Current conversation tokens"))} ` +
+    `<span class="usage-info" tabindex="0" title="${esc(tr("usage.tokenScope", "Sum of token metadata reported by this room's replies; not the account-wide total."))}">ⓘ</span></div>` +
+    `<div class="usage-token-grid">${items.map(([label, value]) => `<div class="usage-token"><b>${Number(value).toLocaleString()}</b><span>${esc(label)}</span></div>`).join("")}</div>`;
+}
+function renderUsage() {
+  const snapshot = state.usage;
+  if (!snapshot || snapshot.room !== state.room) {
+    $("usageStatus").textContent = tr("usage.notChecked", "Not checked yet");
+    $("usageCards").innerHTML = `<div class="tool-empty">${esc(tr("usage.openToCheck", "Open Usage to check the current room."))}</div>`;
+    renderUsageHover();
+    return;
+  }
+  $("usageStatus").textContent = usageAgo(usageCheckedAt(snapshot));
+  $("usageCards").innerHTML = (snapshot.providers || []).map((provider) => {
+    const stale = provider.stale ? ` · ${tr("usage.stale", "previous result")}` : "";
+    const content = usageStats(provider) + usageTokenStats(provider) + usageWindowRows(provider) || `<div class="tool-empty">${esc(tr("usage.noData", "No usage data returned."))}</div>`;
+    return `<section class="usage-provider"><div class="usage-provider-head"><h3 style="color:${usageColor(provider.provider)}">${esc(provider.label || provider.provider)}</h3>` +
+      `<span>${esc((provider.source || "CLI") + stale)}</span></div>${provider.error ? `<div class="usage-error">${esc(provider.error)}</div>` : ""}${content}</section>`;
+  }).join("") || `<div class="tool-empty">${esc(tr("usage.noProviders", "No providers are seated in this room."))}</div>`;
+  renderUsageHover();
+}
+function renderUsageHover() {
+  const snapshot = state.usage;
+  if (!snapshot || snapshot.room !== state.room) {
+    $("usageHover").innerHTML = `<div class="usage-hover-head"><b>${esc(tr("usage.title", "CLI usage"))}</b><span>${esc(tr("usage.notChecked", "Not checked yet"))}</span></div>` +
+      `<div class="tool-empty">${esc(tr("usage.openToCheck", "Open Usage to check the current room."))}</div>`;
+    return;
+  }
+  const rows = (snapshot.providers || []).map((provider) => {
+    const first = (provider.windows || [])[0];
+    if (first) return `<div class="usage-hover-row">${usageRing(first.remainingPercent, provider.provider)}<span>${esc(provider.label || provider.provider)}</span></div>`;
+    const stat = (provider.stats || [])[0];
+    if (stat) return `<div class="usage-hover-row"><span>${esc(provider.label || provider.provider)}<br>${esc(tr("usage.requestsShort", "{requests} requests", { requests: stat.requests }))}</span></div>`;
+    return `<div class="usage-hover-row"><span>${esc(provider.label || provider.provider)} · ${esc(tr("usage.unavailable", "unavailable"))}</span></div>`;
+  }).join("");
+  $("usageHover").innerHTML = `<div class="usage-hover-head"><b>${esc(tr("usage.title", "CLI usage"))}</b><span>${esc(usageAgo(usageCheckedAt(snapshot)))}</span></div>` +
+    `<div class="usage-hover-rows">${rows}</div>`;
+}
+function usageIsFresh(room) {
+  if (!state.usage || state.usage.room !== room) return false;
+  const checkedAt = usageCheckedAt(state.usage);
+  return Number.isFinite(checkedAt) && Date.now() - checkedAt < USAGE_CACHE_MS;
+}
+async function loadUsage(force = false) {
+  const room = state.room;
+  if (!force && usageIsFresh(room)) {
+    renderUsage();
+    return state.usage;
+  }
+  if (usageRequest?.room === room) return usageRequest.promise;
+  $("usageRefresh").disabled = true;
+  $("usageStatus").textContent = tr("usage.loading", "Checking CLI usage…");
+  if (!state.usage || state.usage.room !== room) $("usageCards").innerHTML = "";
+  const pending = (async () => {
+    const params = new URLSearchParams({ room });
+    params.set("refresh", "1");
+    const snapshot = await api(`/api/usage?${params}`);
+    if (state.room !== room) return snapshot;
+    state.usage = snapshot;
+    renderUsage();
+    return snapshot;
+  })();
+  usageRequest = { room, promise: pending };
+  try {
+    return await pending;
+  } catch (error) {
+    if (state.room === room) {
+      $("usageStatus").textContent = error.message;
+      if (!state.usage || state.usage.room !== room) $("usageCards").innerHTML = `<div class="usage-error">${esc(error.message)}</div>`;
+    }
+  } finally {
+    if (usageRequest?.promise === pending) usageRequest = null;
+    if (state.room === room) $("usageRefresh").disabled = false;
+  }
+}
+function openUsage() {
+  usageOpener = document.activeElement;
+  $("usageOverlay").classList.add("open");
+  loadUsage();
+}
+function closeUsage() {
+  $("usageOverlay").classList.remove("open");
+  renderUsageHover();
+  if (usageOpener && document.contains(usageOpener)) usageOpener.focus();
+  usageOpener = null;
+}
+$("usageBtn").onclick = openUsage;
+$("usageClose").onclick = closeUsage;
+$("usageRefresh").onclick = () => loadUsage(true);
+$("usageWrap").addEventListener("mouseenter", () => {
+  if ($("usageOverlay").classList.contains("open")) return;
+  loadUsage();
+});
+$("usageOverlay").addEventListener("click", (e) => { if (e.target === $("usageOverlay")) closeUsage(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUsage(); });
+renderUsageHover();
+
 // The folder dialog is not modal to this page, so Settings can be closed,
 // saved, or pointed at a different room while it is still open. Every one of
 // those retires the stamp, and a result that comes back against a retired stamp
 // is dropped rather than written into whatever room is on screen by then.
 let settingsPick = 0;
+let settingsProjectDirs = [];
+let settingsActiveProject = null;
+function settingsPathKey(value) { return String(value || "").replace(/[\\/]+$/, "").toLowerCase(); }
+function renderSettingsProjects() {
+  const activeKey = settingsPathKey(settingsActiveProject);
+  $("s_projdir").value = settingsActiveProject || "";
+  if (!settingsProjectDirs.length) {
+    $("projectLinks").innerHTML = `<div class="project-link-empty">${esc(tr("settings.projectSandbox", "No connected project — using this room's sandbox workspace."))}</div>`;
+    return;
+  }
+  const knownLinks = state.summary?.projectLinks?.links || [];
+  $("projectLinks").innerHTML = settingsProjectDirs.map((projectPath) => {
+    const key = settingsPathKey(projectPath);
+    const current = key === activeKey;
+    const known = knownLinks.find((link) => settingsPathKey(link.path) === key);
+    const missing = known && !known.exists;
+    const mismatch = current && settingsPathKey(state.summary?.cfg?.projectDir) === key && !!state.summary?.projectLinks?.mismatch;
+    const status = missing ? tr("settings.projectMissing", "Path not found")
+      : mismatch ? tr("settings.projectMismatch", "Current path mismatch")
+        : current ? tr("settings.projectCurrent", "Current working path")
+          : tr("settings.projectSaved", "Connected · not current");
+    const statusClass = missing || mismatch ? " warn" : current ? " current" : "";
+    const name = projectPath.split(/[\\/]/).filter(Boolean).pop() || projectPath;
+    return `<div class="project-link-row${current ? " active" : ""}" data-project-path="${esc(projectPath)}">` +
+      `<div class="project-link-copy"><b>${esc(name)}</b><span title="${esc(projectPath)}">${esc(projectPath)}</span><em class="project-link-status${statusClass}">${esc(status)}</em></div>` +
+      `<div class="project-link-actions">${current ? "" : `<button type="button" class="btn" data-project-use>${esc(tr("settings.projectUse", "Use"))}</button>`}` +
+      `<button type="button" class="btn danger" data-project-remove>${esc(tr("settings.projectRemove", "Remove"))}</button></div></div>`;
+  }).join("");
+}
+$("projectLinks").addEventListener("click", (event) => {
+  const row = event.target.closest("[data-project-path]");
+  if (!row) return;
+  const projectPath = row.dataset.projectPath;
+  if (event.target.closest("[data-project-use]")) settingsActiveProject = projectPath;
+  else if (event.target.closest("[data-project-remove]")) {
+    settingsProjectDirs = settingsProjectDirs.filter((value) => settingsPathKey(value) !== settingsPathKey(projectPath));
+    if (settingsPathKey(settingsActiveProject) === settingsPathKey(projectPath)) settingsActiveProject = settingsProjectDirs[0] || null;
+  } else return;
+  renderSettingsProjects();
+});
 function retireSettingsPick() { settingsPick++; }
 function closeSettings() {
   retireSettingsPick();
@@ -4602,7 +4846,10 @@ function openSettings() {
   $("mDelete").hidden = s.name === "default"; // the fallback room can't be removed
   renderSeatCards(s);
   $("s_notify").checked = notifyEnabled();
-  $("s_projdir").value = s.cfg.projectDir || "";
+  settingsProjectDirs = (s.projectLinks?.links || []).map((link) => link.path);
+  if (!settingsProjectDirs.length) settingsProjectDirs = [...(s.cfg.projectDirs || [])];
+  settingsActiveProject = s.cfg.projectDir || null;
+  renderSettingsProjects();
   $("s_roomnote").value = s.cfg.roomNote || "";
   $("s_default").innerHTML = s.seats.map((x) => `<option>${esc(x)}</option>`).join("");
   $("s_default").value = s.cfg.defaultAgent || s.seats[0];
@@ -4644,6 +4891,8 @@ function refreshLocalizedUi() {
     const catalog = state.toolCatalogs[`${state.room}:${toolsProvider}`];
     if (catalog) renderToolCatalog(catalog);
   }
+  if ($("overlay").classList.contains("open")) renderSettingsProjects();
+  renderUsage();
 }
 $("s_locale").onchange = () => {
   setLocale($("s_locale").value);
@@ -4703,6 +4952,7 @@ $("mSave").onclick = async () => {
     accounting: $("s_accounting").value,
     pairRounds: Math.min(99, Math.max(0, Number($("s_pairrounds").value) || 0)),
     projectDir: $("s_projdir").value.trim() || null,
+    projectDirs: [...settingsProjectDirs],
     roomNote: $("s_roomnote").value.trim() || null,
     agents,
   };
