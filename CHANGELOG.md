@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.4.5 — 2026-10-29
+
+- Added one-time setup via `setupParley.cmd` or `npm run setup` to register the global command and Windows user PATH.
+- Added `parley start / stop / restart / status` for background server management from any directory.
+- Verify server identity, prevent duplicate instances, refuse shutdown during active or queued work, and preserve room data.
+- Reorganized the basic guide by task with compact tables and collapsible details.
+
 ## 1.4.4 — 2026-10-29
 
 - Kept room settings in the left sidebar and removed the duplicate top-right settings button.

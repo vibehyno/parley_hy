@@ -1,6 +1,6 @@
 {
   "name": "parley-room",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "private": false,
   "description": "Parley HY - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
@@ -11,6 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "setup": "node lib/install-command.mjs",
     "start": "node parley.mjs",
     "test": "node test/smoke.mjs",
     "test:smoke": "node test/smoke.mjs",
@@ -44,6 +45,7 @@
     "chat"
   ],
   "files": [
+    "setupParley.cmd",
     "parley.mjs",
     "lib/",
     "ui/",

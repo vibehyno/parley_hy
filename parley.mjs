@@ -32,6 +32,7 @@ import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive } from "./lib/conversation-archives.mjs";
+import { claimService, serviceCommand } from "./lib/service-control.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -115,6 +116,10 @@ const MAX_CLI_LINE_BYTES = 20_000_000;
 // ---------------------------------------------------------------- CLI args
 
 const argv = process.argv.slice(2);
+if (["start", "stop", "restart", "status"].includes(argv[0])) {
+  try { await serviceCommand(argv[0], argv.slice(1), fileURLToPath(import.meta.url)); }
+  catch (error) { console.error(error.message); process.exitCode = 1; }
+} else {
 function argValue(flag) {
   const i = argv.indexOf(flag);
   return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
@@ -134,6 +139,12 @@ if (argv.includes("--help") || argv.includes("-h")) {
   console.log(`Parley HY — a shared chat room for you, Claude, Codex and AGY.
 
 Usage: parley [--port N] [--root DIR] [--no-open] [--version]
+
+  parley start    백그라운드 실행
+  parley stop     대화·설정을 유지하며 종료 (작업 중이면 거부)
+  parley restart  서버 재시작
+  parley status   실행 상태 확인
+  npm run setup  전역 명령 및 사용자 PATH 등록 (설치 폴더에서 최초 1회)
 
   --port N     Port to serve the UI on (default 4141, auto-increments if busy;
                0 asks the OS for any free port)
@@ -156,6 +167,11 @@ if (!argValue("--root") && !fs.existsSync(defaultRoot) && fs.existsSync(legacyRo
 }
 const ROOT = path.resolve(argValue("--root") || defaultRoot);
 const NO_OPEN = argv.includes("--no-open");
+let service;
+try { service = claimService(ROOT); }
+catch (error) { console.error(error.message); process.exit(1); }
+let serviceStopping = false;
+const SERVICE_VERSION = packageVersion();
 
 // Blind or cross-origin browser requests to this port could spend subscriptions
 // and, in a linked work room, drive writes. A per-session token plus exact
@@ -7777,6 +7793,22 @@ const server = http.createServer(async (req, res) => {
       return json(res, 403, { error: "forbidden — the Parley API needs the session token from its own page" });
     }
 
+    if (serviceStopping) return json(res, 503, { error: "Parley 종료 중입니다." });
+    if (route === "GET /api/service/status") {
+      return json(res, 200, { ...service.info, version: SERVICE_VERSION,
+        busy: [...rooms.values()].some((room) => room.busy.size || room.exchanges > 0 || room.pairActive || queueSize(room)) });
+    }
+    if (route === "POST /api/service/stop") {
+      const body = await readBody(req);
+      if (body.instance !== service.info.instance) return json(res, 409, { error: "서버 정보가 변경되었습니다. 다시 확인하세요." });
+      if (updateApplying || [...rooms.values()].some((room) => room.busy.size || room.exchanges > 0 || room.pairActive || queueSize(room))) {
+        return json(res, 409, { error: "진행 중이거나 대기 중인 작업이 있습니다. 작업 완료 또는 화면에서 작업 중지 후 다시 실행하세요." });
+      }
+      serviceStopping = true;
+      res.once("finish", () => setImmediate(shutdown));
+      return json(res, 200, { ok: true });
+    }
+
     if (route === "GET /api/rooms") return json(res, 200, { rooms: roomsWithModes(), providers: providerCatalog() });
 
     if (route === "GET /api/update/status") {
@@ -8561,8 +8593,10 @@ function listen(attempt = 0) {
   server.listen(port, "127.0.0.1", () => {
     const u = `http://127.0.0.1:${server.address().port}`;
     loadRoom("default", undefined, true); // bootstrap: always somewhere to land
+    service.ready(server.address().port);
     console.log(`\n  Parley HY ${packageVersion()} is running\n\n  UI:     ${u}\n  Rooms:  ${ROOT}\n\n  Ctrl+C to quit.\n`);
     if (!NO_OPEN) openBrowser(u);
   });
 }
 listen();
+}
