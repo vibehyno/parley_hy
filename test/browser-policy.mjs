@@ -3,7 +3,7 @@ import { test, expect, createRoom, send, idle } from "./browser-fixture.mjs";
 test("strict accounting switch, literal projections, failed outcome and later receipt link", async ({ app, server }) => {
   await createRoom(app, server, "strict-ui");
   await expect(app.locator("#hopBtnLabel")).toContainText("Extra exchanges");
-  await app.locator("#settingsBtn").click();
+  await app.locator("#settingsBtn2").click();
   await expect(app.locator('#s_accounting option[value="exchanges"]')).toBeDisabled();
   await app.locator("#s_accounting").selectOption("automatic");
   await app.locator("#s_hopbudget").fill("1");
@@ -11,7 +11,7 @@ test("strict accounting switch, literal projections, failed outcome and later re
   await expect(app.locator("#hopBtnLabel")).toContainText("Automatic turns: Room (1)");
   await expect(app.locator("#hopAccountingNote")).toContainText("Every automatic start counts");
   await expect(app.locator("#hopAccountingNote")).not.toContainText("request and its free answer return");
-  await app.locator("#settingsBtn").click();
+  await app.locator("#settingsBtn2").click();
   await expect(app.locator('#s_accounting option[value="exchanges"]')).toHaveCount(0);
   await app.locator("#mCancel").click();
   await app.locator("#input").fill("@both compare");

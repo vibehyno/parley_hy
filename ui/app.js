@@ -3530,9 +3530,9 @@ async function refreshRooms() {
       `<button type="button" class="ropen"><span class="dot"></span>` +
       `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
       `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : (linked ? `📁${projectCount > 1 ? projectCount : ""}` : "")}${mode === "work" ? "🔨" : ""}</span></button>` +
-      `<span class="racts"><button type="button" class="ract" data-act="rename" title="Rename room" aria-label="Rename ${esc(name)}">✎</button>` +
+      `<span class="racts"><button type="button" class="ract" data-act="rename" title="${esc(t("settings.rename"))}" aria-label="${esc(t("settings.rename"))} ${esc(name)}">✎</button>` +
       // the default room is the app's fallback; it can be emptied, not removed
-      (name === "default" ? "" : `<button type="button" class="ract del" data-act="delete" title="Delete room" aria-label="Delete ${esc(name)}">✕</button>`) +
+      (name === "default" ? "" : `<button type="button" class="ract del" data-act="delete" title="${esc(t("settings.delete"))}" aria-label="${esc(t("settings.delete"))} ${esc(name)}">✕</button>`) +
       `</span>`;
     row.onclick = (e) => {
       const act = e.target.closest(".ract");
@@ -4669,6 +4669,7 @@ function renderSeatCards(s) {
     cfg: { ...(s.cfg.agents[id] || {}) },
     existing: true,
   }));
+  $("overlay").classList.toggle("three-seats", draft.length > 2);
   $("seatCards").innerHTML = draft.map((item) => {
     const a = item.id;
     const providerMeta = state.providers[item.provider] || {};
@@ -5294,7 +5295,6 @@ $("s_locale").onchange = () => {
   setLocale($("s_locale").value);
   refreshLocalizedUi();
 };
-$("settingsBtn").onclick = openSettings;
 $("settingsBtn2").onclick = openSettings;
 $("workBannerClose").onclick = dismissAccessBanner;
 $("updateBtn").onclick = openUpdate;
@@ -5306,7 +5306,8 @@ $("mCancel").onclick = () => closeSettings();
 $("overlay").addEventListener("click", (e) => { if (e.target === $("overlay")) closeSettings(); });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if ($("updateOverlay").classList.contains("open")) closeUpdate();
+  if ($("archiveOverlay").classList.contains("open")) closeArchives();
+  else if ($("updateOverlay").classList.contains("open")) closeUpdate();
   else if ($("projectOverlay").classList.contains("open")) closeProjectManager();
   else closeSettings();
 });
@@ -5401,8 +5402,105 @@ $("mSave").onclick = async () => {
       : "Settings saved.");
   } catch (e) { toast(e.message, true); }
 };
+let archiveView = { generation: 0, room: null, id: null, restoring: false };
+function closeArchives() {
+  if (archiveView.restoring) return;
+  archiveView.generation++;
+  $("archiveOverlay").classList.remove("open");
+  $("archivesBtn").focus();
+}
+async function selectArchive(id) {
+  const generation = ++archiveView.generation;
+  archiveView.id = null;
+  $("archiveRestore").disabled = true;
+  $("archiveInfo").textContent = t("archive.loading");
+  $("archivePreview").replaceChildren();
+  for (const button of $("archiveList").querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.archiveId === id));
+  try {
+    const data = await api(`/api/archive?room=${encodeURIComponent(archiveView.room)}&id=${encodeURIComponent(id)}`);
+    if (generation !== archiveView.generation) return;
+    archiveView.id = id;
+    $("archiveInfo").textContent = t("archive.previewCount", { count: data.entries.length, total: data.total }) + " " +
+      t(data.hasSettings ? "archive.savedSettings" : "archive.legacySettings");
+    const fragment = document.createDocumentFragment();
+    for (const entry of data.entries) {
+      const item = document.createElement("article");
+      item.className = "archive-message";
+      const label = document.createElement("small");
+      label.textContent = `#${entry.n} · ${entry.author || entry.kind} · ${entry.ts || ""}`;
+      const body = document.createElement("p");
+      body.textContent = entry.text;
+      item.append(label, body);
+      fragment.append(item);
+    }
+    $("archivePreview").append(fragment);
+    $("archiveRestore").disabled = false;
+  } catch (error) {
+    if (generation === archiveView.generation) $("archiveInfo").textContent = error.message;
+  }
+}
+async function openArchives() {
+  if (archiveView.restoring) return;
+  const generation = ++archiveView.generation;
+  archiveView.room = state.room;
+  archiveView.id = null;
+  $("archiveRestore").disabled = true;
+  $("archivePreview").replaceChildren();
+  $("archiveList").textContent = t("archive.loading");
+  $("archiveInfo").textContent = "";
+  $("archiveRoomName").value = `${state.room.slice(0, 18)}-restored-${Date.now().toString(36)}`;
+  $("archiveOverlay").classList.add("open");
+  $("archiveClose").focus();
+  try {
+    const data = await api(`/api/archives?room=${encodeURIComponent(archiveView.room)}`);
+    if (generation !== archiveView.generation) return;
+    $("archiveList").replaceChildren();
+    if (!data.archives.length) { $("archiveList").textContent = t("archive.empty"); return; }
+    for (const archive of data.archives) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.archiveId = archive.id;
+      button.textContent = new Date(archive.createdAt).toLocaleString(currentLocale());
+      const detail = document.createElement("small");
+      detail.textContent = t(archive.hasSettings ? "archive.withSettings" : "archive.legacy");
+      button.append(detail);
+      button.onclick = () => { if (!archiveView.restoring) selectArchive(archive.id); };
+      $("archiveList").append(button);
+    }
+    await selectArchive(data.archives[0].id);
+  } catch (error) {
+    if (generation === archiveView.generation) $("archiveList").textContent = error.message;
+  }
+}
+$("archivesBtn").onclick = openArchives;
+$("archiveClose").onclick = closeArchives;
+$("archiveOverlay").addEventListener("click", (event) => { if (event.target === $("archiveOverlay")) closeArchives(); });
+$("archiveRestoreForm").onsubmit = async (event) => {
+  event.preventDefault();
+  if (!archiveView.id || archiveView.restoring || $("archiveRestore").disabled) return;
+  archiveView.restoring = true;
+  $("archiveRestore").disabled = true;
+  $("archiveRestore").textContent = t("archive.restoring");
+  try {
+    const result = await api("/api/archive/restore", {
+      room: archiveView.room, id: archiveView.id, name: $("archiveRoomName").value.trim(),
+    });
+    archiveView.restoring = false;
+    closeArchives();
+    await refreshRooms();
+    await loadRoom(result.room.name);
+    toast(t("archive.restored", { name: result.room.name }) + (result.missingAttachments
+      ? " " + t("archive.missingAttachments", { count: result.missingAttachments }) : ""));
+  } catch (error) { toast(error.message, true); }
+  finally {
+    archiveView.restoring = false;
+    $("archiveRestore").disabled = !archiveView.id;
+    $("archiveRestore").textContent = t("archive.restore");
+  }
+};
+
 async function newConversation() {
-  if (!confirm("Archive this conversation and reset both agents' sessions?")) return;
+  if (!confirm(t("conversation.cleanConfirm"))) return;
   try { await api("/api/new", { room: state.room }); closeSettings(); }
   catch (e) { toast(e.message, true); }
 }
@@ -5437,13 +5535,13 @@ async function deleteFlow(name) {
   catch (e) { return toast(e.message, true); }
   const msgs = info.entries.filter((e) => e.kind === "user" || e.kind === "agent").length;
   const where = info.room.cfg.projectDir
-    ? `\n\nYour linked project (${info.room.cfg.projectDir}) is NOT touched — only Parley's own folder for this room.`
-    : "\n\nThis includes the room's sandbox workspace and any files the agents made there.";
-  if (!confirm(`Delete room "${name}"?\n\n${msgs} message${msgs === 1 ? "" : "s"} and its transcript will be moved to .parley/.trash — recoverable from your file manager until you clear it.${where}`)) return;
+    ? t("room.deleteLinked", { path: info.room.cfg.projectDir })
+    : t("room.deleteSandbox");
+  if (!confirm(t("room.deleteConfirm", { name, count: msgs }) + "\n\n" + where)) return;
   try {
     const r = await api("/api/room/delete", { room: name });
     closeSettings();
-    toast(`"${name}" moved to .trash — restore or clear it from your file manager.`);
+    toast(t("room.deleted", { name }));
     if (state.room === name) {
       if (state.es) { state.es.close(); state.es = null; }
       await loadRoom(r.rooms.length ? (r.rooms[0].name || r.rooms[0]) : "default");

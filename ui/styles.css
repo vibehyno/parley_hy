@@ -730,17 +730,48 @@
   #jump:hover { color: var(--text); }
 
   /* ---------- modal ---------- */
-  #overlay, #projectOverlay, #toolsOverlay, #usageOverlay, #updateOverlay {
+  #overlay, #projectOverlay, #toolsOverlay, #usageOverlay, #updateOverlay, #archiveOverlay {
     position: fixed; inset: 0; background: rgba(5,7,10,.65); backdrop-filter: blur(3px);
     display: none; align-items: center; justify-content: center; z-index: 50;
   }
-  #overlay.open, #projectOverlay.open, #toolsOverlay.open, #usageOverlay.open, #updateOverlay.open { display: flex; }
+  #overlay.open, #projectOverlay.open, #toolsOverlay.open, #usageOverlay.open, #updateOverlay.open, #archiveOverlay.open { display: flex; }
   .modal {
     width: min(880px, calc(100vw - 32px)); max-height: 86vh; overflow-y: auto;
     background: var(--bg2); border: 1px solid var(--border2); border-radius: 18px; padding: 24px 26px;
     box-shadow: 0 20px 60px rgba(0,0,0,.6);
   }
   .modal h2 { margin: 0 0 4px; font-size: 18px; }
+  .archive-modal { width: min(1080px, calc(100vw - 32px)); }
+  .archive-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .archive-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 18px; margin-top: 16px; }
+  .archive-list, .archive-preview { overflow-y: auto; max-height: 48vh; }
+  .archive-list { display: flex; flex-direction: column; gap: 8px; }
+  .archive-list button { text-align: left; padding: 12px; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 10px; cursor: pointer; }
+  .archive-list button[aria-pressed="true"] { border-color: var(--text-dim); background: var(--bg2); }
+  .archive-list small { display: block; margin-top: 5px; color: var(--text-dim); }
+  .archive-detail { min-width: 0; }
+  .archive-preview { margin-top: 10px; }
+  .archive-message { border-bottom: 1px solid var(--border); padding: 12px 4px; }
+  .archive-message small { color: var(--text-dim); }
+  .archive-message p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 7px 0; font-size: 14px; }
+  .archive-restore { display: flex; gap: 12px; align-items: end; margin-top: 16px; }
+  .archive-restore .fld { flex: 1; margin: 0; }
+  @media (max-width: 700px) {
+    .archive-layout { grid-template-columns: minmax(0, 1fr); }
+    .archive-list { max-height: 18vh; }
+    .archive-preview { max-height: 30vh; }
+    .archive-restore { flex-direction: column; align-items: stretch; }
+  }
+  #overlay.three-seats > .modal { width: min(1320px, calc(100vw - 32px)); }
+  #seatCards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #overlay.three-seats #seatCards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #seatCards > .mgroup { min-width: 0; }
+  @media (max-width: 1000px) {
+    #overlay.three-seats #seatCards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 700px) {
+    #seatCards, #overlay.three-seats #seatCards { grid-template-columns: minmax(0, 1fr); }
+  }
   .modal .sub { color: var(--text-faint); font-size: 12.5px; margin-bottom: 18px; }
   .update-modal { width: min(620px, calc(100vw - 32px)); }
   .update-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

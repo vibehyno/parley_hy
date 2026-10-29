@@ -31,6 +31,7 @@ import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
+import { archiveConversation, listConversationArchives, readConversationArchive } from "./lib/conversation-archives.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -7174,14 +7175,59 @@ function renameRoom(room, newName) {
   return room;
 }
 
+function restoreConversationArchive(source, id, name) {
+  const roomName = cleanRoomName(name);
+  if (!validRoomName(roomName)) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 40)."), { status: 400 });
+  const destination = path.join(ROOT, roomName);
+  if (rooms.has(roomName) || fs.existsSync(destination)) throw Object.assign(new Error("A room with that name already exists."), { status: 409 });
+  const archive = readConversationArchive(source.dir, id);
+  const config = structuredClone(archive.manifest?.config || source.cfg);
+  const restoredState = defaultState(config.agents);
+  // Preserve historical delivery facts, but never revive native sessions,
+  // queued jobs, Pair cycles or retry requests from the archived conversation.
+  for (const key of ["cancelledDeliveries", "interruptedResponses", "resolvedErrors", "lurkOutcomes"]) {
+    if (archive.manifest?.historyState?.[key] != null) restoredState[key] = archive.manifest.historyState[key];
+  }
+  for (const seat of Object.values(restoredState.agents)) seat.cursor = archive.maxEntryN;
+  restoredState.nextTurn = archive.maxEntryN + 1;
+  restoredState.roomNoteValue = normalizeRoomNote(config.roomNote);
+  restoredState.roomNoteRevision = restoredState.roomNoteValue ? 1 : 0;
+  let missingAttachments = 0;
+  // Exclusive creation prevents restore from overwriting an existing room.
+  try { fs.mkdirSync(destination); }
+  catch (error) {
+    if (error.code === "EEXIST") throw Object.assign(new Error("A room with that name already exists."), { status: 409 });
+    throw error;
+  }
+  try {
+    writeJSON(path.join(destination, "room.json"), config);
+    writeJSON(path.join(destination, "state.json"), restoredState);
+    fs.writeFileSync(path.join(destination, "events.jsonl"), archive.events, { flag: "wx" });
+    fs.writeFileSync(path.join(destination, "transcript.md"), archive.transcript, { flag: "wx" });
+    const copied = new Set();
+    for (const entry of archive.records) {
+      for (const ref of entryAttachments(entry)) {
+        const file = attachmentFile(source, ref);
+        if (!file || copied.has(file)) continue;
+        copied.add(file);
+        if (!fs.existsSync(file) || !fs.lstatSync(file).isFile()) { missingAttachments++; continue; }
+        fs.mkdirSync(path.join(destination, "attachments"), { recursive: true });
+        fs.copyFileSync(file, path.join(destination, "attachments", path.basename(file)), fs.constants.COPYFILE_EXCL);
+      }
+    }
+    const restored = loadRoom(roomName);
+    return { room: roomSummary(restored), usedCurrentSettings: !archive.manifest, missingAttachments };
+  } catch (error) {
+    rooms.delete(roomName);
+    // Only this call's exclusively created folder is eligible for rollback.
+    fs.rmSync(destination, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 function handleNewConversation(room) {
   if (room.busy.size) handleStop(room);
-  const stamp = tsLocal().replace(/[:]/g, "-");
-  for (const [file, base] of [[room.eventsFile, "events"], [room.transcriptFile, "transcript"]]) {
-    if (fs.existsSync(file)) {
-      try { fs.renameSync(file, path.join(room.dir, `${base}-${stamp}${path.extname(file)}`)); } catch { /* keep going */ }
-    }
-  }
+  archiveConversation(room);
   room.generation++;
   // Coordinators from the archived generation may still be unwinding. Their
   // terminal cleanup is fenced by generation; fresh work owns fresh counters.
@@ -8073,6 +8119,26 @@ const server = http.createServer(async (req, res) => {
         ok: true, ...result, queued: queueSize(room),
         dispatches: queuedDispatchCount(room), paused: !!room.queuePaused,
       });
+    }
+
+    if (route === "GET /api/archives") {
+      const room = loadRoom(url.searchParams.get("room") || "default");
+      return json(res, 200, { archives: listConversationArchives(room.dir) });
+    }
+    if (route === "GET /api/archive") {
+      const room = loadRoom(url.searchParams.get("room") || "default");
+      const archive = readConversationArchive(room.dir, url.searchParams.get("id"));
+      const messages = archive.records.filter((entry) => entry.kind !== "receipt");
+      return json(res, 200, {
+        entries: messages.slice(-100).map(({ n, author, kind, ts, text }) =>
+          ({ n, author, kind, ts, text: text.slice(0, 6000) })),
+        total: messages.length, hasSettings: !!archive.manifest,
+      });
+    }
+    if (route === "POST /api/archive/restore") {
+      const body = await readBody(req);
+      const source = loadRoom(body.room || "default");
+      return json(res, 200, restoreConversationArchive(source, body.id, body.name));
     }
 
     if (route === "POST /api/new") {

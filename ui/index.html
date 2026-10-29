@@ -76,8 +76,8 @@
         <div id="updatePreview" role="tooltip"></div>
       </div>
       <div class="pills" id="pills"></div>
-      <button class="hbtn" id="newConvBtn" title="Archive this conversation and start fresh" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">✨ New conversation</button>
-      <button class="hbtn" id="settingsBtn" title="Settings" data-i18n-title="sidebar.settings">⚙️</button>
+      <button class="hbtn" id="newConvBtn" title="Save the conversation to archive files and start fresh model sessions" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">🧹 Clean chat</button>
+      <button class="hbtn" id="archivesBtn" title="Preview archived conversations and restore to a new room" data-i18n-title="archive.title" data-i18n="archive.button">🗃 Archives</button>
     </header>
     <div id="pairBanner" style="display:none;padding:6px 20px;font-size:12.5px;color:#c9b3f5;background:rgba(150,110,240,.1);border-bottom:1px solid rgba(150,110,240,.35)">
       <span id="pairBannerText"></span>
@@ -192,6 +192,19 @@
   </div>
 </div>
 
+<div id="archiveOverlay">
+  <div class="modal archive-modal" role="dialog" aria-modal="true" aria-labelledby="archiveTitle">
+    <div class="archive-head"><h2 id="archiveTitle" data-i18n="archive.title">Conversation archives</h2><button class="hbtn" id="archiveClose" type="button" data-i18n="common.close">Close</button></div>
+    <p class="note" data-i18n="archive.help">Restore messages and saved room settings into a new room. Models start fresh sessions when you send your next message.</p>
+    <div class="archive-layout">
+      <div id="archiveList" class="archive-list" aria-label="Archives" data-i18n-aria-label="archive.button"></div>
+      <div class="archive-detail"><div id="archiveInfo" class="note" aria-live="polite"></div><div id="archivePreview" class="archive-preview" tabindex="0"></div></div>
+    </div>
+    <p class="note" data-i18n="archive.filesHelp">Conversation attachments are copied when available. Project and workspace files are not rolled back.</p>
+    <form id="archiveRestoreForm" class="archive-restore"><div class="fld"><label for="archiveRoomName" data-i18n="archive.roomName">New room name</label><input id="archiveRoomName" maxlength="40" required></div><button class="btn primary" id="archiveRestore" type="submit" disabled data-i18n="archive.restore">Restore to new room</button></form>
+  </div>
+</div>
+
 <div id="overlay">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="mrow" style="align-items:center"><h2 id="settingsTitle" data-i18n="settings.title">Room settings</h2>
@@ -232,7 +245,7 @@
     <div class="mrow">
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn" id="mRename" data-i18n="settings.rename">Rename…</button>
-        <button class="btn danger" id="mNewConv" data-i18n="settings.archive">Archive &amp; start fresh</button>
+        <button class="btn danger" id="mNewConv" data-i18n="settings.archive">🧹 Clean chat</button>
         <button class="btn danger" id="mDelete" data-i18n="settings.delete">Delete room</button>
       </div>
       <div style="display:flex;gap:10px">

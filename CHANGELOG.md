@@ -2,6 +2,16 @@
 
 Notable changes per repository version.
 
+## 1.4.4 — 2026-10-29
+
+- Kept room settings in the left sidebar and removed the duplicate top-right settings button.
+- Expanded settings to three columns for three seats, with two- and one-column layouts on narrower screens.
+- Renamed the top chat reset action to Clean chat and localized its archival and session-reset confirmation.
+- Added dated archive previews and restoration into a new room, preserving the current room, archived message order and available attachments.
+- Saved room settings alongside new archives, including seat identities, roles, personas and room notes. Legacy archives use the source room's current settings.
+- Restored rooms use fresh CLI sessions and wait for a new message before starting work. Project and sandbox file states are not restored.
+- Localized room deletion confirmation, completion notices and sidebar room action tooltips.
+
 ## 1.4.3 — 2026-10-29
 
 - Added pasted or selected PNG, JPEG and WebP face images for each seat.

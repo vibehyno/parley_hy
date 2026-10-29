@@ -1,6 +1,6 @@
 {
   "name": "parley-room",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": false,
   "description": "Parley HY - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
