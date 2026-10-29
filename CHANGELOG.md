@@ -2,6 +2,31 @@
 
 Notable changes per repository version.
 
+## 1.2.6 — 2026-10-28
+
+- Added a per-seat Fast response toggle. It applies each provider's real `low` reasoning-effort option on the next CLI invocation and restores the previous effort when disabled.
+- Added Codex `turn.started` progress handling and a shared instruction for concise, user-visible progress reports at meaningful work transitions without exposing private reasoning, followed by one consolidated completion result.
+- Kept tool and file activity visible beside streamed public progress messages instead of dropping later events after the first text update.
+- Replaced the ambiguous preparing label with an explicit notice that the request reached the CLI and Parley is waiting for a public progress event.
+- Corrected current-work instruction wording: the one-shot CLI adapters cannot accept a new prompt mid-invocation, so staged instructions are delivered after the active invocation completes unless the user stops it.
+
+## 1.2.5 — 2026-10-28
+
+- Added a Korean changelog covering every repository version and linked both Korean and English release histories from the README.
+- Included the Korean changelog in the npm package contents.
+
+## 1.2.4 — 2026-10-28
+
+- Replaced the live reply's dots-only state with transient progress supplied by each CLI, including generic reasoning/planning phases, tool or command activity, file work and reply writing.
+- Kept provider-internal reasoning private: Parley shows only an honest phase label, never raw chain-of-thought or provider reasoning summaries.
+- Added a localized `Preparing the response` fallback with elapsed time when a provider has not emitted a progress event yet; no synthetic work steps are invented.
+
+## 1.2.3 — 2026-10-28
+
+- Redesigned the current-work instruction as a compact preview card with Auto, per-model and Both target choices.
+- Changed editing to restore the saved text to the main composer instead of exposing a second always-open editor.
+- Additional instructions now send automatically only after the active exchange fully settles; deleting the card before then cancels delivery.
+
 ## 1.2.2 — 2026-10-28
 
 - Replaced the retired consumer Gemini CLI invocation with Google Antigravity CLI (`agy`) while retaining the internal `gemini` provider id for saved-room compatibility.

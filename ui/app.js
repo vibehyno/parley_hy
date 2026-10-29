@@ -1636,14 +1636,14 @@ function notifyForEntry(e) {
 // that watched the run start did.
 function liveLabelFor(phase) {
   return ({
-    listening: "is listening 👂",
-    "catching-up": "is catching up 👂",
-    review: "is reviewing 🔁",
-    fix: "is fixing 🔁",
-    attention: "is receiving an answer ↩",
-    closure: "is closing the exchange 🔒",
-    hop: "is following up ⛓",
-    retrying: "is restoring its session",
+    listening: t("live.listening"),
+    "catching-up": t("live.catchingUp"),
+    review: t("live.reviewing"),
+    fix: t("live.fixing"),
+    attention: t("live.receiving"),
+    closure: t("live.closing"),
+    hop: t("live.followingUp"),
+    retrying: t("live.restoring"),
   })[phase];
 }
 function elapsedLabel(l) {
@@ -1656,16 +1656,51 @@ function ensureLive(agent, startedAt, label) {
   div.dataset.liveAgent = agent;
   div.innerHTML = `<div class="meta"><span class="avatar">${esc(seatAvatar(agent))}</span>` +
     `<span class="who">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>` +
-    `<span class="live-label">${label || "is thinking"} <span class="elapsed"></span></span></div>` +
+    `<span class="live-label">${label || t("live.thinking")} <span class="elapsed"></span></span></div>` +
     `<div class="quote-slot"></div>` +
-    `<div class="bubble"><span class="thinking-dots"><i></i><i></i><i></i></span></div>`;
+    `<div class="live-progress-slot" hidden></div>` +
+    `<div class="bubble live-progress"><div class="live-progress-row preparing">` +
+      `<span class="thinking-dots"><i></i><i></i><i></i></span><span>${esc(t("progress.preparing", { seat: seatLabel(agent) }))}</span></div></div>`;
   chat.appendChild(div);
-  state.live[agent] = { el: div, mode: "think", startedAt: startedAt || Date.now(), text: "" };
+  state.live[agent] = { el: div, mode: "think", startedAt: startedAt || Date.now(), text: "", progress: [] };
   liveObserver.observe(div);
   applyLiveRef(agent);
   scrollBottom();
   scheduleVisibility();
   return state.live[agent];
+}
+
+function progressText(progress) {
+  if (progress && progress.text) return String(progress.text);
+  return t(`progress.${progress?.kind || "preparing"}`);
+}
+
+function renderLiveProgress(live) {
+  if (!live) return;
+  const streaming = live.mode === "stream";
+  const slot = live.el.querySelector(".live-progress-slot");
+  const target = streaming ? slot : live.el.querySelector(".bubble");
+  const rows = live.progress.length ? live.progress : (streaming ? [] : [{ kind: "preparing" }]);
+  if (slot) slot.hidden = !streaming || !rows.length;
+  if (!rows.length) return;
+  target.innerHTML = `<div class="live-progress-list">${rows.map((progress, index) =>
+    `<div class="live-progress-row${index === rows.length - 1 ? " current" : ""}">` +
+      `<span class="progress-mark">${progress.kind === "activity" ? "•" : progress.kind === "writing" ? "✎" : progress.kind === "reasoning" ? "◇" : "·"}</span>` +
+      `<span>${esc(progressText(progress))}</span></div>`).join("")}</div>`;
+}
+
+function liveProgress(agent, msg) {
+  const info = busyInfoFor(agent);
+  if (msg.runId && info?.runId && msg.runId !== info.runId) return;
+  const live = ensureLive(agent, info?.startedAt);
+  const progress = msg.progress || { kind: "preparing" };
+  const text = progressText(progress);
+  const last = live.progress[live.progress.length - 1];
+  if (last && progressText(last) === text) return;
+  live.progress.push(progress);
+  if (live.progress.length > 4) live.progress.shift();
+  renderLiveProgress(live);
+  scrollBottom();
 }
 function removeLive(agent) {
   const l = state.live[agent];
@@ -1848,7 +1883,8 @@ function liveStream(agent, msg) {
     // blank ~90% of the time during streaming — exactly when it matters.
     if (cur.mode !== "stream") {
       cur.mode = "stream";
-      cur.el.querySelector(".live-label").innerHTML = `is replying <span class="elapsed">${elapsedLabel(cur)}</span>`;
+      cur.el.querySelector(".live-label").innerHTML = `${esc(t("live.replying"))} <span class="elapsed">${elapsedLabel(cur)}</span>`;
+      renderLiveProgress(cur);
     }
     cur.el.querySelector(".bubble").innerHTML = renderMD(cur.text) + '<span class="caret"></span>';
     scrollBottom();
@@ -1960,6 +1996,7 @@ function renderSeatsUI(s) {
   $("pills").innerHTML = seats.map((a) =>
     `<div class="pill" data-seat="${esc(a)}" id="pill_${esc(a)}"><span class="st"></span>` +
     `<b style="color:${seatColor(a)}">${esc(seatLabel(a))}</b><span class="pinfo"></span>` +
+    `<button class="fast" data-seat="${esc(a)}">⚡</button>` +
     `<button class="ear" data-seat="${esc(a)}">👂</button>` +
     `<button class="moon" data-seat="${esc(a)}">😴</button></div>`).join("");
   $("seatChips").innerHTML = seats.map((a) => `<button class="chip" data-t="${esc(a)}">@${esc(a)}</button>`).join("");
@@ -2120,6 +2157,13 @@ function applySummary(s) {
     ear.title = lurking
       ? t("seat.lurkEnabledTitle", { seat: seatLabel(a) })
       : t("seat.lurkDisabledTitle", { seat: seatLabel(a) });
+    const fast = pill.querySelector(".fast");
+    const fastMode = !!s.cfg.agents[a].fastMode;
+    fast.classList.toggle("on", fastMode);
+    fast.setAttribute("aria-pressed", String(fastMode));
+    fast.title = fastMode
+      ? t("seat.fastEnabledTitle", { seat: seatLabel(a) })
+      : t("seat.fastDisabledTitle", { seat: seatLabel(a) });
   }
   const mode = s.cfg.mode || "talk";
   document.querySelectorAll(".mbtn").forEach((b) => b.classList.toggle("active", b.dataset.m === mode));
@@ -2182,6 +2226,7 @@ function applySummary(s) {
   updateBusyUI();
   renderHopControl();
   updateRouteHint();
+  scheduleAdjustmentDelivery();
 }
 // Waking a seat that is holding messages asks a question with three answers,
 // so it gets a real menu; a plain toggle stays a plain toggle when there is
@@ -2416,6 +2461,20 @@ function trapSettingsTab(e) {
 document.addEventListener("keydown", trapSettingsTab);
 
 $("pills").addEventListener("click", async (e) => {
+  const fast = e.target.closest(".fast");
+  if (fast && state.summary) {
+    const a = fast.dataset.seat;
+    const enabled = !!state.summary.cfg.agents[a].fastMode;
+    try {
+      const result = await api("/api/seat/fast", { room: state.room, agent: a, enabled: !enabled });
+      toast(result.appliesNextTurn
+        ? t("seat.fastNextTurnToast", { seat: seatLabel(a) })
+        : (!enabled
+          ? t("seat.fastEnabledToast", { seat: seatLabel(a) })
+          : t("seat.fastDisabledToast", { seat: seatLabel(a) })));
+    } catch (err) { toast(err.message, true); }
+    return;
+  }
   const moon = e.target.closest(".moon");
   if (moon && state.summary) {
     const a = moon.dataset.seat;
@@ -3123,7 +3182,7 @@ function connect(resyncOnOpen = false) {
       }
       if (msg.phase === "retrying") {
         const l = ensureLive(msg.agent, msg.startedAt);
-        l.el.querySelector(".live-label").innerHTML = `is restoring its session <span class="elapsed">${elapsedLabel(l)}</span>`;
+        l.el.querySelector(".live-label").innerHTML = `${esc(t("live.restoring"))} <span class="elapsed">${elapsedLabel(l)}</span>`;
         // The stream flush only rewrites the label on the think→stream
         // transition now, so reset the mode or the retry label would stick
         // through the restored session's whole streamed reply.
@@ -3135,6 +3194,7 @@ function connect(resyncOnOpen = false) {
       if ($("queueWrap").classList.contains("open")) renderQueuePop();
     }
     else if (msg.type === "stream") liveStream(msg.agent, msg);
+    else if (msg.type === "progress") liveProgress(msg.agent, msg);
     else if (msg.type === "room") {
       applySummary(msg.room);
     }
@@ -3546,6 +3606,17 @@ function adjustmentTarget(route) {
   return state.chip !== "auto" ? state.chip : (summary.lastAddressed || summary.cfg?.defaultAgent || summary.seats?.[0]);
 }
 
+function adjustmentTargetMode(text, route) {
+  const explicit = guessTextTarget(text);
+  if (explicit) return explicit;
+  if (state.chip !== "auto") return state.chip;
+  return "auto";
+}
+
+function resolvedAdjustmentTarget(draft) {
+  return ComposerAdjustment.resolvedTarget(draft.targetMode, draft.waitAgents, draft.fallbackTarget);
+}
+
 function renderAdjustmentDraft() {
   const draft = state.adjustDraft;
   const wrap = $("adjustDraft");
@@ -3553,13 +3624,19 @@ function renderAdjustmentDraft() {
   $("input").disabled = !!draft;
   $("attachBtn").disabled = !!draft;
   $("sendBtn").disabled = !!draft || state.sending;
-  document.querySelector(".box").classList.toggle("adjustment-held", !!draft);
-  $("adjustDraftText").disabled = state.sending;
+  wrap.classList.toggle("sending", !!(draft && draft.autoSending));
+  $("adjustDraftEdit").disabled = !!(draft && draft.autoSending);
   $("adjustDraftDelete").disabled = state.sending;
-  $("adjustDraftSend").disabled = state.sending;
   if (!draft) return;
-  $("adjustDraftLabel").textContent = t("adjust.label", { target: draft.target === "both" ? "Both" : seatLabel(draft.target) });
-  if (document.activeElement !== $("adjustDraftText")) $("adjustDraftText").value = draft.text;
+  $("adjustDraftStatus").textContent = t(draft.autoSending ? "adjust.sending" : "adjust.waiting");
+  $("adjustDraftPreview").textContent = draft.text;
+  const seats = state.summary?.seats || [];
+  const options = ["auto", ...seats, ...(seats.length > 1 ? ["both"] : [])];
+  $("adjustDraftTargets").innerHTML = options.map((target) => {
+    const label = target === "auto" ? t("adjust.auto") : target === "both" ? t("adjust.both") : seatLabel(target);
+    return `<button type="button" data-adjust-target="${esc(target)}" class="${draft.targetMode === target ? "active" : ""}"` +
+      `${draft.autoSending ? " disabled" : ""}>${esc(label)}</button>`;
+  }).join("");
 }
 
 function clearAdjustmentDraft() {
@@ -3572,34 +3649,54 @@ function stageAdjustment(text, route) {
   if (!ComposerAdjustment || !ComposerAdjustment.shouldStage({
     summary: state.summary, target, text, attachmentCount: draftAttachmentCount(),
   })) return false;
+  const wait = ComposerAdjustment.waitSnapshot(state.summary);
   state.adjustDraft = {
     room: state.room,
     sourceN: ComposerAdjustment.activeSource(state.summary, target),
-    target,
+    targetMode: adjustmentTargetMode(text, route),
+    fallbackTarget: target,
+    waitRunIds: wait.runIds,
+    waitAgents: wait.agents,
     text,
     hopChoice: state.hopChoice,
+    autoSending: false,
   };
   input.value = "";
   autosize();
   hideMention();
   if (typeof hideSkillAutocomplete === "function") hideSkillAutocomplete();
   renderAdjustmentDraft();
-  $("adjustDraftText").focus();
+  scheduleAdjustmentDelivery();
   return true;
+}
+
+let adjustmentDeliveryQueued = false;
+function scheduleAdjustmentDelivery() {
+  if (adjustmentDeliveryQueued) return;
+  adjustmentDeliveryQueued = true;
+  queueMicrotask(() => {
+    adjustmentDeliveryQueued = false;
+    const draft = state.adjustDraft;
+    if (!draft || draft.autoSending || draft.room !== state.room || state.sending) return;
+    if (!ComposerAdjustment.workFinished(state.summary, draft.waitRunIds)) return;
+    draft.autoSending = true;
+    renderAdjustmentDraft();
+    sendAdjustmentDraft();
+  });
 }
 
 async function sendAdjustmentDraft() {
   const draft = state.adjustDraft;
   if (!draft || state.sending) return;
-  const text = $("adjustDraftText").value.trim();
+  const text = draft.text.trim();
   if (!text) return toast(t("adjust.empty"), true);
-  draft.text = text;
   state.sending = true;
   renderAdjustmentDraft();
   try {
+    const target = resolvedAdjustmentTarget(draft);
     const body = {
       room: draft.room, sourceN: draft.sourceN, mode: "queue",
-      target: draft.target, text,
+      target, text,
     };
     if (draft.hopChoice === "solo") body.solo = true;
     else if (draft.hopChoice !== "default") body.hopBudget = normalizedHopBudget(draft.hopChoice, -1);
@@ -3609,6 +3706,7 @@ async function sendAdjustmentDraft() {
       ? t("adjust.queued", { targets: result.deferred.join(" · ") })
       : t("adjust.added"));
   } catch (error) {
+    draft.autoSending = false;
     toast(error.message, true);
   } finally {
     state.sending = false;
@@ -3763,14 +3861,28 @@ async function send() {
   }
 }
 $("sendBtn").onclick = send;
-$("adjustDraftText").addEventListener("input", (event) => {
-  if (state.adjustDraft) state.adjustDraft.text = event.target.value;
+$("adjustDraftTargets").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-adjust-target]");
+  if (!button || !state.adjustDraft || state.adjustDraft.autoSending) return;
+  state.adjustDraft.targetMode = button.dataset.adjustTarget;
+  renderAdjustmentDraft();
 });
+$("adjustDraftEdit").onclick = () => {
+  const draft = state.adjustDraft;
+  if (!draft || draft.autoSending) return;
+  clearAdjustmentDraft();
+  input.value = draft.text;
+  state.chipRevision++;
+  selectChip(draft.targetMode === "auto" ? "auto" : draft.targetMode);
+  autosize();
+  updateRouteHint();
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+};
 $("adjustDraftDelete").onclick = () => {
   clearAdjustmentDraft();
   input.focus();
 };
-$("adjustDraftSend").onclick = sendAdjustmentDraft;
 $("attachBtn").onclick = () => {
   if (state.sending) return toast("Wait for the current message to finish sending.", true);
   $("fileInput").click();

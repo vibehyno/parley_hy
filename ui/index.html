@@ -135,14 +135,19 @@
         </div>
         <div id="busyStrip" aria-live="polite"></div>
         <div id="adjustDraft" hidden>
-          <div class="adjust-head">
-            <span id="adjustDraftLabel"></span>
-            <button id="adjustDraftDelete" type="button" data-i18n-title="adjust.delete" aria-label="Delete saved instruction" data-i18n-aria-label="adjust.delete">🗑</button>
+          <div class="adjust-status">
+            <span class="adjust-clock">⏳</span>
+            <span id="adjustDraftStatus" data-i18n="adjust.waiting">It will be sent automatically when the current work finishes.</span>
           </div>
-          <textarea id="adjustDraftText" rows="2"></textarea>
-          <div class="adjust-actions">
-            <span data-i18n="adjust.help">The current response will continue. This instruction is delivered next with the same work context.</span>
-            <button id="adjustDraftSend" type="button" data-i18n="adjust.send">Add to current work</button>
+          <div class="adjust-card">
+            <div class="adjust-body">
+              <div id="adjustDraftTargets" class="adjust-targets" aria-label="Delivery target" data-i18n-aria-label="adjust.targetLabel"></div>
+              <div id="adjustDraftPreview"></div>
+            </div>
+            <div class="adjust-actions">
+              <button id="adjustDraftEdit" type="button" data-i18n="adjust.edit">Edit</button>
+              <button id="adjustDraftDelete" type="button" data-i18n="adjust.delete">Delete</button>
+            </div>
           </div>
         </div>
         <div id="draftImages" aria-label="Attachments ready to send"></div>

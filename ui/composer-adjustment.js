@@ -25,5 +25,26 @@
     return Number.isSafeInteger(activeSource(summary, target));
   }
 
-  global.ParleyComposerAdjustment = { activeSource, shouldStage };
+  function waitSnapshot(summary) {
+    const rows = (summary && summary.busyInfo) || [];
+    return {
+      runIds: rows.map((row) => row.runId).filter(Boolean),
+      agents: [...new Set(rows.map((row) => row.agent).filter(Boolean))],
+    };
+  }
+
+  function workFinished(summary, runIds = []) {
+    if (!summary || summary.working) return false;
+    const active = new Set((summary.busyInfo || []).map((row) => row.runId).filter(Boolean));
+    return (summary.busyInfo || []).length === 0 && runIds.every((id) => !active.has(id));
+  }
+
+  function resolvedTarget(mode, agents = [], fallback = null) {
+    if (mode && mode !== "auto") return mode;
+    const unique = [...new Set(agents.filter(Boolean))];
+    if (unique.length > 1) return "both";
+    return unique[0] || fallback;
+  }
+
+  global.ParleyComposerAdjustment = { activeSource, shouldStage, waitSnapshot, workFinished, resolvedTarget };
 })(typeof window === "undefined" ? globalThis : window);

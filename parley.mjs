@@ -25,6 +25,7 @@ import { createCausalCoordinator as coordinateCausal } from "./lib/causal-coordi
 import { relayAllowanceNote } from "./lib/budget-prompts.mjs";
 import { snapshotClientAssets } from "./lib/client-assets.mjs";
 import { claudeLoggedIn } from "./lib/claude-auth.mjs";
+import { normalizeFastMode, updateFastMode } from "./lib/fast-mode.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -199,7 +200,7 @@ const PROVIDERS = {
   claude: {
     label: "Claude", sub: "Claude Code CLI", desc: "Anthropic's coding agent",
     avatar: "C", color: "#e8845c",
-    defaults: { command: "claude", model: null, effort: null, extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, permissionMode: "auto" },
+    defaults: { command: "claude", model: null, effort: null, fastMode: false, fastPreviousEffort: null, extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, permissionMode: "auto" },
     fields: ["command", "model", "effort", "permissionMode", "extraArgs"],
     // Suggestions only — both fields are free text, so values newer than this
     // build (models or effort levels) work without touching Parley. Claude
@@ -252,7 +253,7 @@ const PROVIDERS = {
   codex: {
     label: "Codex", sub: "OpenAI Codex CLI", desc: "OpenAI's coding agent",
     avatar: "X", color: "#2fd6a8",
-    defaults: { command: "codex", model: null, effort: null, sandbox: "read-only", extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null },
+    defaults: { command: "codex", model: null, effort: null, fastMode: false, fastPreviousEffort: null, sandbox: "read-only", extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null },
     fields: ["command", "model", "effort", "sandbox", "extraArgs"],
     // Fallbacks — discover() below prefers Codex's own models cache.
     efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
@@ -296,7 +297,7 @@ const PROVIDERS = {
     // resolve, but drive Google's current Antigravity CLI (`agy`).
     label: "AGY", sub: "Google Antigravity CLI", desc: "Google's current coding agent CLI",
     avatar: "G", color: "#8ab4f8",
-    defaults: { command: "agy", model: "gemini-3.8-flash-low", effort: "low", extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, approvalMode: "auto" },
+    defaults: { command: "agy", model: "gemini-3.8-flash-low", effort: "low", fastMode: false, fastPreviousEffort: null, extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null, approvalMode: "auto" },
     fields: ["command", "model", "effort", "approvalMode", "extraArgs"],
     models: ["gemini-4-argon-medium", "gemini-4-argon-high", "gemini-4-argon-low", "gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low"],
     efforts: ["low", "medium", "high", "xhigh", "max"],
@@ -996,7 +997,7 @@ The two seats may not have received identical context. You may name missing cont
 // every static contract-text change even when a contributor forgets to bump
 // this number. Version 4 also heals development sessions that were falsely
 // stamped as v3 while a malformed template literal composed the number 0.
-const PROMPT_VERSION = 4;
+const PROMPT_VERSION = 5;
 // Dormant retirement floor for a future *contradictory* contract change: a
 // seat whose delivered version is below this is not updated in place — its
 // session is discarded at turn start for a full fresh re-brief. 0 retires
@@ -1018,7 +1019,9 @@ ${PEER_CONTRACT}
 
 The full transcript is at {{TRANSCRIPT_FILE}}. Your working directory is {{WORKDIR_KIND}} at {{WORKDIR}}; you may read and write files there when the user asks.
 
-Style: you are a chat participant, not running a coding task. Reply in plain conversational text, concise by default. Do not use tools or modify files unless the user explicitly asks for it. Never speak for {{OTHER}} or fabricate their messages. You may address {{OTHER}} directly by including @{{OTHER}} in a reply; if the room's hop limit allows it, they will see your message and may respond.`;
+Style: you are a chat participant, not running a coding task. Reply in plain conversational text, concise by default. Do not use tools or modify files unless the user explicitly asks for it. Never speak for {{OTHER}} or fabricate their messages. You may address {{OTHER}} directly by including @{{OTHER}} in a reply; if the room's hop limit allows it, they will see your message and may respond.
+
+For work that takes long enough to use tools or several steps, publish a short user-visible progress update at meaningful transitions: what you are doing, what you observed, or what you will do next. These updates are steering points for the user, so keep them concrete and non-repetitive. Never reveal private chain-of-thought or hidden reasoning; report only actions, observations, and decisions intended for the user. When all work is done, finish with one concise consolidated result covering changes, verification, and any remaining limitation.`;
 const PROMPT_FINGERPRINT = crypto.createHash("sha256")
   .update(STANDING_CONTRACT_TEMPLATE.replace(/\r\n?/g, "\n"), "utf8")
   .digest("hex");
@@ -1337,7 +1340,7 @@ function codexItemLabel(item) {
 }
 
 /** Claude Code CLI: print mode + stream-json for live partial text. */
-async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, onActivity, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
+async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
   const cfg = room.cfg.agents[seat];
   const protectedTurn = !!(discussion || readOnly);
   const permissionConfigScope = effectiveClaudePermissionMode(cfg, room.cfg.mode);
@@ -1409,6 +1412,9 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
     if (obj.session_id) sessionRef = obj.session_id;
     if (obj.type === "stream_event" && obj.event && !obj.parent_tool_use_id) {
       const ev = obj.event;
+      if (ev.type === "content_block_start" && ev.content_block?.type === "text" && onProgress) {
+        onProgress({ kind: "writing" });
+      }
       if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
         acc += ev.delta.text;
         if (onStream) onStream(acc);
@@ -1419,7 +1425,9 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
       for (const c of obj.message.content) {
         if (c.type === "tool_use" && c.id && !seenTools.has(c.id) && seenTools.size < 100) {
           seenTools.add(c.id);
-          if (onActivity) onActivity(claudeToolLabel(c.name, c.input || {}));
+          const label = claudeToolLabel(c.name, c.input || {});
+          if (onProgress) onProgress({ kind: "activity", text: label });
+          if (onActivity) onActivity(label);
         }
       }
     } else if (obj.type === "result") {
@@ -1457,7 +1465,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
 }
 
 /** Codex CLI: exec mode + JSONL events; final text via --output-last-message. */
-async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onActivity, images = [], inputDir = null, allowEmpty = false }) {
+async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onActivity, onProgress, images = [], inputDir = null, allowEmpty = false }) {
   const cfg = room.cfg.agents[seat];
   const sess = room.state.agents[seat].sessionRef;
   const extraArgs = checkedExtraArgs(room, seat, cfg.extraArgs);
@@ -1493,10 +1501,18 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     if (obj.type === "turn.completed" && obj.usage) {
       usage = { out: obj.usage.output_tokens, reasoning: obj.usage.reasoning_output_tokens };
     }
+    if (obj.type === "turn.started" && onProgress) onProgress({ kind: "reasoning" });
     if (obj.type === "thread.started" && obj.thread_id) threadRef = obj.thread_id;
     else if (obj.thread_id && (!threadRef || threadRef === "--last")) threadRef = obj.thread_id;
     else if (obj.msg && obj.msg.type === "session_configured" && obj.msg.session_id) threadRef = obj.msg.session_id;
     const item = obj.item;
+    if (item && obj.type === "item.started" && onProgress) {
+      if (item.type === "reasoning") onProgress({ kind: "reasoning" });
+      else if (item.type === "agent_message" || item.item_type === "assistant_message") onProgress({ kind: "writing" });
+      else if (item.type === "mcp_tool_call") onProgress({ kind: "activity", text: `🔌 ${truncate(item.server || item.tool || item.name || "MCP", 70)}` });
+      else if (item.type === "web_search") onProgress({ kind: "activity", text: `🌐 ${truncate(item.query || "Web search", 70)}` });
+      else if (item.type === "todo_list") onProgress({ kind: "planning" });
+    }
     if (item && (item.type === "agent_message" || item.item_type === "assistant_message")) {
       const t = item.text ?? item.message ?? null;
       if (t) { lastMsg = t; if (onStream) onStream(t); }
@@ -1505,9 +1521,16 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
       const startedKey = (item.id || "") + "|start";
       if (obj.type === "item.started" && !seenItems.has(startedKey)) {
         seenItems.add(startedKey);
-        onActivity(codexItemLabel(item));
+        const label = codexItemLabel(item);
+        if (onProgress) onProgress({ kind: "activity", text: label });
+        onActivity(label);
       } else if (obj.type === "item.completed") {
-        if (!seenItems.has(startedKey)) { seenItems.add(startedKey); onActivity(codexItemLabel(item)); }
+        if (!seenItems.has(startedKey)) {
+          seenItems.add(startedKey);
+          const label = codexItemLabel(item);
+          if (onProgress) onProgress({ kind: "activity", text: label });
+          onActivity(label);
+        }
         if (item.type === "command_execution" && item.exit_code) {
           onActivity(`⚠ exited ${item.exit_code}: ${truncate(shellCommandLabel(item.command), 60)}`);
         }
@@ -1552,7 +1575,7 @@ function effectiveAgyApprovalMode(cfg, roomMode) {
  * Google Antigravity CLI (`agy`) print mode with JSON output. AGY assigns the
  * conversation id on a fresh turn and resumes it with `--conversation`.
  */
-async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
+async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
   const cfg = room.cfg.agents[seat];
   const protectedTurn = !!(discussion || readOnly);
   const sess = room.state.agents[seat].sessionRef;
@@ -1582,6 +1605,12 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
     if (!line.startsWith("{")) return;
     try {
       const event = JSON.parse(line);
+      if (event?.event === "tool_use" && onProgress) {
+        onProgress({ kind: "activity", text: `🔧 ${truncate(event.name || event.tool || "Tool", 70)}` });
+      }
+      if ((event?.event === "thinking" || event?.event === "reasoning") && onProgress) {
+        onProgress({ kind: "reasoning" });
+      }
       if (event?.event === "result" && event.result) result = event.result;
     } catch { /* final stdout parse below */ }
   };
@@ -3113,6 +3142,9 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
   const onActivity = (label) => {
     if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
   };
+  const onProgress = (progress) => {
+    if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
+  };
 
   let providerInputs = null;
   try {
@@ -3179,7 +3211,7 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
     try {
       res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-        prompt, briefing, onStream, onActivity, images, inputDir: providerInputs.dir,
+        prompt, briefing, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir,
         allowEmpty: !!opts.allowEmpty, ...turnScope,
       });
     } catch (e) {
@@ -3199,7 +3231,7 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
         epoch = seatEpoch(room, agent);
         res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-          prompt, briefing: b2, onStream, onActivity, images, inputDir: providerInputs.dir,
+          prompt, briefing: b2, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir,
           allowEmpty: !!opts.allowEmpty, ...turnScope,
         });
       } else throw e;
@@ -3366,6 +3398,9 @@ async function runListenerTurn(room, agent, userTurnN, scope = NO_SCOPE, opts = 
   const onActivity = (label) => {
     if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
   };
+  const onProgress = (progress) => {
+    if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
+  };
 
   let providerInputs = null;
   try {
@@ -3423,7 +3458,7 @@ async function runListenerTurn(room, agent, userTurnN, scope = NO_SCOPE, opts = 
     try {
       res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-        prompt, briefing, onStream, onActivity, images, inputDir: providerInputs.dir, ...turnScope,
+        prompt, briefing, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir, ...turnScope,
       });
     } catch (e) {
       if (e.resumeFailed && !e.stopped) {
@@ -3439,7 +3474,7 @@ async function runListenerTurn(room, agent, userTurnN, scope = NO_SCOPE, opts = 
         epoch = seatEpoch(room, agent);
         res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-          prompt, briefing: b2, onStream, onActivity, images, inputDir: providerInputs.dir, ...turnScope,
+          prompt, briefing: b2, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir, ...turnScope,
         });
       } else throw e;
     }
@@ -3752,6 +3787,9 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
   const onActivity = (label) => {
     if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
   };
+  const onProgress = (progress) => {
+    if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
+  };
 
   let providerInputs = null;
   let relayLaunch = null;
@@ -3822,7 +3860,7 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
       }
       res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-        prompt, briefing, onStream, onActivity, images, inputDir: providerInputs.dir,
+        prompt, briefing, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir,
         allowEmpty: !!opts.allowEmpty, ...turnScope,
       });
     } catch (e) {
@@ -3839,7 +3877,7 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
         epoch = seatEpoch(room, agent);
         res = await adapters[providerIdOf(room, agent)](room, {
         seat: agent,
-          prompt, briefing: b2, onStream, onActivity, images, inputDir: providerInputs.dir,
+          prompt, briefing: b2, onStream, onActivity, onProgress, images, inputDir: providerInputs.dir,
           allowEmpty: !!opts.allowEmpty, ...turnScope,
         });
       } else throw e;
@@ -7596,6 +7634,24 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true, agent, ...result, room: roomSummary(room) });
     }
 
+    if (route === "POST /api/seat/fast") {
+      const body = await readBody(req);
+      const room = loadRoom(body.room || "default");
+      const agent = String(body.agent || "").toLowerCase();
+      if (!seatIds(room).includes(agent)) return json(res, 400, { error: `unknown agent: ${body.agent}` });
+      if (typeof body.enabled !== "boolean") return json(res, 400, { error: "enabled must be true or false" });
+      const fast = updateFastMode(room.cfg.agents[agent], body.enabled);
+      room.cfg.agents[agent] = fast.config;
+      const cfg = fast.config;
+      saveConfig(room);
+      const summary = roomSummary(room);
+      broadcast(room, { type: "room", room: summary });
+      return json(res, 200, {
+        ok: true, agent, enabled: !!cfg.fastMode, effort: cfg.effort,
+        changed: fast.changed, appliesNextTurn: room.busy.has(agent), room: summary,
+      });
+    }
+
     if (route === "POST /api/queue/cancel") {
       const body = await readBody(req);
       const room = loadRoom(body.room || "default");
@@ -7693,6 +7749,10 @@ const server = http.createServer(async (req, res) => {
       for (const [id, agentCfg] of Object.entries(next.agents)) {
         const pid = providerIdFor(agentCfg, id);
         const caps = pid ? (PROVIDERS[pid].capabilities || {}) : {};
+        // Fast mode is a reversible UI preset, not a second source of truth.
+        // While it is on, every settings save keeps the actual CLI effort low;
+        // turning it off through /api/seat/fast restores the captured value.
+        Object.assign(agentCfg, normalizeFastMode(agentCfg));
         const issue = extraArgsViolation(room, id, agentCfg.extraArgs || []);
         if (issue) return json(res, 400, { error: `Unsafe Extra CLI args for ${id}: ${issue}` });
         // Which fields are enumerated, and what a bad value says, belongs to

@@ -37,17 +37,35 @@ test("pair work uses the shared root even when the selected target is the other 
   assert.equal(api.activeSource(summary, "claude"), 88);
 });
 
-test("the composer exposes an editable non-stopping current-work card", () => {
+test("delivery waits for the whole active exchange and resolves Auto from the working seats", () => {
+  const active = {
+    working: true,
+    busyInfo: [{ agent: "codex", runId: "r1", rootN: 10 }],
+  };
+  const wait = api.waitSnapshot(active);
+  assert.deepEqual(Array.from(wait.runIds), ["r1"]);
+  assert.deepEqual(Array.from(wait.agents), ["codex"]);
+  assert.equal(api.workFinished(active, wait.runIds), false);
+  assert.equal(api.workFinished({ working: false, busyInfo: [] }, wait.runIds), true);
+  assert.equal(api.resolvedTarget("auto", wait.agents, "claude"), "codex");
+  assert.equal(api.resolvedTarget("auto", ["codex", "claude"], "codex"), "both");
+  assert.equal(api.resolvedTarget("claude", wait.agents, "codex"), "claude");
+});
+
+test("the composer exposes a targetable auto-send card whose edit action restores the input", () => {
   const html = fs.readFileSync(new URL("../ui/index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../ui/app.js", import.meta.url), "utf8");
   const i18n = fs.readFileSync(new URL("../ui/i18n.js", import.meta.url), "utf8");
-  assert.match(html, /id="adjustDraftText"/);
+  assert.match(html, /id="adjustDraftTargets"/);
+  assert.match(html, /id="adjustDraftPreview"/);
+  assert.match(html, /id="adjustDraftEdit"/);
   assert.match(html, /id="adjustDraftDelete"/);
-  assert.match(html, /id="adjustDraftSend"/);
   assert.ok(html.indexOf("composer-adjustment.js") < html.indexOf("app.js"));
   assert.match(app, /mode:\s*"queue"/);
   assert.match(app, /api\("\/api\/ask", body\)/);
+  assert.match(app, /ComposerAdjustment\.workFinished/);
+  assert.match(app, /input\.value = draft\.text/);
   assert.doesNotMatch(app, /sendAdjustmentDraft[\s\S]{0,1800}mode:\s*"stop"/);
-  assert.match(i18n, /"adjust\.send": "현재 작업에 추가"/);
-  assert.match(i18n, /진행 중인 응답은 중지하지 않아요/);
+  assert.match(i18n, /"adjust\.edit": "편집"/);
+  assert.match(i18n, /현재 진행 중인 작업이 끝난 후 자동으로 전달됩니다/);
 });

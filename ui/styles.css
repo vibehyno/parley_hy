@@ -159,9 +159,10 @@
   .pill.busy .st { background: var(--warn); animation: pulse 1s infinite; }
   .hdot.withheld { background: none; border: 1px solid var(--danger); opacity: .75; position: relative; }
   .pill.bad .st { background: var(--danger); }
-  .pill .ear, .pill .moon { font-size: 13px; line-height: 1; padding: 0 1px; opacity: .25; filter: grayscale(1); transition: opacity .15s, filter .15s; }
-  .pill .ear.on, .pill .moon.on { opacity: 1; filter: none; }
-  .pill .ear:hover, .pill .moon:hover { opacity: .8; }
+  .pill .fast, .pill .ear, .pill .moon { font-size: 13px; line-height: 1; padding: 0 1px; opacity: .25; filter: grayscale(1); transition: opacity .15s, filter .15s, color .15s; }
+  .pill .fast.on, .pill .ear.on, .pill .moon.on { opacity: 1; filter: none; }
+  .pill .fast.on { color: #f4c65d; }
+  .pill .fast:hover, .pill .ear:hover, .pill .moon:hover { opacity: .8; }
   .pill.asleep { border-style: dashed; opacity: .72; }
   /* :not(.busy) — a seat slept mid-answer is still writing that answer, and its
      status dot has to keep saying so. */
@@ -364,6 +365,15 @@
   .thinking-dots i:nth-child(2) { animation-delay: .15s; } .thinking-dots i:nth-child(3) { animation-delay: .3s; }
   @keyframes bounce { 0%, 60%, 100% { transform: none; opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
   .elapsed { color: var(--text-faint); font-size: 12px; }
+  .bubble.live-progress { min-width: min(520px, 72vw); padding: 10px 13px; }
+  .live-progress-list { display: flex; flex-direction: column; gap: 5px; }
+  .live-progress-row { display: flex; align-items: center; gap: 8px; color: var(--text-faint); font-size: 12.5px; line-height: 1.35; }
+  .live-progress-row.current { color: var(--text-dim); }
+  .live-progress-row:not(.current) { opacity: .62; }
+  .progress-mark { width: 12px; flex-shrink: 0; text-align: center; color: var(--user); }
+  .live-progress-row .thinking-dots { width: 34px; flex-shrink: 0; }
+  .live-progress-slot { margin: 0 0 6px 4px; padding-left: 8px; border-left: 1px solid var(--border2); }
+  @media (max-width: 620px) { .bubble.live-progress { min-width: min(420px, 86vw); } }
 
   /* ---------- empty state ---------- */
   #empty { margin: auto; text-align: center; padding: 40px 20px; color: var(--text-dim); }
@@ -566,27 +576,41 @@
   #busyStrip .bs-other { flex-shrink: 0; opacity: .8; }
 
   #adjustDraft {
-    margin: 0 0 8px; padding: 9px 10px; border: 1px solid rgba(122,162,247,.42);
-    border-radius: 12px; background: var(--panel); box-shadow: 0 5px 18px rgba(0,0,0,.2);
+    margin: 0 0 8px;
   }
   #adjustDraft[hidden] { display: none; }
-  .adjust-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--user); font-size: 12px; font-weight: 600; }
-  .adjust-head span { min-width: 0; flex: 1; }
-  #adjustDraftDelete { width: 28px; height: 28px; border-radius: 8px; color: var(--text-faint); }
+  .adjust-status {
+    display: flex; align-items: center; gap: 6px; margin: 0 3px 6px;
+    color: var(--text-faint); font-size: 11px;
+  }
+  .adjust-clock { color: #e8b45c; }
+  .adjust-card {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px;
+    border: 1px solid var(--border2); border-radius: 12px; background: var(--panel);
+    box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  }
+  .adjust-body { min-width: 0; flex: 1; }
+  .adjust-targets { display: flex; gap: 4px; margin-bottom: 5px; overflow-x: auto; scrollbar-width: thin; }
+  .adjust-targets button {
+    flex-shrink: 0; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px;
+    color: var(--text-faint); font-size: 10.5px; white-space: nowrap;
+  }
+  .adjust-targets button:hover { color: var(--text); }
+  .adjust-targets button.active { color: var(--user); border-color: rgba(122,162,247,.55); background: rgba(122,162,247,.08); }
+  #adjustDraftPreview {
+    color: var(--text); font-size: 13px; line-height: 1.42; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .adjust-actions { display: flex; gap: 4px; flex-shrink: 0; }
+  .adjust-actions button { padding: 6px 9px; border-radius: 8px; color: var(--text-dim); font-size: 11px; white-space: nowrap; }
+  .adjust-actions button:hover { background: var(--panel2); color: var(--text); }
   #adjustDraftDelete:hover { color: var(--danger); background: rgba(242,109,109,.1); }
-  #adjustDraftText {
-    display: block; width: 100%; min-height: 54px; max-height: 150px; resize: vertical;
-    padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
-    background: var(--bg); color: var(--text); line-height: 1.45;
+  #adjustDraft.sending .adjust-card { opacity: .68; }
+  #adjustDraft.sending .adjust-clock { animation: pulse 1s infinite; }
+  @media (max-width: 620px) {
+    .adjust-card { align-items: flex-start; }
+    .adjust-actions { flex-direction: column; }
   }
-  #adjustDraftText:focus { outline: none; border-color: rgba(122,162,247,.65); }
-  .adjust-actions { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
-  .adjust-actions span { min-width: 0; flex: 1; color: var(--text-faint); font-size: 10.5px; line-height: 1.35; }
-  #adjustDraftSend {
-    flex-shrink: 0; padding: 7px 11px; border-radius: 8px; background: var(--user);
-    color: var(--on-accent); font-size: 12px; font-weight: 600; white-space: nowrap;
-  }
-  .box.adjustment-held { opacity: .55; }
 
   /* queue popover */
   #queueWrap { position: relative; display: inline-flex; }

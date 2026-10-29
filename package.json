@@ -1,6 +1,6 @@
 {
   "name": "parley-room",
-  "version": "1.2.2",
+  "version": "1.2.6",
   "private": false,
   "description": "Parley HY - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "node test/smoke.mjs",
     "test:smoke": "node test/smoke.mjs",
     "test:browser": "playwright test --config test/browser.config.mjs",
-    "test:unit": "node --test test/unit.mjs test/i18n.mjs test/skill-autocomplete.mjs test/composer-adjustment.mjs",
+    "test:unit": "node --test test/unit.mjs test/i18n.mjs test/skill-autocomplete.mjs test/composer-adjustment.mjs test/live-progress.mjs test/fast-mode.mjs",
     "test:retry": "node test/retry.mjs",
     "test:automatic": "node test/automatic.mjs",
     "test:claude-sessions": "node test/claude-sessions.mjs",
@@ -49,6 +49,7 @@
     "ui/",
     "README.md",
     "CHANGELOG.md",
+    "CHANGELOG.ko.md",
     "LICENSE"
   ],
   "devDependencies": {
