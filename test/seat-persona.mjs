@@ -45,6 +45,8 @@ test("custom call alias routes to the stable seat and persona is cached per nati
     assert.equal(first.explicit, true);
     let trace = starts(server);
     assert.match(trace[0].briefing, /Your call name in this room is @지니/);
+    assert.match(trace[0].briefing, /NOT your native subagents or roles/);
+    assert.match(trace[0].briefing, /Do not create, rename or substitute a native subagent/);
     assert.match(trace[0].briefing, /Assigned role: 요구검수/);
     assert.match(trace[0].briefing, /사용자 요구사항을 짧게 검수/);
 

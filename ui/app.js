@@ -5356,7 +5356,15 @@ async function launchProjectApplication(application, requestedPath = $("projectL
   projectLaunchContext = { room, path: target.path };
   renderProjectLaunch();
   try {
-    await api("/api/open", { room, what: "project", path: target.path, application });
+    const open = () => api("/api/open", { room, what: "project", path: target.path, application });
+    try { await open(); }
+    catch (error) {
+      if (application !== "vscode" || !["vscode-select-required", "vscode-config-invalid", "vscode-not-found"].includes(error.code)) throw error;
+      if (state.room !== room) return;
+      const picked = await api("/api/pick-vscode", {});
+      if (!picked.ok || state.room !== room) return;
+      await open();
+    }
     if (state.room !== room) return;
     closeConnectionMenu();
     toast(t("project.launchRequested", { app: application === "cmd" ? "CMD" : "VS Code", path: target.path }));

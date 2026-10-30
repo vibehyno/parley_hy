@@ -118,5 +118,33 @@ test("project launch API rejects unconnected paths, invalid applications and non
     assert.equal((await server.api("POST", "/api/open", { room: "default", what: "project", path: other, application: "cmd" })).status, 403);
     assert.equal((await server.api("POST", "/api/open", { room: "default", what: "room", application: "cmd" })).status, 400);
     assert.equal((await server.api("POST", "/api/open", { room: "default", what: "project", path: folder, application: "unknown" })).status, 400);
+    if (process.platform === "win32") {
+      const missing = await server.api("POST", "/api/open", { room: "default", what: "project", path: folder, application: "vscode" });
+      assert.equal(missing.status, 400);
+      assert.equal(missing.data.code, "vscode-select-required", "first launch asks for Code.exe instead of failing with ENOENT");
+    }
   } finally { await server.close(); }
+});
+
+test("first VS Code launch selects an executable once, retries, and respects cancellation", async () => {
+  const source = fs.readFileSync(new URL("../ui/app.js", import.meta.url), "utf8");
+  const fn = source.slice(source.indexOf("async function launchProjectApplication("), source.indexOf('$("projectPickCode").onclick'));
+  for (const cancel of [false, true]) {
+    const calls = [];
+    let opens = 0;
+    const context = vm.createContext({ state: { room: "room" }, projectLaunchPending: false, projectPickerPending: false,
+      projectLaunchFailure: null, projectLaunchApplication: null, projectLaunchContext: null,
+      launchableProjects: () => [{ path: "C:/project" }], renderProjectLaunch() {}, closeConnectionMenu() {}, toast() {}, t: x => x,
+      api: async route => {
+        calls.push(route);
+        if (route === "/api/pick-vscode") return cancel ? { cancelled: true } : { ok: true };
+        if (++opens === 1) throw Object.assign(new Error("select"), { code: "vscode-select-required" });
+        return { ok: true };
+      } });
+    vm.runInContext(fn, context);
+    await context.launchProjectApplication("vscode", "C:/project");
+    assert.deepEqual(calls, cancel ? ["/api/open", "/api/pick-vscode"] : ["/api/open", "/api/pick-vscode", "/api/open"]);
+    assert.equal(context.projectLaunchPending, false);
+    assert.equal(context.projectLaunchFailure, null);
+  }
 });

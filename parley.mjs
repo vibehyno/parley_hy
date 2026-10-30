@@ -40,6 +40,7 @@ import { createPublicSpeech } from "./lib/public-speech.mjs";
 import { initialContext } from "./lib/initial-context.mjs";
 import { discoverCliModels } from "./lib/model-catalog.mjs";
 import { diagnosticText } from "./lib/diagnostic-text.mjs";
+import { plainPeerRequest } from "./lib/peer-routing.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -756,6 +757,14 @@ function readJSON(file) {
   // tolerate a UTF-8 BOM — hand-edited configs often have one on Windows
   return JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
 }
+function launcherPreferences() {
+  try { return readJSON(path.join(ROOT, ".launchers.json")) || {}; }
+  catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw Object.assign(new Error("VS Code 실행 파일 설정을 읽지 못했습니다. 실행 파일을 다시 선택해 주세요."),
+      { status: 400, code: "vscode-config-invalid" });
+  }
+}
 // A torn write is the difference between a room that reopens and a room that
 // answers 500 forever: state.json is rewritten on every entry, so the
 // truncate-then-fill window recurs dozens of times per turn. Fill a sibling
@@ -1226,6 +1235,8 @@ const STANDING_CONTRACT_TEMPLATE = `You are {{AGENT_LABEL}} (internal seat {{AGE
 Your call name in this room is @{{AGENT_MENTION}}. Your stable compatibility mention is @{{AGENT_ID}}.
 
 How it works: messages from the user and your peers that occurred since your last turn are relayed to you inside a [Room activity ...] block. Each entry begins with a Parley-authored speaker label; later physical lines begin with | to mark a continuation of that same entry. Addressing is delivery: when you want a peer to answer, include that peer's listed @call-name explicitly.
+
+Peer identity and delivery: the named participants above are separate Parley CLI seats, NOT your native subagents or roles. A request to consult one of them must be sent to that exact seat using its listed @call-name and a concrete request in your public reply. Include the request in your final reply even if you mentioned it during progress. Do not create, rename or substitute a native subagent for a room participant. An internal critic, architect or reviewer is not that participant. Do not report their agreement, review or completed consultation until an actual room message authored by that seat is delivered to you. Saying you will ask is not delivery; missing or blocked delivery means consultation is still pending.
 
 ${PEER_CONTRACT}
 
@@ -3980,6 +3991,10 @@ function findHopTarget(room, entry, opts = {}) {
     const target = seatFromMention(room, match[2]);
     if (target !== entry.author) return target;
   }
+  const recovered = plainPeerRequest(text, seatIds(room).map(id => ({
+    id, alias: callNameOf(room, id), label: displayNameOf(room, id),
+  })), entry.author);
+  if (recovered) return recovered;
 
   // Soft calls must look like a vocative at a sentence/line boundary. This
   // catches "Codex, what do you reckon?" without treating ordinary prose such
@@ -8017,7 +8032,8 @@ const server = http.createServer(async (req, res) => {
     if (route === "POST /api/pick-vscode") {
       await readBody(req);
       if (!IS_WIN) return json(res, 400, { error: "실행 파일 선택은 Windows에서 지원합니다." });
-      const preferences = readJSON(path.join(ROOT, ".launchers.json")) || {};
+      let preferences;
+      try { preferences = launcherPreferences(); } catch { preferences = {}; }
       const start = preferences.vscode ? path.dirname(preferences.vscode) : process.env.LOCALAPPDATA;
       const picked = await pickFolder(start, "vscode");
       if (picked.cancelled) return json(res, 200, picked);
@@ -8688,7 +8704,10 @@ const server = http.createServer(async (req, res) => {
       if (application !== "folder") {
         if (what !== "project") throw Object.assign(new Error("연결된 프로젝트를 먼저 선택하세요."), { status: 400 });
         if (!fs.statSync(target).isDirectory()) throw Object.assign(new Error("프로젝트 폴더가 아닙니다."), { status: 400 });
-        const executable = application === "vscode" ? readJSON(path.join(ROOT, ".launchers.json"))?.vscode : null;
+        const executable = application === "vscode" ? launcherPreferences().vscode : null;
+        if (application === "vscode" && IS_WIN && (!executable || !fs.existsSync(executable))) {
+          throw Object.assign(new Error("VS Code의 Code.exe를 선택해 주세요."), { status: 400, code: "vscode-select-required" });
+        }
         const spec = projectLaunchSpec(target, application, { executable });
         if (application === "vscode") await launchVSCode(spec);
         else await launchDetached(spec.command, spec.args, spec.options);

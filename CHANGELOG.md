@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.4.9 — 2026-10-30
+
+- Open the native Code.exe picker when no saved VS Code executable is available; persist the selection, retry launch, and respect cancellation.
+- Fix first-launch failure caused by reading a missing .launchers.json file.
+- Route unambiguous named peer requests without @, excluding ordinary references, promises, quotations, and code examples.
+- Clarify that room participants are separate CLI seats, not native subagents, and require an actual peer reply before reporting consultation as complete.
+
 ## 1.4.8 — 2026-10-30
 
 - Honor explicit AGY Gemini effort variants, lock their effort selector and omit redundant --effort arguments to prevent conflicts with saved settings.
