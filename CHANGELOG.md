@@ -4,6 +4,8 @@ Notable changes per repository version.
 
 ## 1.4.9 — 2026-10-30
 
+- Update Korean and English README clone instructions and update directory to the new repository and its default parley folder.
+
 - Open the native Code.exe picker when no saved VS Code executable is available; persist the selection, retry launch, and respect cancellation.
 - Fix first-launch failure caused by reading a missing .launchers.json file.
 - Route unambiguous named peer requests without @, excluding ordinary references, promises, quotations, and code examples.

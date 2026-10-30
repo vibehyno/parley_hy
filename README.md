@@ -8,7 +8,7 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.4.8**
+- 최신 버전: **1.4.9**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -17,8 +17,8 @@
 필수 준비: **Node.js 20 이상**과 사용할 CLI 2개 이상 설치 및 로그인. 지원 명령은 `codex`, `claude`, `agy`이며 API 키 대신 각 CLI의 기존 구독 로그인을 사용함.
 
 ```cmd
-git clone https://github.com/vibehyno/parley_hy.git
-cd parley_hy
+git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git
+cd parley
 setupParley.cmd
 ```
 
@@ -283,7 +283,7 @@ Parley HY는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 
 직접 업데이트하려면 다음 명령 사용:
 
 ```powershell
-cd parley_hy
+cd parley
 git pull --ff-only
 npm.cmd start
 ```
@@ -330,8 +330,8 @@ You need **Node.js ≥ 20** and any two supported official CLIs, installed and a
 Parley HY is not published as a separate npm package. Install this fork from source so the `parley` command points to this repository:
 
 ```bash
-git clone https://github.com/vibehyno/parley_hy.git
-cd parley_hy
+git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git
+cd parley
 npm test     # optional: real server, fake agents — no login, no tokens spent
 npm link
 parley
