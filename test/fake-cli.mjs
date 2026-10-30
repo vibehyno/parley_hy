@@ -91,10 +91,24 @@ const codexMode = execIndex >= 0;
 const arg = (flag) => { const i = argv.indexOf(flag); return i >= 0 ? argv[i + 1] : null; };
 const nativeResume = codexMode ? argv[execIndex + 1] === "resume" : !!arg("--resume");
 
+if (process.argv.includes("models")) {
+  console.log("gemini-test\tGemini Test");
+  process.exit(0);
+}
 const rawInput = await new Promise((resolve) => {
   let s = "";
   process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (d) => { s += d; });
+  process.stdin.on("data", (d) => {
+    s += d;
+    try {
+      const request = JSON.parse(s.trim());
+      if (request.type === "control_request" && request.request?.subtype === "initialize") {
+        console.log(JSON.stringify({ type: "control_response", response: { request_id: request.request_id,
+          response: { models: [{ value: "sonnet", displayName: "Sonnet Test", resolvedModel: "claude-test" }] } } }));
+        process.exit(0);
+      }
+    } catch { /* ordinary text or partial input */ }
+  });
   process.stdin.on("end", () => resolve(s));
   if (process.stdin.isTTY) resolve("");
 });
@@ -163,7 +177,7 @@ for (const match of prompt.matchAll(fileMarker)) {
 // Quoted `user (to you):` text is framed as a `|` continuation and must not
 // become the fake provider's current directive.
 let cut = -1, currentStart = -1;
-for (const match of prompt.matchAll(/(^|\n)(?:user|claude|codex) \(to you\):/g)) {
+for (const match of prompt.matchAll(/(^|\n)(?:user|claude|codex|gemini) \(to you\):/g)) {
   cut = match.index + (match[1] ? 1 : 0);
   currentStart = match.index + match[0].length;
 }
@@ -242,7 +256,13 @@ if (process.env.FAKE_TRACE_PROMPTS === "1") {
 }
 
 let reply, wroteFile = null;
-if (after("HOPRESULT:")) {
+if (has("ROUTE_THREE")) {
+  if (has("ROUTE_THREE_START")) reply = "@claude ROUTE_THREE_REVIEW";
+  else if (has("ROUTE_THREE_REVIEW")) reply = "검토 완료. ROUTE_THREE_RETURN";
+  else if (has("ROUTE_THREE_RETURN")) reply = "@뚱뚱아 ROUTE_THREE_EXECUTE";
+  else if (has("ROUTE_THREE_EXECUTE")) reply = "WRONG_RECIPIENT";
+  else reply = "[pass]";
+} else if (after("HOPRESULT:")) {
   const mode = after("HOPRESULT:");
   if (isPeerRequest && ["fail", "rate"].includes(mode)) {
     process.stderr.write(mode === "rate" ? JSON.stringify({ type: "rate_limit_event", rate_limit_info: {

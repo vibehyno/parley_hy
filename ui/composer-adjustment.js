@@ -25,8 +25,9 @@
     return Number.isSafeInteger(activeSource(summary, target));
   }
 
-  function waitSnapshot(summary) {
-    const rows = (summary && summary.busyInfo) || [];
+  function waitSnapshot(summary, sourceN = null) {
+    const rows = ((summary && summary.busyInfo) || []).filter(row =>
+      sourceN === null || row.rootN === sourceN);
     return {
       runIds: rows.map((row) => row.runId).filter(Boolean),
       agents: [...new Set(rows.map((row) => row.agent).filter(Boolean))],
@@ -34,9 +35,9 @@
   }
 
   function workFinished(summary, runIds = []) {
-    if (!summary || summary.working) return false;
+    if (!summary) return false;
     const active = new Set((summary.busyInfo || []).map((row) => row.runId).filter(Boolean));
-    return (summary.busyInfo || []).length === 0 && runIds.every((id) => !active.has(id));
+    return runIds.every((id) => !active.has(id));
   }
 
   function resolvedTarget(mode, agents = [], fallback = null) {

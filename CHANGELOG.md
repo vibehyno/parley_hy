@@ -2,6 +2,38 @@
 
 Notable changes per repository version.
 
+## 1.4.8 — 2026-10-30
+
+- Honor explicit AGY Gemini effort variants, lock their effort selector and omit redundant --effort arguments to prevent conflicts with saved settings.
+- Display CLI-provided Claude version names in model choices and seat tooltips, with resolved IDs in tooltips. Load metadata on room entry while preserving execution aliases.
+- Keep editable work corrections on the server and submit them immediately after their task's current calls finish, without waiting for unrelated seats.
+- Supersede earlier prepared peer handoffs when accepting a correction. Let the model reassess and explicitly reissue any needed request after applying the new instruction.
+- Preserve draft targeting, editing, deletion and recovery across tab changes/reloads. Deduplicate submission retries and cancel automatic submission on user stop.
+- Keep prior progress visible while a correction continues the task, folding it after its follow-up settles. Use unique run identities across server restarts.
+- Keep public progress in separate named/avatar message bubbles during work. Collapse completed run details behind an expandable summary while preserving the final answer.
+- Deliver peer requests made in public progress after successful completion, even if omitted from the final reply. Include the original request and restrict fallback routing to the current run.
+- Instruct all seats to reply publicly before the first tool call and continue work and completion in the same invocation, without changing personal global instructions.
+- Preserve Codex/Claude intermediate public utterances separately from final results. Display AGY tool names, file paths and commands from actual `tool_info`, deduplicating start/completion events.
+- Keep completion reports concise; omit full hashes and raw logs unless requested or necessary to explain a failure.
+- Honor explicit third-seat handoffs after review returns and in reviewer replies, instead of routing back to the previous peer. Preserve automatic-turn limits, stop and sleep policies.
+- Clear historical seat warnings after a later successful response or completed turn, retaining transcript errors and showing subsequent failures.
+- Dismiss error details on pointer/focus exit or Escape; prevent mouse clicks from leaving the popup pinned.
+- Consume AGY public step events, retain intermediate speech, and display the structured final response without exposing private reasoning.
+- Encourage natural intent, progress and result conversation instead of canned acknowledgements; prevent historical tasks from becoming new authorization.
+- Bound first-participation history to 40 recent entries / approximately 16,000 text characters with honest receipts. Preserve current requests, resumed sessions and held work.
+- Read Claude versioned model labels and resolved IDs through CLI initialization, and AGY choices through `models`. Cache per command/workspace.
+- Show unresolved errors on model pills with scrollable hover, focus and click details. Exclude resolved failures and user stops.
+- Hide the Windows console for the taskkill stop helper.
+- Launch VS Code through its official CLI, including versioned Windows installations. Show progress and exit errors, with executable selection and retry.
+- Use the Windows Common Item Dialog for project folder and executable selection.
+- Pass all connected projects to Codex, Claude and AGY as additional workspace folders and session context. Restart native sessions when the folder list changes, preserving conversation order.
+- Widen the project dialog to 1180px and replace active-project selection, status labels and green highlighting with neutral project cards.
+- Place the sidebar Connect menu directly above Settings.
+- Added a sidebar Connect menu with CMD and VS Code choices. Open a single connected project directly, or choose a project when several are connected.
+- Renamed the project Apply action to Save and moved explanatory text into title and button tooltips.
+- Restrict launching to saved project folders and pass project paths without interpolating them into shell commands.
+- Adjusted agent message headers to 36px avatars, 12px names/roles and 14px timing/usage text, with wrapping on narrow screens.
+
 ## 1.4.7 — 2026-10-29
 
 - Show only the seat name on one line in header pills; move roles, model names and status details into tooltips.

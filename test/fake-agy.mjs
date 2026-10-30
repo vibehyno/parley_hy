@@ -2,6 +2,7 @@
 /** Minimal Antigravity CLI fixture for the AGY adapter smoke tests. */
 
 const argv = process.argv.slice(2);
+if (argv[0] === "models") { console.log("gemini-test\tGemini Test"); process.exit(0); }
 const arg = (flag) => {
   const inline = argv.find((value) => String(value).startsWith(`${flag}=`));
   if (inline) return inline.slice(flag.length + 1);
@@ -41,7 +42,9 @@ if (prompt.includes("AGYERROR")) {
 }
 
 let response = "OK";
-if (prompt.includes("ARGJSON") || prompt.includes("WORKARGS")) {
+if (prompt.includes("ROUTE_THREE_EXECUTE")) {
+  response = "ROUTE_THREE_COMPLETE";
+} else if (prompt.includes("ARGJSON") || prompt.includes("WORKARGS")) {
   // The standing contract contains literal peer mentions. Mask the sigil in
   // this diagnostic dump so the fixture does not accidentally launch hops.
   response = "ARGVJSON " + JSON.stringify(argv.map((value) => String(value).replaceAll("@", "\\u0040")));
@@ -58,4 +61,14 @@ const finalResult = {
   num_turns: resumed ? 2 : 1,
   usage,
 };
+if (prompt.includes("AGYSTREAM")) {
+  const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
+  emit({ event: "init", conversation_id: conversationId });
+  emit({ event: "step_update", step_update: { step_index: 1, step_type: "agent_response", text_delta: "확인해볼게." } });
+  await new Promise(resolve => setTimeout(resolve, 200));
+  emit({ event: "step_update", step_update: { step_index: 2, step_type: "tool_call" } });
+  await new Promise(resolve => setTimeout(resolve, 100));
+  emit({ event: "step_update", step_update: { step_index: 3, step_type: "agent_response", text_delta: "확인 완료." } });
+  finalResult.response = "확인해볼게.\n확인 완료.";
+}
 process.stdout.write(JSON.stringify(streamMode ? { event: "result", result: finalResult } : finalResult) + "\n");

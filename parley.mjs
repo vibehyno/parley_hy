@@ -33,6 +33,13 @@ import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive } from "./lib/conversation-archives.mjs";
 import { claimService, serviceCommand } from "./lib/service-control.mjs";
+import { projectLaunchSpec, launchVSCode } from "./lib/project-launch.mjs";
+import { createAgyStream } from "./lib/agy-stream.mjs";
+import { agyEffortArgs } from "./lib/agy-model-options.mjs";
+import { createPublicSpeech } from "./lib/public-speech.mjs";
+import { initialContext } from "./lib/initial-context.mjs";
+import { discoverCliModels } from "./lib/model-catalog.mjs";
+import { diagnosticText } from "./lib/diagnostic-text.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -233,7 +240,8 @@ const PROVIDERS = {
     fields: ["command", "model", "effort", "permissionMode", "extraArgs"],
     // Suggestions only — both fields are free text, so values newer than this
     // build (models or effort levels) work without touching Parley. Claude
-    // Code keeps no local model list to read, so these are static; note that
+    // Model aliases below are fallbacks; CLI initialization supplies versioned labels.
+    // Note that
     // `ultracode` is accepted by the CLI even though --help omits it.
     efforts: ["low", "medium", "high", "xhigh", "max", "ultracode"],
     models: ["fable", "opus", "sonnet", "haiku"],
@@ -486,6 +494,23 @@ function normalizeChoices(list, labels) {
 }
 
 let catalogCache = null;
+const cliCatalogCache = new Map();
+function seatModels(room, seat) {
+  const provider = providerIdOf(room, seat);
+  if (!["claude", "gemini"].includes(provider)) return null;
+  const command = room.cfg.agents[seat].command;
+  const cwd = workDir(room);
+  const key = JSON.stringify([provider, command, cwd]);
+  if (!cliCatalogCache.has(key)) {
+    const record = { models: null };
+    cliCatalogCache.set(key, record);
+    record.pending = discoverCliModels(provider, resolveCommand(command), cwd).then(models => {
+      record.models = models.length ? models : null;
+      return record.models;
+    }).catch(() => null);
+  }
+  return cliCatalogCache.get(key);
+}
 function providerCatalog() {
   if (catalogCache) return catalogCache;
   catalogCache = Object.fromEntries(Object.entries(PROVIDERS).map(([id, p]) => {
@@ -541,6 +566,7 @@ function seatCatalog(room) {
     const seatCfg = room.cfg.agents[id] || {};
     return [id, {
       ...cat[pid],
+      ...(seatModels(room, id)?.models ? { models: seatModels(room, id).models } : {}),
       displayName: seatCfg.displayName || null,
       role: seatCfg.role || null,
       mentionAlias: seatCfg.mentionAlias || null,
@@ -645,7 +671,7 @@ function defaultConfig(seats = DEFAULT_SEATS) {
     accounting: "automatic",
     pairRounds: 0,    // review rounds per message in pair mode (0 = until the reviewer approves)
     projectDir: null, // absolute path of a real project to work in (null = room's own sandbox workspace)
-    projectDirs: [],  // saved project choices; projectDir is the one currently used as the CLI cwd
+    projectDirs: [],  // all linked folders are available together; projectDir is only the process cwd
     roomNote: null,   // standing instruction delivered once per native session (Settings or /note)
     timeoutMs: 900000,
     // `provider` is written first so it reads first in room.json, and it is a
@@ -1018,7 +1044,7 @@ function resolveCommandUncached(cmd) {
 function killTree(child) {
   if (!child || !child.pid) return;
   try {
-    if (IS_WIN) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+    if (IS_WIN) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
     else if (child.rtProcessGroup) process.kill(-child.pid, "SIGKILL");
     else child.kill("SIGKILL");
   } catch { /* already gone */ }
@@ -1143,6 +1169,9 @@ function runCli(spec, args, { cwd, timeoutMs, input, onLine, room, agent }) {
       clearTimeout(timer);
       if (room && agent && room.procs.get(agent) === child) room.procs.delete(agent);
       if (run && run.child === child) run.child = null;
+      if (run && !child.rtStopped && (code !== 0 || timedOut || spawnErr)) {
+        run.technicalError = diagnosticText(spawnErr ? spawnErr.message : stderr);
+      }
       if (!bufOverflow && buf.trim() && onLine) { try { onLine(buf.trim()); } catch { /* ignore */ } }
       resolve({
         code: spawnErr ? -1 : code,
@@ -1204,6 +1233,8 @@ The full transcript is at {{TRANSCRIPT_FILE}}. Your working directory is {{WORKD
 
 Style: you are a chat participant, not running a coding task. Reply in plain conversational text, concise by default. Do not use tools or modify files unless the user explicitly asks for it. Never speak for your peers or fabricate their messages. You may address a peer directly by using their listed @call-name; if the room's hop limit allows it, they will see your message and may respond.
 
+When the user or another seat asks you to investigate, review, or perform work, send a short public reply about what you understood and will do BEFORE your first tool call, then perform the work and report the result in this SAME invocation. Use your CLI's public intermediate message channel, not private reasoning or a sentence saved for the final answer. Use the user's language and this room's persona. No canned acknowledgement or mandatory wording: answer simple questions directly and do not turn a capability question into permission to execute old tasks from room history. Do not claim that Parley or another model has acknowledged the request. Ask for confirmation only when it is actually required. Keep completion reports focused on changes, validation and unresolved issues. Do not compute hashes or generate raw logs merely to report completion. When the task requires integrity evidence, keep the full values in evidence files and show them in chat only when explicitly requested or necessary to explain a failure.
+
 For work that takes long enough to use tools or several steps, publish a short user-visible progress update at meaningful transitions: what you are doing, what you observed, or what you will do next. These updates are steering points for the user, so keep them concrete and non-repetitive. Never reveal private chain-of-thought or hidden reasoning; report only actions, observations, and decisions intended for the user. When all work is done, finish with one concise consolidated result covering changes, verification, and any remaining limitation.`;
 const PROMPT_FINGERPRINT = crypto.createHash("sha256")
   .update(STANDING_CONTRACT_TEMPLATE.replace(/\r\n?/g, "\n"), "utf8")
@@ -1234,6 +1265,14 @@ function composeStandingContract(agent, room) {
   let text = STANDING_CONTRACT_TEMPLATE.replace(
     /\{\{(?:AGENT_LABEL|AGENT_ID|AGENT_MENTION|PEERS|TRANSCRIPT_FILE|WORKDIR_KIND|WORKDIR)\}\}/g,
     (token) => String(values[token]));
+  const projectDirs = normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir);
+  if (projectDirs.length) {
+    text += "\n\nConnected project folders (available together in this room):\n" +
+      projectDirs.map((dir) => `- ${JSON.stringify(dir)}`).join("\n") +
+      "\nUse any of these folders as needed for the user's task; no project switching is required. " +
+      "The process working directory is only a starting location. Use explicit paths or set the command's working directory for the intended project. " +
+      "The current mode and provider permissions still apply to every folder.";
+  }
   if (ownRole || persona) {
     text += `\n\n[Your room-specific role from the user]\n` +
       (ownRole ? `Assigned role: ${ownRole}\n` : "") +
@@ -1243,6 +1282,7 @@ function composeStandingContract(agent, room) {
   const identityFingerprint = crypto.createHash("sha256").update(JSON.stringify({
     displayName: displayNameOf(room, agent), role: ownRole,
     mention: callNameOf(room, agent), persona,
+    projectDirs,
     peers: peers.map(({ id, label, role, mention }) => ({ id, label, role, mention })),
   }), "utf8").digest("hex");
   const fingerprint = crypto.createHash("sha256")
@@ -1562,10 +1602,11 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   // of the local trust boundary, so the prompt still carries the same rule.
   const extraArgs = protectedTurn ? withoutArgWithValue(checked, "--permission-mode") : checked;
   const args = ["-p"];
-  // Claude's --add-dir is variadic. A following known option terminates the
-  // value list, and the directory contains disposable copies only — never the
-  // room's authoritative attachment store.
-  if (inputDir) args.push("--add-dir", inputDir);
+  // The next known option terminates Claude's variadic directory list.
+  // Attachment access uses disposable copies, never the authoritative store.
+  const extraDirs = normalizeProjectDirs(room.cfg.projectDirs, inputDir)
+    .filter((dir) => !sameProjectPath(dir, workDir(room)));
+  if (extraDirs.length) args.push("--add-dir", ...extraDirs);
   args.push("--output-format", "stream-json", "--verbose", "--include-partial-messages");
   if (sess) args.push("--resume", sess);
   if (briefing) args.push("--append-system-prompt", briefing);
@@ -1615,6 +1656,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   }
 
   let sessionRef = sess || null, acc = "", resultText = null, assistantText = null, isError = false, usage = null;
+  const speech = createPublicSpeech({ onStream, onActivity });
   const seenTools = new Set();
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
@@ -1622,18 +1664,20 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
     if (obj.session_id) sessionRef = obj.session_id;
     if (obj.type === "stream_event" && obj.event && !obj.parent_tool_use_id) {
       const ev = obj.event;
+      if (ev.type === "message_start") { speech.archive(); acc = ""; }
       if (ev.type === "content_block_start" && ev.content_block?.type === "text" && onProgress) {
         onProgress({ kind: "writing" });
       }
       if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
         acc += ev.delta.text;
-        if (onStream) onStream(acc);
+        speech.update(acc);
       }
     } else if (obj.type === "assistant" && obj.message && Array.isArray(obj.message.content)) {
       const t = obj.message.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
-      if (t) assistantText = t;
+      if (t && !obj.parent_tool_use_id) { assistantText = t; acc = t; speech.update(t); }
       for (const c of obj.message.content) {
         if (c.type === "tool_use" && c.id && !seenTools.has(c.id) && seenTools.size < 100) {
+          if (!obj.parent_tool_use_id) { speech.archive(); acc = ""; }
           seenTools.add(c.id);
           const label = claudeToolLabel(c.name, c.input || {});
           if (onProgress) onProgress({ kind: "activity", text: label });
@@ -1665,7 +1709,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   if (isError) throw new AdapterError(`claude reported an error: ${truncate(text)}`);
   if (!text && !allowEmpty) throw new AdapterError("claude returned an empty reply");
   return {
-    text: text || "",
+    text: speech.finalText(text),
     emptyReply: !text,
     sessionRef,
     sessionScope,
@@ -1692,6 +1736,8 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     sandbox,
     fastMode: !!cfg.fastMode,
     inputDir,
+    projectDirs: normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir)
+      .filter((dir) => !sameProjectPath(dir, workDir(room))),
     sessionRef: sess,
     cwd: workDir(room),
   });
@@ -1707,6 +1753,8 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
 
   const input = briefing ? briefing + "\n\n---\n\n" + prompt : prompt;
   let threadRef = sess || null, acc = "", lastMsg = null, usage = null;
+  const speech = createPublicSpeech({ onStream, onActivity });
+  let publicItem = null;
   const seenItems = new Set();
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
@@ -1719,6 +1767,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     else if (obj.thread_id && (!threadRef || threadRef === "--last")) threadRef = obj.thread_id;
     else if (obj.msg && obj.msg.type === "session_configured" && obj.msg.session_id) threadRef = obj.msg.session_id;
     const item = obj.item;
+    if (item && obj.type === "item.started" && ["mcp_tool_call", "web_search"].includes(item.type)) speech.archive();
     if (item && obj.type === "item.started" && onProgress) {
       if (item.type === "reasoning") onProgress({ kind: "reasoning" });
       else if (item.type === "agent_message" || item.item_type === "assistant_message") onProgress({ kind: "writing" });
@@ -1728,17 +1777,23 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     }
     if (item && (item.type === "agent_message" || item.item_type === "assistant_message")) {
       const t = item.text ?? item.message ?? null;
-      if (t) { lastMsg = t; if (onStream) onStream(t); }
+      if (t) {
+        if (publicItem !== null && item.id && publicItem !== item.id) speech.archive();
+        publicItem = item.id || publicItem;
+        lastMsg = t; speech.update(t);
+      }
     }
     if (item && (item.type === "file_change" || item.type === "command_execution") && onActivity && seenItems.size < 200) {
       const startedKey = (item.id || "") + "|start";
       if (obj.type === "item.started" && !seenItems.has(startedKey)) {
+        speech.archive();
         seenItems.add(startedKey);
         const label = codexItemLabel(item);
         if (onProgress) onProgress({ kind: "activity", text: label });
         onActivity(label);
       } else if (obj.type === "item.completed") {
         if (!seenItems.has(startedKey)) {
+          speech.archive();
           seenItems.add(startedKey);
           const label = codexItemLabel(item);
           if (onProgress) onProgress({ kind: "activity", text: label });
@@ -1796,8 +1851,11 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   const args = ["--input-format", "stream-json", "--output-format", "stream-json"];
   if (sess) args.push("--conversation", sess);
   if (cfg.model) args.push("--model", cfg.model);
-  if (cfg.effort) args.push("--effort", cfg.effort);
+  args.push(...agyEffortArgs(cfg.model, cfg.effort));
   if (inputDir) args.push("--add-dir", inputDir);
+  for (const dir of normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir)) {
+    if (!sameProjectPath(dir, workDir(room))) args.push("--add-dir", dir);
+  }
   const approval = protectedTurn ? "plan" : effectiveAgyApprovalMode(cfg, room.cfg.mode);
   if (approval === "full") args.push("--mode", "auto", "--dangerously-skip-permissions");
   else args.push("--mode", approval, "--sandbox");
@@ -1814,16 +1872,12 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   const input = JSON.stringify({ event: "user", message: { content: promptText } }) + "\n";
 
   let result = null;
+  const publicStream = createAgyStream({ onStream, onActivity, onProgress });
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
     try {
       const event = JSON.parse(line);
-      if (event?.event === "tool_use" && onProgress) {
-        onProgress({ kind: "activity", text: `🔧 ${truncate(event.name || event.tool || "Tool", 70)}` });
-      }
-      if ((event?.event === "thinking" || event?.event === "reasoning") && onProgress) {
-        onProgress({ kind: "reasoning" });
-      }
+      publicStream.accept(event);
       if (event?.event === "result" && event.result) result = event.result;
     } catch { /* final stdout parse below */ }
   };
@@ -1851,12 +1905,12 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   }
   const errorText = result?.error && (result.error.message || String(result.error));
   if (result?.status && result.status !== "SUCCESS") {
-    throw new AdapterError(`${seat}: ${truncate(errorText || `AGY returned status ${result.status}`, 300)}`);
+    throw new AdapterError(`${seat}: ${diagnosticText(errorText || `AGY returned status ${result.status}`)}`);
   }
-  if (errorText) throw new AdapterError(`${seat}: ${truncate(errorText, 300)}`);
+  if (errorText) throw new AdapterError(`${seat}: ${diagnosticText(errorText)}`);
   const sessionRef = typeof result?.conversation_id === "string" ? result.conversation_id : null;
   if (!sessionRef) throw new AdapterError(`${seat} returned no conversation id`);
-  const text = typeof result?.response === "string" ? result.response : null;
+  const text = typeof result?.response === "string" ? publicStream.finalText(result.response) : null;
   if (!text && !allowEmpty) throw new AdapterError(`${seat} returned an empty reply`);
 
   let usage = null;
@@ -1893,7 +1947,7 @@ function briefedAdapter(send) {
       const root = room.entries.find((e) => e.n === run.rootN && e.kind === "user");
       const policy = relayPolicyForEntry(room, root);
       if (root && !root.meta?.pair && isAutomaticPolicy(policy)) {
-        if (run.stopRequested || run.stopAt !== room.stopEpoch || (run.chain && chainHalted(room, run.chain)) || isAsleep(room, opts.seat)) {
+        if (run.stopRequested || run.stopAt !== room.stopEpoch || run.chain?.halted || isAsleep(room, opts.seat)) {
           throw Object.assign(new Error("Automatic start cancelled before launch"), { stopped: true });
         }
         const automatic = run.sourceN !== run.rootN || run.phase !== "start" || (run.adapterAttempts || 0) > 0;
@@ -2207,6 +2261,7 @@ function loadRoom(name, seatChoice, create = false) {
     // queued behind a busy seat, and held halves of a split @both. See the
     // per-seat lanes section.
     pending: [],
+    adjustmentDraft: null, // editable until the pinned calls finish; never a transcript entry yet
     pendingSeq: 1,
     exchanges: 0,      // ordinary chains in flight, gaps between turns included
     // Active per-message relay counters. These are runtime progress only: the
@@ -2226,6 +2281,7 @@ function loadRoom(name, seatChoice, create = false) {
     catchUpScheduled: false,
   };
   rooms.set(name, room);
+  for (const seat of seatIds(room)) seatModels(room, seat);
   return room;
 }
 
@@ -2617,6 +2673,20 @@ function transcriptAttachmentMarkdown(entry) {
 
 function appendEntry(room, { kind, author, target = null, text, meta = null }, opts = {}) {
   const run = room.runs?.get(kind === "agent" ? author : meta?.agent);
+  if (kind === "agent" && run && !findHopTarget(room, { author, text }, { allowPlain: true })) {
+    // Public requests can precede tool work. Route them only after the turn
+    // succeeds, and only within this run; never revive a stopped/older request.
+    for (let i = room.entries.length - 1; i >= 0; i--) {
+      const speech = room.entries[i];
+      if (!speech.meta?.publicSpeech || speech.meta.runId !== run.runId || speech.author !== author) continue;
+      const recipient = findHopTarget(room, speech);
+      if (recipient) {
+        meta = { ...meta, publicHandoff: { sourceN: speech.n, target: recipient, text: speech.text } };
+        break;
+      }
+    }
+  }
+  if (meta?.error && run?.technicalError) meta = { ...meta, technicalError: `${diagnosticText(text)}\n\n${run.technicalError}` };
   if (run && (kind === "agent" || meta?.error || meta?.stopped)) {
     meta = { ...meta, ...(run.delivery ? { delivery: run.delivery } : {}),
       ...(run.relayLaunch ? { relayLaunch: run.relayLaunch } : {}),
@@ -2753,6 +2823,7 @@ function roomSummary(room) {
     projectLinks,
     git: gitIdentity(workDir(room)),
     lastAddressed: room.state.lastAddressed,
+    adjustmentDraft: adjustmentSnapshot(room),
     seats,
     providers: providerCatalog(),
     // Per seat, because a seat's id no longer has to be its provider's. Purely
@@ -2794,6 +2865,11 @@ function roomSummary(room) {
     // yes/no. Anything that wants to show *what* a seat is answering reads
     // busyInfo, which is the same set with the answer attached.
     busyInfo: busyInfo(room),
+    continuingRunIds: [...new Set([
+      ...[...room.runs.values()].map(run => run.rootN),
+      ...room.pending.map(item => item.sourceN),
+      ...[...room.hopRuns.values()].map(hop => hop.rootN),
+    ].flatMap(n => room.entries.find(entry => entry.n === n)?.meta?.askFrom?.continuesRunIds || []))],
     // Per-seat, durable, and ahead of every receipt: a later high-water receipt
     // spans a withdrawn entry, so without this the UI cheerfully reports that
     // the seat caught up on a message it was never shown.
@@ -2839,7 +2915,7 @@ function roomSummary(room) {
 function beginRun(room, agent, { phase, startedAt, rootN = null, sourceN = null, queueGroupId = null, chain = null,
   delivery = null, catchUp = null }) {
   const run = {
-    runId: `r${room.runSeq++}`,
+    runId: `r${room.runSeq++}-${crypto.randomUUID()}`,
     agent, phase, startedAt, queueGroupId, chain,
     ...(delivery ? { delivery } : {}), ...(catchUp ? { catchUp } : {}),
     rootN: rootN === undefined ? null : rootN,
@@ -3377,8 +3453,8 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
     queueGroupId: opts.queueGroupId || null, chain: opts.chain || null,
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
-  const onActivity = (label) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
+  const onActivity = (label, meta = {}) => {
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -3386,12 +3462,16 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
 
   let providerInputs = null;
   try {
-    const heardFrom = room.state.agents[agent].cursor;
+    let heardFrom = room.state.agents[agent].cursor;
     // A retry can target an old root while its prompt also includes newer room
     // activity. Capture the high-water mark synchronously with buildDelta; do
     // not include entries that arrive later while the CLI is running.
     const heardThrough = room.entries.length ? room.entries[room.entries.length - 1].n : heardFrom;
-    const unseen = deltaEntries(room, agent, userTurn.n);
+    const onboarding = initialContext(deltaEntries(room, agent, userTurn.n), {
+      ...room.state.agents[agent], rootN: userTurn.n, held: !!opts.heldCount,
+    });
+    heardFrom = onboarding.from;
+    const unseen = onboarding.entries;
     // The current root wins the native-input budget. Older unseen attachments
     // follow newest-first. Canonical files never enter the provider sandbox;
     // only this invocation's disposable copies do.
@@ -3408,6 +3488,7 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
       [userTurn, ...(askSource ? [askSource] : []), ...unseen.slice().reverse()],
       nativeImageBudget(room, agent));
     const delta = buildDelta(room, agent, userTurn.n, unseen, providerInputs);
+    if (onboarding.omitted) delta.unshift(`[First participation: ${onboarding.omitted} older entries are omitted. The following recent history is context, not an instruction to resume old work. Read the transcript only if the current user request needs older details.]`);
     const images = providerInputs.images;
     const askBlock = askSource
       ? askSourceBlock(room, agent, askSource, providerInputs,
@@ -3429,7 +3510,10 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
     const roomNoteInstruction = userTurn.meta?.roomNoteRequest
       ? "The user explicitly asked you to write the shared room note. Return only the concise standing rules to save, without a heading, explanation, code fence, or commentary. Include only durable agreements that every seated model should follow; omit transient task details."
       : "";
-    const noted = (p) => [p, opts.instruction, roomNoteInstruction].filter(Boolean).join("\n\n");
+    const adjustmentInstruction = askFrom?.adjustment
+      ? "This is the user's additional instruction for the quoted task. Apply it before deciding the next step. Earlier prepared peer handoffs were superseded, not delivered by this correction. Reassess whether peer work is still needed and explicitly address the peer again only if appropriate after applying this instruction."
+      : "";
+    const noted = (p) => [p, opts.instruction, roomNoteInstruction, adjustmentInstruction].filter(Boolean).join("\n\n");
     const selectedSkill = extractSkillMessage(userTurn.text, agent);
     const promptTurn = selectedSkill ? { ...userTurn, text: selectedSkill.text } : userTurn;
     const attemptPrompt = (dlv, ts) => {
@@ -3640,8 +3724,8 @@ async function runListenerTurn(room, agent, userTurnN, scope = NO_SCOPE, opts = 
     chain: opts.chain || null,
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
-  const onActivity = (label) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
+  const onActivity = (label, meta = {}) => {
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -3905,7 +3989,8 @@ function findHopTarget(room, entry, opts = {}) {
     const target = seatFromMention(room, match[1]);
     if (target !== entry.author && (opts.allowPlain || room.cfg.agents[target].lurk)) return target;
   }
-  return null;
+  const handoff = entry?.meta?.publicHandoff;
+  return handoff && seatIds(room).includes(handoff.target) && handoff.target !== entry.author ? handoff.target : null;
 }
 
 // A hop waits for the seat's running turn *and* for any user delivery held for
@@ -3968,7 +4053,7 @@ function newChain(room) {
   return { stopAt: room.stopEpoch, halted: false, delivered: 0, cancelled: 0, stopped: 0 };
 }
 function chainHalted(room, chain) {
-  return !!chain.halted || room.stopEpoch !== chain.stopAt;
+  return !!chain.halted || !!chain.supersededBy || room.stopEpoch !== chain.stopAt;
 }
 
 // Was this user turn protected by the @both no-edit boundary? Read from the
@@ -4044,8 +4129,8 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
     catchUp: opts.meta?.catchUp,
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
-  const onActivity = (label) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label }, { md: false, state: false });
+  const onActivity = (label, meta = {}) => {
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -4073,7 +4158,10 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
       ? attachmentPromptLines(room, [rootEntry], providerInputs) : [];
     const images = providerInputs.images;
     const head = delta.length ? `[Room activity since your last turn]\n${delta.join("\n")}\n[End of room activity]\n\n` : "";
-    const trigger = relayMessage(`${triggerEntry.author} (to you)`, triggerEntry.text);
+    const publicHandoff = triggerEntry.meta?.publicHandoff;
+    const triggerText = publicHandoff?.target === agent
+      ? `${publicHandoff.text}\n\n${triggerEntry.text}` : triggerEntry.text;
+    const trigger = relayMessage(`${triggerEntry.author} (to you)`, triggerText);
     const rootAttachmentContext = rootAttachments.length
       ? `\n${relayMessage("Parley root attachment context", rootAttachments.join("\n"))}` : "";
     // A caller-supplied composed instruction (pair notes, continuations) is
@@ -5345,6 +5433,7 @@ function handleUserMessage(room, rawText, targetSel, rawImages, rawFiles, rawRel
   const listeners = asPairTurn || solo || !agents.length ? [] // the reviewer is already in the loop
     : allSeats.filter((a) => !agents.includes(a) && !sleeping.includes(a) && room.cfg.agents[a].lurk);
   const discussion = effectiveTarget === "both" && room.cfg.mode === "work";
+  const adjustedRun = !asPairTurn && agents.length === 1 ? room.runs.get(agents[0]) : null;
   const attachments = persistAttachments(room, prepared);
   let userTurn;
   try {
@@ -5356,12 +5445,18 @@ function handleUserMessage(room, rawText, targetSel, rawImages, rawFiles, rawRel
         ...(attachments.length ? { attachments } : {}),
         ...(discussion ? { discussion: true } : {}),
         ...(roomNoteRequest ? { roomNoteRequest: true } : {}),
+        ...(adjustedRun?.rootN ? { askFrom: { sourceN: adjustedRun.rootN, kind: "redirect", adjustment: true,
+          continuesRunIds: continuedRuns(room, [adjustedRun]) } } : {}),
         ...(asPairTurn ? { pair: { rounds: pair.rounds, worker: pair.worker, reviewer: pair.reviewer } } : {}),
       },
     });
   } catch (e) {
     removeAttachments(room, attachments);
     throw e;
+  }
+  if (adjustedRun?.chain) {
+    adjustedRun.chain.supersededBy = userTurn.n;
+    wakeSeatWaiters(room);
   }
   room.state.lastAddressed = effectiveTarget;
   room.state.lastUser = {
@@ -6251,6 +6346,9 @@ function releaseSeat(room, agent, run = null) {
   room.busy.delete(agent);
   if (run) endRun(room, agent, run); else room.runs.delete(agent);
   broadcast(room, { type: "status", agent, phase: "done", ...(run ? { runId: run.runId } : {}) });
+  // Accept the correction before the old coordinator gets its next microtask,
+  // but after its done event so it cannot remove the new response's live card.
+  flushAdjustment(room);
   broadcast(room, { type: "room", room: roomSummary(room) });
   // Deferred by a tick so the turn that just ended finishes unwinding first.
   // Seat waiters (hops, pair steps) are woken only AFTER the drain has had its
@@ -6265,6 +6363,7 @@ function releaseSeat(room, agent, run = null) {
 }
 
 function clearPending(room) {
+  room.adjustmentDraft = null;
   const held = room.pending;
   room.pending = [];
   for (const item of held) item.abandon();
@@ -6277,12 +6376,17 @@ function clearPending(room) {
 // coordinator is awaiting, so the chain closes out rather than hanging on a
 // delivery that will never run.
 function cancelQueued(room, groupId = null) {
-  if (!room.pending.length) return 0;
+  const draftCount = groupId === null && room.adjustmentDraft ? 1 : 0;
+  if (draftCount) {
+    room.adjustmentDraft = null;
+    broadcast(room, { type: "room", room: roomSummary(room) });
+  }
+  if (!room.pending.length) return draftCount;
   const keep = [], drop = [];
   for (const item of room.pending) {
     (groupId === null || item.queueGroupId === groupId ? drop : keep).push(item);
   }
-  if (!drop.length) return 0;
+  if (!drop.length) return draftCount;
   room.pending = keep;
   broadcastQueue(room);
   for (const item of drop) item.abandon();
@@ -6293,7 +6397,7 @@ function cancelQueued(room, groupId = null) {
   // the room then know the message was withdrawn before anyone received it.
   recordWithdrawals(room, drop);
   scheduleCatchUps(room);
-  return drop.length;
+  return drop.length + draftCount;
 }
 
 // Durable, per message and per seat. A system entry alone would not do: only
@@ -6743,6 +6847,92 @@ function handleRetry(room, options = {}) {
 //     chain in the room, including a concurrent exchange the user did not aim at.
 //   - A stale pin degrades, never escalates: handleStop returns
 //     { stale: true } having touched nothing, and the ask proceeds.
+function continuedRuns(room, runs) {
+  return [...new Set(runs.flatMap(run => [run.runId,
+    ...(room.entries.find(entry => entry.n === run.rootN)?.meta?.askFrom?.continuesRunIds || [])]))];
+}
+
+function adjustmentSnapshot(room) {
+  const draft = room.adjustmentDraft;
+  if (!draft) return null;
+  const { id, sourceN, target, targetMode, text, hopChoice, error } = draft;
+  return { id, room: room.name, sourceN, target, targetMode, text, hopChoice,
+    waitAgents: draft.runs.map(run => run.agent), ...(error ? { error } : {}) };
+}
+
+function adjustmentOptions(draft) {
+  return { sourceN: draft.sourceN, target: draft.target, text: draft.text,
+    mode: "queue", adjustment: true, adjustmentId: draft.id, supersedes: draft.runs,
+    ...(draft.hopChoice === "solo" ? { solo: true }
+      : draft.hopChoice !== "default" ? { hopBudget: draft.hopChoice } : {}) };
+}
+
+function commitAdjustment(room, draft) {
+  const result = handleAsk(room, adjustmentOptions(draft));
+  room.adjustmentDraft = null;
+  broadcast(room, { type: "room", room: roomSummary(room) });
+  return result;
+}
+
+function flushAdjustment(room) {
+  const draft = room.adjustmentDraft;
+  if (!draft || draft.error) return;
+  if (draft.gen !== room.generation || draft.stopAt !== room.stopEpoch ||
+      draft.runs.some(run => run.stopRequested || run.chain?.halted)) {
+    room.adjustmentDraft = null;
+    return;
+  }
+  if (draft.runs.some(run => room.runs.get(run.agent) === run)) return;
+  try { commitAdjustment(room, draft); }
+  catch (error) {
+    // Keep rejected text editable instead of losing it or retrying forever.
+    draft.error = error.message;
+    broadcast(room, { type: "room", room: roomSummary(room) });
+  }
+}
+
+function handleAdjustment(room, body) {
+  const id = String(body.id || "");
+  if (!/^[\w-]{1,80}$/.test(id)) throw Object.assign(new Error("invalid adjustment id"), { status: 400 });
+  const existing = room.adjustmentDraft;
+  if (body.action === "cancel" || body.action === "send") {
+    if (!existing || existing.id !== id) {
+      throw Object.assign(new Error("추가 지시가 이미 전달되었거나 삭제되었습니다."), { status: 409 });
+    }
+    if (body.action === "send") return { sent: true, ...commitAdjustment(room, existing) };
+    room.adjustmentDraft = null;
+    broadcast(room, { type: "room", room: roomSummary(room) });
+    return { cancelled: true };
+  }
+  if (body.action !== "stage") throw Object.assign(new Error("invalid adjustment action"), { status: 400 });
+  // A lost HTTP response must not turn Retry into a second user instruction.
+  const delivered = room.entries.find(entry => entry.kind === "user" && entry.meta?.askFrom?.adjustmentId === id);
+  if (delivered) {
+    if (body.update) throw Object.assign(new Error("추가 지시가 이미 전달되었습니다."), { status: 409 });
+    return { sent: true, n: delivered.n, draft: null };
+  }
+  if (existing && existing.id !== id) {
+    throw Object.assign(new Error("대기 중인 추가 지시를 먼저 편집하거나 삭제해 주세요."), { status: 409 });
+  }
+  if (body.update && !existing) {
+    throw Object.assign(new Error("추가 지시가 이미 전달되었습니다."), { status: 409 });
+  }
+  const sourceN = Number(body.sourceN);
+  const target = String(body.target || "");
+  const draft = { id, sourceN, target, text: String(body.text || "").trim(),
+    targetMode: body.targetMode === "auto" ? "auto" : target,
+    hopChoice: body.hopChoice ?? "default", gen: room.generation, stopAt: room.stopEpoch,
+    // All currently running calls of THIS task, not unrelated seats in the room.
+    runs: existing?.runs || [...room.runs.values()].filter(run => run.rootN === sourceN),
+  };
+  if (!draft.text) throw Object.assign(new Error("추가 지시를 입력해 주세요."), { status: 400 });
+  handleAsk(room, { ...adjustmentOptions(draft), validateOnly: true });
+  room.adjustmentDraft = draft;
+  flushAdjustment(room);
+  broadcast(room, { type: "room", room: roomSummary(room) });
+  return { draft: adjustmentSnapshot(room), sent: !room.adjustmentDraft };
+}
+
 function handleAsk(room, opts = {}) {
   // ---- 1. validate everything before mutating anything ----
   // Same discipline as wakeAndDeliver: a refusal must leave the run the user was
@@ -6802,6 +6992,7 @@ function handleAsk(room, opts = {}) {
     // request lands, which may be a response the user never saw.
     throw Object.assign(new Error("stop-and-ask must name the responses it meant"), { status: 400 });
   }
+  if (opts.validateOnly) return;
 
   // ---- 2. the atomic half: stop, then append, then place, in ONE tick ----
   const stop = mode === "stop" ? handleStop(room, { scope: "active", runs: pins }) : null;
@@ -6822,12 +7013,22 @@ function handleAsk(room, opts = {}) {
         askFrom: {
           sourceN: source.n,
           kind: raw ? "redirect" : "ask-again",
+          ...(opts.adjustment ? { adjustment: true, continuesRunIds: continuedRuns(room, opts.supersedes ||
+            [...room.runs.values()].filter(run => run.rootN === source.n && agents.includes(run.agent))) } : {}),
+          ...(opts.adjustmentId ? { adjustmentId: opts.adjustmentId } : {}),
           ...(mode === "stop" ? { redirect: true } : {}),
           ...(stop && stop.stopped ? { stoppedCount: stop.count } : {}),
         },
       },
     });
   } catch (e) { removeAttachments(room, attachments); throw e; }
+  if (opts.adjustment) {
+    // This ends only downstream routing, never the CLI process already running.
+    const runs = opts.supersedes || [...room.runs.values()].filter(run =>
+      run.rootN === source.n && agents.includes(run.agent));
+    for (const run of runs) if (run.chain) run.chain.supersededBy = userTurn.n;
+    wakeSeatWaiters(room);
+  }
   // Only when the user picked a seat in the dialog. A target derived from the
   // source message is not a fresh act of addressing someone, and rewriting
   // lastAddressed would re-route their next untagged composer message.
@@ -6985,7 +7186,7 @@ function pickerCancelled(code, err) {
   return code === 1;
 }
 
-function pickFolder(start) {
+function pickFolder(start, kind = "folder") {
   return new Promise((resolve) => {
     let cmd, args;
     if (IS_WIN) {
@@ -6993,83 +7194,8 @@ function pickFolder(start) {
       // Stop, not Continue: by default a failing cmdlet writes to stderr and
       // lets the script run on to exit 0, which is indistinguishable from a
       // cancel. Terminating on the first error makes failure visible.
-      const script = `
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.Windows.Forms | Out-Null
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class ParleyPickerWindow {
-    const uint GW_ENABLEDPOPUP = 6;
-    const uint SWP_NOSIZE = 0x0001;
-    const uint SWP_NOMOVE = 0x0002;
-    const uint SWP_SHOWWINDOW = 0x0040;
-    static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
-
-    [DllImport("user32.dll")]
-    static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
-    [DllImport("user32.dll")]
-    static extern bool IsWindowVisible(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    static extern bool SetWindowPos(IntPtr hWnd, IntPtr insertAfter,
-        int x, int y, int cx, int cy, uint flags);
-    [DllImport("user32.dll")]
-    static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")]
-    static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
-    [DllImport("user32.dll")]
-    static extern bool AttachThreadInput(uint attachThread, uint attachToThread, bool attach);
-
-    public static bool RaiseOwnedPopup(IntPtr owner) {
-        IntPtr popup = GetWindow(owner, GW_ENABLEDPOPUP);
-        if (popup == IntPtr.Zero || popup == owner || !IsWindowVisible(popup)) return false;
-        IntPtr foreground = GetForegroundWindow();
-        uint popupThread = GetWindowThreadProcessId(popup, IntPtr.Zero);
-        uint foregroundThread = foreground == IntPtr.Zero
-            ? 0 : GetWindowThreadProcessId(foreground, IntPtr.Zero);
-        bool attached = popupThread != 0 && foregroundThread != 0 && popupThread != foregroundThread &&
-            AttachThreadInput(popupThread, foregroundThread, true);
-        try {
-            // Windows' foreground lock can make SetWindowPos report success
-            // without changing z-order. Joining the foreground input queue,
-            // activating first, then promoting is the sequence that works.
-            SetForegroundWindow(popup);
-            SetWindowPos(popup, HWND_TOPMOST, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
-            return GetForegroundWindow() == popup;
-        } finally {
-            if (attached) AttachThreadInput(popupThread, foregroundThread, false);
-        }
-    }
-}
-"@
-$dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-$dlg.Description = 'Choose a project folder for this Parley room'
-$dlg.ShowNewFolderButton = $true
-${s ? `if (Test-Path -LiteralPath '${s}') { $dlg.SelectedPath = '${s}' }` : ""}
-$owner = New-Object System.Windows.Forms.Form
-$owner.Text = 'Parley — Choose a project folder'
-$owner.ShowInTaskbar = $true; $owner.Opacity = 0.01
-$owner.Width = 1; $owner.Height = 1; $owner.Left = -32000; $owner.Top = -32000
-$owner.Tag = 0
-$owner.Show() | Out-Null
-$timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 50
-$timer.Add_Tick({
-  $owner.Tag = [int]$owner.Tag + 1
-  if ([ParleyPickerWindow]::RaiseOwnedPopup($owner.Handle) -or [int]$owner.Tag -ge 40) { $timer.Stop() }
-})
-$picked = $null
-try {
-  $timer.Start()
-  $res = $dlg.ShowDialog($owner)
-  if ($res -eq [System.Windows.Forms.DialogResult]::OK) { $picked = $dlg.SelectedPath }
-} finally {
-  $timer.Stop(); $timer.Dispose(); $dlg.Dispose(); $owner.Close(); $owner.Dispose()
-}
-if ($picked) { Write-Output $picked }`;
+      const pickerSource = fs.readFileSync(new URL("./lib/native-picker.ps1", import.meta.url), "utf8");
+      const script = `$parleyPickerKind = '${kind === "vscode" ? "vscode" : "folder"}'\n$parleyPickerStart = '${s}'\n${pickerSource}`;
       cmd = "powershell.exe";
       args = ["-NoProfile", "-STA", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")];
     } else if (process.platform === "darwin") {
@@ -7810,6 +7936,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "GET /api/rooms") return json(res, 200, { rooms: roomsWithModes(), providers: providerCatalog() });
+    if (route === "GET /api/models") {
+      const room = loadRoom(url.searchParams.get("room"));
+      await Promise.all(seatIds(room).map(seat => seatModels(room, seat)?.pending));
+      return json(res, 200, { seatInfo: seatCatalog(room) });
+    }
 
     if (route === "GET /api/update/status") {
       return json(res, 200, await repositoryUpdateStatus(url.searchParams.get("refresh") === "1"));
@@ -7881,6 +8012,23 @@ const server = http.createServer(async (req, res) => {
     if (route === "POST /api/pickfolder") {
       const { start } = await readBody(req);
       return json(res, 200, await pickFolder(start));
+    }
+
+    if (route === "POST /api/pick-vscode") {
+      await readBody(req);
+      if (!IS_WIN) return json(res, 400, { error: "실행 파일 선택은 Windows에서 지원합니다." });
+      const preferences = readJSON(path.join(ROOT, ".launchers.json")) || {};
+      const start = preferences.vscode ? path.dirname(preferences.vscode) : process.env.LOCALAPPDATA;
+      const picked = await pickFolder(start, "vscode");
+      if (picked.cancelled) return json(res, 200, picked);
+      if (picked.error) return json(res, 400, { error: "실행 파일 선택 실패: " + picked.error });
+      if (!picked.path || !/^(?:Code|Code - Insiders)\.exe$/i.test(path.basename(picked.path)) || !fs.statSync(picked.path).isFile()) {
+        return json(res, 400, { error: "VS Code의 Code.exe를 선택해 주세요." });
+      }
+      // Validate the selected installation before persisting it locally.
+      projectLaunchSpec(ROOT, "vscode", { executable: picked.path });
+      writeJSON(path.join(ROOT, ".launchers.json"), { ...preferences, vscode: picked.path });
+      return json(res, 200, { ok: true });
     }
 
     if (route === "POST /api/room/delete") {
@@ -7988,6 +8136,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (route === "POST /api/adjustment") {
+      const body = await readBody(req, MAX_MESSAGE_BODY_BYTES);
+      const room = loadRoom(body.room || "default");
+      return json(res, 200, handleAdjustment(room, body));
+    }
+
     if (route === "POST /api/message") {
       const body = await readBody(req, MAX_MESSAGE_BODY_BYTES);
       const { room: name, text, target, images, files } = body;
@@ -8045,6 +8199,7 @@ const server = http.createServer(async (req, res) => {
       const outcome = handleAsk(room, {
         sourceN: body.sourceN, text: body.text, target: body.target,
         mode: body.mode, runs: Array.isArray(body.runs) ? body.runs : null,
+        adjustment: body.adjustment === true,
         images: body.images, files: body.files,
         ...(Object.prototype.hasOwnProperty.call(body, "hopBudget") ? { hopBudget: body.hopBudget } : {}),
         ...(Object.prototype.hasOwnProperty.call(body, "solo") ? { solo: body.solo } : {}),
@@ -8191,6 +8346,7 @@ const server = http.createServer(async (req, res) => {
       }
       const prevMode = room.cfg.mode || "talk";
       const prevProjectDir = room.cfg.projectDir || null;
+      const prevProjectDirs = normalizeProjectDirs(room.cfg.projectDirs, prevProjectDir);
       const prevRoomNote = normalizeRoomNote(room.cfg.roomNote);
       const prevLurk = Object.fromEntries(seatIds(room).map((id) => [id, !!room.cfg.agents[id].lurk]));
       // The permission provenance each seat's session was created under, for
@@ -8283,6 +8439,9 @@ const server = http.createServer(async (req, res) => {
         next.projectDir = null;
       }
       next.projectDirs = normalizeProjectDirs(next.projectDirs, next.projectDir);
+      const projectChanged = prevProjectDir !== next.projectDir ||
+        prevProjectDirs.length !== next.projectDirs.length ||
+        prevProjectDirs.some((dir) => !next.projectDirs.some((nextDir) => sameProjectPath(dir, nextDir)));
       for (const projectPath of next.projectDirs) {
         let isDir = false;
         try { isDir = fs.statSync(projectPath).isDirectory(); } catch { /* missing */ }
@@ -8300,7 +8459,7 @@ const server = http.createServer(async (req, res) => {
       const sandboxChangedSeats = new Set(sandboxSeats.filter((id) =>
         next.agents[id] && prevSandboxes[id] !== (next.agents[id].sandbox || "read-only")));
       const resetRequiredSeats = new Set();
-      if (prevProjectDir !== next.projectDir) {
+      if (projectChanged) {
         for (const id of seatIds(room)) resetRequiredSeats.add(id);
       }
       for (const id of modeResetSeats) resetRequiredSeats.add(id);
@@ -8315,7 +8474,6 @@ const server = http.createServer(async (req, res) => {
       //
       // Two cases still refuse, because they would split a single exchange
       // across two regimes rather than two turns:
-      const projectChanged = prevProjectDir !== next.projectDir;
       const runningResets = [...resetRequiredSeats].filter((id) => room.busy.has(id));
       // A hop spawns a *new* invocation mid-chain. Picking up tightened
       // permissions there is desirable; changing project underneath it is not —
@@ -8423,13 +8581,14 @@ const server = http.createServer(async (req, res) => {
           meta: { pairMode: "settings", pair },
         });
       }
-      if (prevProjectDir !== room.cfg.projectDir) {
-        // CLIs anchor sessions to their working directory — relink cleanly.
+      if (projectChanged) {
+        // Restart native sessions so removed directories lose their old grant.
         appendEntry(room, {
           kind: "system", author: "system",
-          text: room.cfg.projectDir
-            ? `📁 Project linked: ${room.cfg.projectDir} — all seated agents start fresh sessions there (the transcript keeps the room history).`
+          text: room.cfg.projectDirs.length
+            ? `📁 Connected projects updated: ${room.cfg.projectDirs.join(", ")} — all seated agents start fresh sessions with these folders available together (the transcript keeps the room history).`
             : "📁 Project unlinked — back to the room's sandbox workspace; all seated agents start fresh sessions.",
+          meta: { connectedProjects: [...room.cfg.projectDirs] },
         });
       }
       if (prevMode !== room.cfg.mode) {
@@ -8517,7 +8676,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "POST /api/open") {
-      const { room: name, what, path: requestedPath } = await readBody(req);
+      const { room: name, what, path: requestedPath, application = "folder" } = await readBody(req);
       const room = loadRoom(name || "default");
       let target = what === "room" ? room.dir : workDir(room);
       if (what === "project") {
@@ -8526,6 +8685,15 @@ const server = http.createServer(async (req, res) => {
         if (!target) throw Object.assign(new Error("project is not connected to this room"), { status: 403 });
       }
       if (!fs.existsSync(target)) throw Object.assign(new Error(`folder not found: ${target}`), { status: 404 });
+      if (application !== "folder") {
+        if (what !== "project") throw Object.assign(new Error("연결된 프로젝트를 먼저 선택하세요."), { status: 400 });
+        if (!fs.statSync(target).isDirectory()) throw Object.assign(new Error("프로젝트 폴더가 아닙니다."), { status: 400 });
+        const executable = application === "vscode" ? readJSON(path.join(ROOT, ".launchers.json"))?.vscode : null;
+        const spec = projectLaunchSpec(target, application, { executable });
+        if (application === "vscode") await launchVSCode(spec);
+        else await launchDetached(spec.command, spec.args, spec.options);
+        return json(res, 200, { ok: true, path: target, application });
+      }
       if (IS_WIN) {
         // Explorer is the visible program the user asked for. The previous
         // PowerShell helper swallowed every error and still returned success.
@@ -8539,7 +8707,7 @@ const server = http.createServer(async (req, res) => {
 
     json(res, 404, { error: "not found" });
   } catch (e) {
-    if (!res.headersSent) json(res, e.status || 500, { error: e.message });
+    if (!res.headersSent) json(res, e.status || 500, { error: e.message, ...(String(e.code || "").startsWith("vscode-") ? { code: e.code } : {}) });
   }
 });
 

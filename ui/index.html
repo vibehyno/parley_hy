@@ -57,6 +57,22 @@
         <div id="usageHover" role="tooltip" aria-live="polite"></div>
       </div>
       <button id="toolsBtn" data-side-tip="Browse Skills, MCP servers and plugins available to each model" data-i18n-side-tip="sidebar.toolsTip"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
+      <div id="connectionWrap">
+        <button id="connectionBtn" type="button" aria-expanded="false" aria-controls="connectionMenu" data-i18n-title="sidebar.connectionTip"><span class="ico">↗</span><span id="connectionLabel" data-i18n="sidebar.connection">Connect</span></button>
+        <div id="connectionMenu" class="connection-menu" hidden>
+          <div id="connectionChoices">
+            <button id="projectOpenCmd" type="button" data-i18n="project.openCmd" data-i18n-title="project.openCmdTip">Open CMD</button>
+            <button id="projectOpenCode" type="button" data-i18n="project.openCode" data-i18n-title="project.openCodeTip">Open VS Code</button>
+          </div>
+          <div id="connectionProjects" hidden>
+            <button id="connectionBack" type="button" data-i18n="project.backApplications">← Choose application</button>
+            <div class="fld"><label for="projectLaunchPath" data-i18n="project.launchTarget">Project to open</label><select id="projectLaunchPath"></select></div>
+            <button id="projectLaunchConfirm" class="btn" type="button" disabled data-i18n="project.open">Open folder</button>
+          </div>
+          <div id="projectLaunchStatus" class="connection-status" role="status" aria-live="polite" hidden></div>
+          <button id="projectPickCode" type="button" data-i18n="project.pickCode" hidden>Select Code.exe…</button>
+        </div>
+      </div>
       <button id="settingsBtn2" data-side-tip="Change this room's models, permissions and conversation rules" data-i18n-side-tip="sidebar.settingsTip"><span class="ico">⚙️</span> <span data-i18n="sidebar.settings">Settings</span></button>
       <a href="https://github.com/vibehyno/parley_hy#readme" target="_blank" rel="noreferrer noopener" data-side-tip="Open the Parley HY usage guide" data-i18n-side-tip="sidebar.docsTip"><span class="ico">?</span> <span data-i18n="sidebar.docs">Docs</span></a>
     </div>
@@ -259,15 +275,14 @@
 <div id="projectOverlay">
   <div class="modal project-modal" role="dialog" aria-modal="true" aria-labelledby="projectTitle">
     <div class="project-head">
-      <div><h2 id="projectTitle" data-i18n="project.title">Connected projects</h2><div class="sub" data-i18n="project.subtitle">Choose the project this room works in, or manage its saved project folders.</div></div>
+      <h2 id="projectTitle" data-i18n="project.title" data-i18n-title="project.subtitle">Connected projects</h2>
       <button class="btn" id="projectClose" type="button" data-i18n="common.close">Close</button>
     </div>
     <div id="projectLinks" class="project-links"></div>
     <div class="project-bottom">
       <button class="btn" id="projectAdd" type="button"><span data-picker-label data-i18n="project.add">Add project…</span></button>
-      <div class="project-actions"><button class="btn" id="projectCancel" type="button" data-i18n="common.cancel">Cancel</button><button class="btn primary" id="projectApply" type="button" data-i18n="common.apply">Apply</button></div>
+      <div class="project-actions"><button class="btn" id="projectCancel" type="button" data-i18n="common.cancel">Cancel</button><button class="btn primary" id="projectApply" type="button" data-i18n="common.save" data-i18n-title="project.saveTip">Save</button></div>
     </div>
-    <div class="note" data-i18n="project.removeHelp">Removing a connection never deletes the actual project folder.</div>
   </div>
 </div>
 
@@ -301,6 +316,7 @@
 <script src="/ui/i18n.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/skill-autocomplete.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/composer-adjustment.js?v=__PARLEY_ASSET_VERSION__"></script>
+<script src="/ui/seat-errors.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
 </body>
 </html>

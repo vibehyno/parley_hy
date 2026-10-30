@@ -124,7 +124,7 @@ async function api(path, body) {
     throw new Error(t("runtime.restartError"));
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { code: data.code });
   return data;
 }
 
@@ -1023,17 +1023,49 @@ function refreshErrorRecovery() {
     if (row) updateErrorRecovery(row, e);
   }
 }
+function isToolActivity(e) { return e?.kind === "activity" && !e.meta?.publicSpeech; }
+function isActiveWorkRun(runId) {
+  return (state.summary?.busyInfo || []).some(run => run.runId === runId) ||
+    (state.summary?.continuingRunIds || []).includes(runId);
+}
+function appendCompletedWork(parent, entries) {
+  const detail = document.createElement("details");
+  detail.className = "completed-work";
+  const key = `completed:${entries[0].meta.runId}:${entries[0].n}`;
+  detail.open = state.expandedActivity.has(key);
+  const summary = document.createElement("summary");
+  summary.textContent = t("progress.workDetails");
+  detail.appendChild(summary);
+  for (const entry of entries) {
+    const node = entryEl(entry);
+    rowByN.set(entry.n, node);
+    detail.appendChild(node);
+  }
+  detail.ontoggle = () => {
+    if (detail.open) state.expandedActivity.add(key);
+    else state.expandedActivity.delete(key);
+  };
+  parent.appendChild(detail);
+}
 function entryEl(e) {
   const div = document.createElement("div");
   if (e.n !== undefined && e.n !== null) div.dataset.n = e.n;
-  if (e.kind === "activity") {
+  if (e.kind === "activity" && e.meta?.publicSpeech) {
+    div.className = "msg agent public-speech " + e.author;
+    div.innerHTML = `<div class="meta">${seatAvatarHTML(e.author)}<span class="who">${esc(seatLabel(e.author))}</span><span>${hhmm(e.ts)}</span></div>` +
+      `<div class="bubble">${renderMD(e.text)}</div>`;
+    return div;
+  }
+  if (isToolActivity(e)) {
     div.className = "activity " + e.author;
     div.innerHTML = `<span class="adot"></span><span>${esc(e.text)}</span>`;
     return div;
   }
   if (e.kind === "system") {
     div.className = "sysmsg" + (e.meta && e.meta.error ? " err" : "");
-    div.innerHTML = esc(e.text);
+    div.innerHTML = esc(Array.isArray(e.meta?.connectedProjects)
+      ? t(e.meta.connectedProjects.length ? "project.updatedNote" : "project.unlinkedNote", { count: e.meta.connectedProjects.length })
+      : e.text);
     const recovery = e.meta && e.meta.error && recoveryForEntry(e);
     if (recovery) {
       const b = document.createElement("button");
@@ -1162,7 +1194,8 @@ function activityRunEntries(startN) {
   const author = state.entries[i].author;
   let end = i + 1;
   while (end < state.entries.length
-    && state.entries[end].kind === "activity" && state.entries[end].author === author) end++;
+    && isToolActivity(state.entries[end]) && state.entries[end].author === author
+    && state.entries[end].meta?.runId === state.entries[i].meta?.runId) end++;
   return state.entries.slice(i, end);
 }
 
@@ -1243,7 +1276,8 @@ function appendActivityEntry(e) {
   const start = renderedStartIndex();
   let s = i;
   while (s > start
-    && state.entries[s - 1].kind === "activity" && state.entries[s - 1].author === e.author) s--;
+    && isToolActivity(state.entries[s - 1]) && state.entries[s - 1].author === e.author
+    && state.entries[s - 1].meta?.runId === e.meta?.runId) s--;
   const startN = state.entries[s].n;
   if (s === i) { appendDurable(activityNode(e, startN, false)); return true; }
 
@@ -1281,7 +1315,15 @@ function appendEntryRange(parent, entries) {
   };
   for (let i = 0; i < entries.length;) {
     const e = entries[i];
-    if (e.kind !== "activity") {
+    if (e.kind === "activity" && e.meta?.runId && !isActiveWorkRun(e.meta.runId)) {
+      let end = i + 1;
+      while (end < entries.length && entries[end].kind === "activity" &&
+        entries[end].author === e.author && entries[end].meta?.runId === e.meta.runId) end++;
+      appendCompletedWork(parent, entries.slice(i, end));
+      i = end;
+      continue;
+    }
+    if (!isToolActivity(e)) {
       // Filtered at render time only — never removed from state.entries, which
       // every index, jump and quote lookup walks.
       if (!hiddenEntry(e)) {
@@ -1294,7 +1336,8 @@ function appendEntryRange(parent, entries) {
       continue;
     }
     let end = i + 1;
-    while (end < entries.length && entries[end].kind === "activity" && entries[end].author === e.author) end++;
+    while (end < entries.length && isToolActivity(entries[end]) && entries[end].author === e.author
+      && entries[end].meta?.runId === e.meta?.runId) end++;
     appendActivityRun(parent, entries.slice(i, end));
     i = end;
   }
@@ -1324,8 +1367,8 @@ function renderPreservingAnchor(nextFromN) {
   // no button to anchor the prepend on, nothing actually revealed, or the old
   // window opening mid-activity-run (the prepended chunk would end with a run
   // that must merge into the run element already on screen).
-  const seamRun = state.entries[prevStart] && state.entries[prevStart].kind === "activity" &&
-    state.entries[prevStart - 1] && state.entries[prevStart - 1].kind === "activity" &&
+  const seamRun = isToolActivity(state.entries[prevStart]) &&
+    isToolActivity(state.entries[prevStart - 1]) &&
     state.entries[prevStart - 1].author === state.entries[prevStart].author;
   const canPrepend = btn && btn.classList && btn.classList.contains &&
     btn.classList.contains("history-more") && prevStart > 0 && !seamRun &&
@@ -1640,7 +1683,7 @@ function addEntry(e) {
   // A new action extends the run it belongs to in place. It used to rebuild the
   // transcript, which meant every visible message replayed its entrance
   // animation while it was being read.
-  if (e.kind === "activity") {
+  if (isToolActivity(e)) {
     if (appendActivityEntry(e)) scrollBottom(wasAtBottom);
     else renderAll({ stickToBottom: wasAtBottom, anchor: true });
     return;
@@ -2092,6 +2135,7 @@ function renderSeatsUI(s) {
   $("pills").innerHTML = seats.map((a) =>
     `<div class="pill" data-seat="${esc(a)}" id="pill_${esc(a)}"><span class="st"></span>` +
     `<b style="color:${seatColor(a)}">${esc(seatName(a))}</b>` +
+    `<span class="seat-error" hidden><button type="button" class="seat-error-button" aria-expanded="false">⚠</button><span class="seat-error-details" role="tooltip"></span></span>` +
     `${s.seatInfo?.[a]?.fastModeSupported ? `<button class="fast" data-seat="${esc(a)}">⚡</button>` : ""}` +
     `<button class="ear" data-seat="${esc(a)}">👂</button>` +
     `<button class="moon" data-seat="${esc(a)}">😴</button></div>`).join("");
@@ -2199,13 +2243,36 @@ function dismissAccessBanner() {
   $("workBanner").style.display = "none";
 }
 
+function seatModelTitle(s, seat) {
+  const value = s.cfg.agents[seat].model || "default";
+  const choices = s.seatInfo?.[seat]?.models || [];
+  const model = choices.find(item => item.value === value || item.resolvedModel === value);
+  if (!model) return s.cfg.agents[seat].model || "";
+  return [model.label || value, model.resolvedModel].filter(Boolean).join(" · ");
+}
+
+async function refreshSeatModels(s) {
+  const commands = summary => JSON.stringify(summary.seats.map(id =>
+    [id, summary.cfg.agents[id].provider, summary.cfg.agents[id].command]));
+  const signature = commands(s);
+  const { seatInfo } = await api(`/api/models?room=${encodeURIComponent(s.name)}`);
+  if (state.summary?.name !== s.name || commands(state.summary) !== signature) return false;
+  applySummary({ ...state.summary, seatInfo: { ...state.summary.seatInfo, ...seatInfo } });
+  return true;
+}
+
 function applySummary(s) {
   s.busy = s.busy || [];
   s.busyInfo = s.busyInfo || [];
+  const finishedWork = state.summary?.name === s.name && (
+    (state.summary?.busyInfo || []).some(old =>
+      !s.busyInfo.some(run => run.runId === old.runId) && state.entries.some(e => e.meta?.runId === old.runId)) ||
+    (state.summary?.continuingRunIds || []).some(id => !(s.continuingRunIds || []).includes(id)));
   for (const agent of Object.keys(state.live)) {
     if (!s.busy.includes(agent)) removeLive(agent);
   }
   state.summary = s;
+  if (finishedWork) renderAll({ stickToBottom: nearBottom(), anchor: true });
   state.providers = s.providers || state.providers;
   injectSeatStyles();
   const seatUiSignature = JSON.stringify(s.seats.map((id) => [id, seatLabel(id), seatMention(id), seatAvatar(id), seatAvatarImage(id), seatColor(id)]));
@@ -2216,6 +2283,18 @@ function applySummary(s) {
     const pill = $("pill_" + a);
     if (!pill) continue;
     const ag = s.agents[a];
+    const seatError = window.ParleySeatErrors.latestSeatError(state.entries, a, s.resolvedErrors, ag.command, state.receipts);
+    const errorBox = pill.querySelector(".seat-error");
+    errorBox.hidden = !seatError;
+    if (!seatError) window.ParleySeatErrors.setPopoverOpen(errorBox, false);
+    if (seatError) {
+      const button = errorBox.querySelector("button");
+      button.setAttribute("aria-label", t("seat.error"));
+      button.setAttribute("aria-describedby", `seat_error_${a}`);
+      const details = errorBox.querySelector(".seat-error-details");
+      details.id = `seat_error_${a}`;
+      details.textContent = seatError.text;
+    }
     const asleep = !!ag.asleep;
     pill.classList.toggle("linked", ag.linked);
     pill.classList.toggle("busy", s.busy.includes(a));
@@ -2227,7 +2306,7 @@ function applySummary(s) {
     const health = (state.doctor && state.doctor[a]) || null;
     pill.title = [
       ag.command.ok ? `${seatLabel(a)} · ${ag.command.detail}` : `${seatLabel(a)}: ${ag.command.detail}`,
-      s.cfg.agents[a].model || "",
+      seatModelTitle(s, a),
       health && !health.ok && health.stage === "auth" ? `${health.detail} — ${health.how}` : "",
       spent,
     ].filter(Boolean).join("\n");
@@ -2329,12 +2408,16 @@ function applySummary(s) {
   }
   // say what this room actually works in, rather than a vague "workspace"
   const wsBtn = $("openWs");
-  const projectMismatch = !!s.projectLinks?.mismatch;
-  $("openWsLabel").textContent = s.cfg.projectDir
-    ? s.cfg.projectDir.split(/[\\/]/).filter(Boolean).pop()
+  const linkedProjects = s.projectLinks?.links || [];
+  const projectMismatch = !!s.projectLinks?.mismatch || linkedProjects.some((link) => !link.exists);
+  $("openWsLabel").textContent = linkedProjects.length > 1
+    ? t("workspace.multiple", { count: linkedProjects.length })
+    : s.cfg.projectDir ? s.cfg.projectDir.split(/[\\/]/).filter(Boolean).pop()
     : t("workspace.sandbox");
   if (projectMismatch) $("openWsLabel").textContent += " ⚠";
-  const workspaceTip = s.cfg.projectDir
+  const workspaceTip = linkedProjects.length > 1
+    ? t("workspace.projectsTip", { paths: linkedProjects.map((link) => link.path).join(" · ") })
+    : s.cfg.projectDir
     ? (projectMismatch
       ? t("workspace.mismatchTitle", { path: s.cfg.projectDir, runtime: s.projectLinks?.runtime || s.workspace })
       : t("workspace.linkedTitle", { path: s.cfg.projectDir }))
@@ -2356,7 +2439,7 @@ function applySummary(s) {
   updateBusyUI();
   renderHopControl();
   updateRouteHint();
-  scheduleAdjustmentDelivery();
+  syncAdjustmentDraft(s);
 }
 // Waking a seat that is holding messages asks a question with three answers,
 // so it gets a real menu; a plain toggle stays a plain toggle when there is
@@ -2601,7 +2684,12 @@ function trapProjectTab(e) {
 }
 document.addEventListener("keydown", trapProjectTab);
 
+window.ParleySeatErrors.bindPopovers($("pills"));
 $("pills").addEventListener("click", async (e) => {
+  const errorButton = e.target.closest(".seat-error-button");
+  if (errorButton) {
+    return;
+  }
   const fast = e.target.closest(".fast");
   if (fast && state.summary) {
     const a = fast.dataset.seat;
@@ -3290,8 +3378,14 @@ function connect(resyncOnOpen = false) {
     if (state.es !== es) return;
     const msg = JSON.parse(ev.data);
     state.eventVersion++;
-    if (msg.type === "entry") addEntry(msg.entry);
-    else if (msg.type === "receipt") addReceipt(msg.receipt);
+    if (msg.type === "entry") {
+      addEntry(msg.entry);
+      if (state.summary) applySummary(state.summary);
+    }
+    else if (msg.type === "receipt") {
+      addReceipt(msg.receipt);
+      if (state.summary) applySummary(state.summary);
+    }
     else if (msg.type === "queue") {
       setQueue(msg.size, msg.items, msg.dispatches, msg.paused);
     }
@@ -3390,6 +3484,8 @@ async function refreshDoctor(roomName) {
 }
 
 async function loadRoom(name) {
+  $("pills").querySelectorAll(".seat-error.open").forEach(box => window.ParleySeatErrors.setPopoverOpen(box, false));
+  closeConnectionMenu(false);
   retireProjectPick(); // a folder dialog open for the old room must not land here
   let data;
   try {
@@ -3439,6 +3535,7 @@ async function loadRoom(name) {
   state.providers = data.room.providers || state.providers;
   renderAll({ preserveTransient: false });
   applySummary(data.room);
+  refreshSeatModels(data.room).catch(() => { /* Keep configured names if discovery fails. */ });
   // Room opening is navigation, not a live arrival: always show the newest
   // message immediately. The second pass runs after layout so smooth scrolling
   // or late size calculations cannot leave the viewport halfway up the room.
@@ -3770,7 +3867,7 @@ function resolvedAdjustmentTarget(draft) {
 function renderAdjustmentDraft() {
   const draft = state.adjustDraft;
   const wrap = $("adjustDraft");
-  const draftSending = !!(draft && (draft.autoSending || draft.sendingNow));
+  const draftSending = !!draft?.saving;
   wrap.hidden = !draft;
   $("input").disabled = !!draft;
   $("attachBtn").disabled = !!draft;
@@ -3780,8 +3877,7 @@ function renderAdjustmentDraft() {
   $("adjustDraftEdit").disabled = draftSending;
   $("adjustDraftDelete").disabled = draftSending || state.sending;
   if (!draft) return;
-  $("adjustDraftStatus").textContent = t(draft.sendingNow
-    ? "adjust.sendingNow" : draft.autoSending ? "adjust.sending" : "adjust.waiting");
+  $("adjustDraftStatus").textContent = draft.error || t(draft.saving ? "adjust.sending" : "adjust.waiting");
   $("adjustDraftPreview").textContent = draft.text;
   const seats = state.summary?.seats || [];
   const options = ["auto", ...seats, ...(seats.length > 1 ? ["both"] : [])];
@@ -3802,10 +3898,12 @@ function stageAdjustment(text, route) {
   if (!ComposerAdjustment || !ComposerAdjustment.shouldStage({
     summary: state.summary, target, text, attachmentCount: draftAttachmentCount(),
   })) return false;
-  const wait = ComposerAdjustment.waitSnapshot(state.summary);
+  const sourceN = ComposerAdjustment.activeSource(state.summary, target);
+  const wait = ComposerAdjustment.waitSnapshot(state.summary, sourceN);
   state.adjustDraft = {
     room: state.room,
-    sourceN: ComposerAdjustment.activeSource(state.summary, target),
+    id: crypto.randomUUID(),
+    sourceN,
     targetMode: adjustmentTargetMode(text, route),
     fallbackTarget: target,
     waitRunIds: wait.runIds,
@@ -3820,53 +3918,82 @@ function stageAdjustment(text, route) {
   hideMention();
   if (typeof hideSkillAutocomplete === "function") hideSkillAutocomplete();
   renderAdjustmentDraft();
-  scheduleAdjustmentDelivery();
+  saveAdjustmentDraft();
   return true;
 }
 
-let adjustmentDeliveryQueued = false;
-function scheduleAdjustmentDelivery() {
-  if (adjustmentDeliveryQueued) return;
-  adjustmentDeliveryQueued = true;
-  queueMicrotask(() => {
-    adjustmentDeliveryQueued = false;
-    const draft = state.adjustDraft;
-    if (!draft || draft.autoSending || draft.sendingNow || draft.room !== state.room || state.sending) return;
-    if (!ComposerAdjustment.workFinished(state.summary, draft.waitRunIds)) return;
-    draft.autoSending = true;
+// The server owns the waiting draft, including across tab changes/reloads.
+function syncAdjustmentDraft(summary = state.summary) {
+  if (!summary || summary.name !== state.room || state.adjustDraft?.saving || state.adjustDraft?.unsaved) return;
+  state.adjustDraft = summary.adjustmentDraft ? { ...summary.adjustmentDraft } : null;
+  renderAdjustmentDraft();
+}
+
+async function saveAdjustmentDraft(update = false) {
+  const draft = state.adjustDraft;
+  if (!draft || draft.saving) return;
+  draft.saving = true;
+  renderAdjustmentDraft();
+  try {
+    const result = await api("/api/adjustment", {
+      room: draft.room, id: draft.id, action: "stage", update,
+      sourceN: draft.sourceN, text: draft.text,
+      target: resolvedAdjustmentTarget(draft), targetMode: draft.targetMode,
+      hopChoice: draft.hopChoice,
+    });
+    if (state.room === draft.room) {
+      state.adjustDraft = result.draft;
+      // A completion may have arrived via SSE while this request was pending.
+      const current = await api("/api/room?name=" + encodeURIComponent(draft.room)).catch(() => null);
+      if (current && state.room === draft.room) {
+        draft.saving = false;
+        syncAdjustmentDraft(current.room);
+      }
+    }
+  } catch (error) {
+    toast(error.message, true);
+    if (state.room === draft.room) {
+      // Keep unsaved text available for editing/retry; never pretend it queued.
+      draft.error = error.message;
+      draft.unsaved = true;
+      state.adjustDraft = draft;
+    }
+  } finally {
+    draft.saving = false;
     renderAdjustmentDraft();
-    sendAdjustmentDraft();
-  });
+  }
+}
+
+async function changeAdjustment(action) {
+  const draft = state.adjustDraft;
+  if (!draft || draft.saving) return false;
+  draft.saving = true;
+  renderAdjustmentDraft();
+  try {
+    await api("/api/adjustment", { room: draft.room, id: draft.id, action });
+    if (state.room === draft.room && state.adjustDraft?.id === draft.id) clearAdjustmentDraft();
+    return true;
+  } catch (error) {
+    toast(error.message, true);
+    // An already-delivered draft must not be restored and sent twice.
+    const current = await api("/api/room?name=" + encodeURIComponent(draft.room)).catch(() => null);
+    draft.saving = false;
+    if (current && state.room === draft.room) {
+      const wasDelivered = current.entries.some(entry => entry.meta?.askFrom?.adjustmentId === draft.id);
+      draft.unsaved = false;
+      syncAdjustmentDraft(current.room);
+      if (action === "cancel" && !wasDelivered && !current.room.adjustmentDraft) return true;
+    }
+    return false;
+  } finally {
+    draft.saving = false;
+    renderAdjustmentDraft();
+  }
 }
 
 async function sendAdjustmentDraft() {
-  const draft = state.adjustDraft;
-  if (!draft || state.sending) return;
-  const text = draft.text.trim();
-  if (!text) return toast(t("adjust.empty"), true);
-  state.sending = true;
-  renderAdjustmentDraft();
-  try {
-    const target = resolvedAdjustmentTarget(draft);
-    const body = {
-      room: draft.room, sourceN: draft.sourceN, mode: "queue",
-      target, text,
-    };
-    if (draft.hopChoice === "solo") body.solo = true;
-    else if (draft.hopChoice !== "default") body.hopBudget = normalizedHopBudget(draft.hopChoice, -1);
-    const result = await api("/api/ask", body);
-    if (state.adjustDraft === draft) clearAdjustmentDraft();
-    toast(result.deferred && result.deferred.length
-      ? t("adjust.queued", { targets: result.deferred.join(" · ") })
-      : t("adjust.added"));
-  } catch (error) {
-    draft.autoSending = false;
-    draft.sendingNow = false;
-    toast(error.message, true);
-  } finally {
-    state.sending = false;
-    renderAdjustmentDraft();
-  }
+  if (state.adjustDraft?.unsaved) return saveAdjustmentDraft();
+  return changeAdjustment("send");
 }
 
 input.addEventListener("input", () => {
@@ -4037,21 +4164,19 @@ async function send() {
 $("sendBtn").onclick = send;
 $("adjustDraftTargets").addEventListener("click", (event) => {
   const button = event.target.closest("[data-adjust-target]");
-  if (!button || !state.adjustDraft || state.adjustDraft.autoSending || state.adjustDraft.sendingNow) return;
+  if (!button || !state.adjustDraft || state.adjustDraft.saving) return;
   state.adjustDraft.targetMode = button.dataset.adjustTarget;
-  renderAdjustmentDraft();
+  saveAdjustmentDraft(true);
 });
 $("adjustDraftSendNow").onclick = () => {
   const draft = state.adjustDraft;
-  if (!draft || draft.autoSending || draft.sendingNow || state.sending) return;
-  draft.sendingNow = true;
-  renderAdjustmentDraft();
+  if (!draft || draft.saving || state.sending) return;
   sendAdjustmentDraft();
 };
-$("adjustDraftEdit").onclick = () => {
+$("adjustDraftEdit").onclick = async () => {
   const draft = state.adjustDraft;
-  if (!draft || draft.autoSending || draft.sendingNow) return;
-  clearAdjustmentDraft();
+  if (!draft || draft.saving) return;
+  if (!await changeAdjustment("cancel") || state.room !== draft.room) return;
   input.value = draft.text;
   state.chipRevision++;
   selectChip(draft.targetMode === "auto" ? "auto" : draft.targetMode);
@@ -4060,9 +4185,8 @@ $("adjustDraftEdit").onclick = () => {
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 };
-$("adjustDraftDelete").onclick = () => {
-  clearAdjustmentDraft();
-  input.focus();
+$("adjustDraftDelete").onclick = async () => {
+  if (await changeAdjustment("cancel")) input.focus();
 };
 $("attachBtn").onclick = () => {
   if (state.sending) return toast("Wait for the current message to finish sending.", true);
@@ -4483,9 +4607,10 @@ function seatFieldHTML(a, field, p) {
   const combo = (fieldName, list, placeholder) => {
     const id = `combo_${a}_${fieldName}`;
     const choices = (list || []).map((o, i) => {
-      const detail = [o.label !== o.value ? o.label : "", o.hint || ""].filter(Boolean).join(" — ");
+      const label = fieldName === "model" ? (o.label || o.value) : o.value;
+      const detail = [label !== o.value ? o.value : (o.label !== o.value ? o.label : ""), o.hint || ""].filter(Boolean).join(" — ");
       return `<button type="button" class="freecombo-option" role="option" id="${esc(id)}_${i}" ` +
-        `data-combo-value="${esc(o.value)}"><b>${esc(o.value)}</b>` +
+        `data-combo-value="${esc(o.value)}"><b>${esc(label)}</b>` +
         `${detail ? `<span>${esc(detail)}</span>` : ""}</button>`;
     }).join("");
     return `<div class="freecombo">` +
@@ -4583,7 +4708,29 @@ $("seatCards").addEventListener("click", (e) => {
 $("seatCards").addEventListener("input", (e) => {
   const input = e.target.closest(".freecombo-input");
   if (input) setFreeComboOpen(input.closest(".freecombo"), true, input.value);
+  if (input?.dataset.f === "model") syncAgyEffort(input.dataset.seat);
 });
+$("seatCards").addEventListener("change", (e) => {
+  if (e.target.dataset.f === "model") syncAgyEffort(e.target.dataset.seat);
+});
+
+function syncAgyEffort(seat) {
+  const item = settingsSeatDraft?.find(item => item.id === seat);
+  if (item?.provider !== "gemini") return;
+  const model = document.querySelector(`#seatCards [data-seat="${seat}"][data-f="model"]`);
+  const effort = document.querySelector(`#seatCards [data-seat="${seat}"][data-f="effort"]`);
+  if (!model || !effort) return;
+  const level = /^gemini-.+-(low|medium|high|xhigh|max)$/i.exec(model.value.trim())?.[1]?.toLowerCase();
+  const combo = effort.closest(".freecombo");
+  const wasLocked = effort.disabled;
+  effort.disabled = !!level;
+  combo.querySelector(".freecombo-toggle").disabled = !!level;
+  combo.title = level ? tr("settings.agyModelEffort", "Reasoning effort follows the selected model.") : "";
+  if (level) {
+    effort.value = level;
+    setFreeComboOpen(combo, false);
+  } else if (wasLocked) effort.value = "";
+}
 $("seatCards").addEventListener("keydown", (e) => {
   const input = e.target.closest(".freecombo-input");
   if (!input) return;
@@ -4639,6 +4786,7 @@ function captureSeatDraftValues() {
     for (const el of document.querySelectorAll(`#seatCards [data-seat="${item.id}"][data-f]`)) {
       const field = el.dataset.f;
       let value = el.value;
+      if (field === "effort" && item.provider === "gemini" && el.disabled) value = "";
       if (field === "extraArgs") value = value.trim() ? value.trim().split(/\s+/) : [];
       else if (typeof value === "string" && value.trim() === "") value = null;
       item.cfg[field] = value;
@@ -4720,6 +4868,7 @@ function renderSeatCards(s) {
       if (el.dataset.f === "color") value = value || p.color || "#7aa2f7";
       el.value = el.dataset.f === "extraArgs" ? (value || []).join(" ") : (value ?? "");
     }
+    syncAgyEffort(item.id);
   }
   if ($("s_addSeat")) $("s_addSeat").disabled = draft.length >= 3;
   if ($("s_seatLimit")) $("s_seatLimit").textContent = draft.length >= 3
@@ -5124,10 +5273,136 @@ let projectPick = 0;
 let projectDraftDirs = [];
 let projectDraftActive = null;
 let projectOpener = null;
+let projectLaunchPending = false;
+let projectLaunchApplication = null;
+let projectLaunchFailure = null;
+let projectLaunchContext = null;
+let projectPickerPending = false;
 function projectPathKey(value) { return String(value || "").replace(/[\\/]+$/, "").toLowerCase(); }
 function retireProjectPick() { projectPick++; }
+function launchableProjects() {
+  return (state.summary?.projectLinks?.links || []).filter((link) => link.exists);
+}
+function renderProjectLaunch() {
+  const links = launchableProjects();
+  const select = $("projectLaunchPath");
+  const previous = select.value;
+  select.innerHTML = `<option value="">${esc(t(links.length ? "project.chooseTarget" : "project.noLaunchTarget"))}</option>` +
+    links.map((link) => `<option value="${esc(link.path)}">${esc(link.name)} — ${esc(link.path)}</option>`).join("");
+  select.value = links.length === 1 ? links[0].path : links.some((link) => link.path === previous) ? previous : "";
+  select.disabled = projectLaunchPending || links.length < 2;
+  $("projectOpenCmd").disabled = $("projectOpenCode").disabled = projectLaunchPending;
+  $("projectLaunchConfirm").disabled = projectLaunchPending || !select.value;
+  $("projectLaunchConfirm").textContent = t(projectLaunchApplication === "cmd" ? "project.openCmd" : "project.openCode");
+  renderProjectLaunchFeedback();
+}
+function renderProjectLaunchFeedback() {
+  const busy = projectLaunchPending || projectPickerPending;
+  const label = projectPickerPending ? t("project.pickingCode") : t("project.opening");
+  $("connectionLabel").textContent = busy ? label : t("sidebar.connection");
+  $("projectLaunchStatus").hidden = !busy && !projectLaunchFailure;
+  $("projectLaunchStatus").textContent = busy ? label : projectLaunchFailure?.message || "";
+  $("projectPickCode").hidden = !projectLaunchFailure?.code?.startsWith("vscode-");
+  $("projectPickCode").disabled = busy;
+  $("projectOpenCmd").disabled = $("projectOpenCode").disabled = busy;
+  $("projectLaunchConfirm").disabled = busy || !$("projectLaunchPath").value;
+  if (projectLaunchPending) {
+    $(projectLaunchApplication === "cmd" ? "projectOpenCmd" : "projectOpenCode").textContent = label;
+    $("projectLaunchConfirm").textContent = label;
+  } else {
+    $("projectOpenCmd").textContent = t("project.openCmd");
+    $("projectOpenCode").textContent = t("project.openCode");
+  }
+}
+function closeConnectionMenu(restoreFocus = true) {
+  const menu = $("connectionMenu");
+  if (menu.hidden) return;
+  menu.hidden = true;
+  $("connectionBtn").setAttribute("aria-expanded", "false");
+  if (restoreFocus) $("connectionBtn").focus();
+}
+function showConnectionChoices() {
+  if (projectLaunchPending || projectPickerPending) return;
+  projectLaunchApplication = null;
+  projectLaunchFailure = null;
+  projectLaunchContext = null;
+  $("connectionChoices").hidden = false;
+  $("connectionProjects").hidden = true;
+  $("projectLaunchPath").value = "";
+  renderProjectLaunch();
+  $("projectOpenCmd").focus();
+}
+function chooseProjectApplication(application) {
+  if (projectLaunchPending || projectPickerPending) return;
+  projectLaunchFailure = null;
+  const links = launchableProjects();
+  if (!links.length) { toast(t("project.noLaunchTarget"), true); return; }
+  projectLaunchApplication = application;
+  if (links.length === 1) { launchProjectApplication(application, links[0].path); return; }
+  $("connectionChoices").hidden = true;
+  $("connectionProjects").hidden = false;
+  $("projectLaunchPath").value = "";
+  renderProjectLaunch();
+  $("projectLaunchPath").focus();
+}
+async function launchProjectApplication(application, requestedPath = $("projectLaunchPath").value) {
+  if (projectLaunchPending || projectPickerPending) return;
+  const target = launchableProjects().find((link) => link.path === requestedPath);
+  if (!target) { toast(t("project.chooseTarget"), true); $("projectLaunchPath").focus(); return; }
+  projectLaunchPending = true;
+  projectLaunchFailure = null;
+  projectLaunchApplication = application;
+  const room = state.room;
+  projectLaunchContext = { room, path: target.path };
+  renderProjectLaunch();
+  try {
+    await api("/api/open", { room, what: "project", path: target.path, application });
+    if (state.room !== room) return;
+    closeConnectionMenu();
+    toast(t("project.launchRequested", { app: application === "cmd" ? "CMD" : "VS Code", path: target.path }));
+  } catch (error) {
+    if (state.room === room) { projectLaunchFailure = error; toast(error.message, true); }
+  }
+  finally { projectLaunchPending = false; renderProjectLaunch(); }
+}
+$("projectPickCode").onclick = async () => {
+  if (projectLaunchPending || projectPickerPending) return;
+  const context = projectLaunchContext;
+  projectPickerPending = true;
+  renderProjectLaunchFeedback();
+  let selected = false;
+  try {
+    const result = await api("/api/pick-vscode", {});
+    selected = !!result.ok;
+  } catch (error) { toast(error.message, true); }
+  finally { projectPickerPending = false; renderProjectLaunchFeedback(); }
+  if (selected && context && context.room === state.room && projectLaunchContext === context) {
+    await launchProjectApplication("vscode", context.path);
+  }
+};
+$("projectLaunchPath").onchange = renderProjectLaunch;
+$("projectOpenCmd").onclick = () => chooseProjectApplication("cmd");
+$("projectOpenCode").onclick = () => chooseProjectApplication("vscode");
+$("projectLaunchConfirm").onclick = () => launchProjectApplication(projectLaunchApplication);
+$("connectionBack").onclick = showConnectionChoices;
+$("connectionBtn").onclick = () => {
+  const menu = $("connectionMenu");
+  if (!menu.hidden) { closeConnectionMenu(); return; }
+  const rect = $("connectionBtn").getBoundingClientRect();
+  const width = Math.min(300, window.innerWidth - 24);
+  menu.style.left = Math.max(12, Math.min(rect.right + 8, window.innerWidth - width - 12)) + "px";
+  menu.style.top = Math.max(12, Math.min(rect.top, window.innerHeight - 250)) + "px";
+  menu.hidden = false;
+  $("connectionBtn").setAttribute("aria-expanded", "true");
+  showConnectionChoices();
+};
+document.addEventListener("click", (event) => { if (!$("connectionWrap").contains(event.target)) closeConnectionMenu(false); });
+$("connectionWrap").addEventListener("focusout", (event) => {
+  queueMicrotask(() => { if (!projectLaunchPending && !projectPickerPending && !$("connectionWrap").contains(document.activeElement)) closeConnectionMenu(false); });
+});
+document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeConnectionMenu(); });
+window.addEventListener("resize", () => closeConnectionMenu(false));
 function renderProjectManager() {
-  const activeKey = projectPathKey(projectDraftActive);
   if (!projectDraftDirs.length) {
     $("projectLinks").innerHTML = `<div class="project-link-empty">${esc(tr("project.empty", "No connected project — this room uses its sandbox workspace."))}</div>`;
     return;
@@ -5135,23 +5410,18 @@ function renderProjectManager() {
   const knownLinks = state.summary?.projectLinks?.links || [];
   $("projectLinks").innerHTML = projectDraftDirs.map((projectPath) => {
     const key = projectPathKey(projectPath);
-    const current = key === activeKey;
     const known = knownLinks.find((link) => projectPathKey(link.path) === key);
     const missing = known && !known.exists;
-    const mismatch = current && projectPathKey(state.summary?.cfg?.projectDir) === key && !!state.summary?.projectLinks?.mismatch;
-    const status = missing ? tr("project.missing", "Path not found")
-      : mismatch ? tr("project.mismatch", "Current path mismatch")
-        : current ? tr("project.current", "Current working path")
-          : tr("project.saved", "Connected · not current");
-    const statusClass = missing || mismatch ? " warn" : current ? " current" : "";
     const name = projectPath.split(/[\\/]/).filter(Boolean).pop() || projectPath;
     const canOpen = !!known && !missing;
-    return `<div class="project-link-row${current ? " active" : ""}" data-project-path="${esc(projectPath)}">` +
-      `<div class="project-link-copy"><b>${esc(name)}</b><span title="${esc(projectPath)}">${esc(projectPath)}</span><em class="project-link-status${statusClass}">${esc(status)}</em></div>` +
-      `<div class="project-link-actions">${current ? "" : `<button type="button" class="btn" data-project-use>${esc(tr("project.use", "Use"))}</button>`}` +
-      `<button type="button" class="btn" data-project-open${canOpen ? "" : " disabled"}>${esc(tr("project.open", "Open folder"))}</button>` +
-      `<button type="button" class="btn" data-project-edit><span data-picker-label>${esc(tr("project.edit", "Change path"))}</span></button>` +
-      `<button type="button" class="btn danger" data-project-remove>${esc(tr("project.remove", "Remove"))}</button></div></div>`;
+    return `<div class="project-link-row" data-project-path="${esc(projectPath)}">` +
+      `<span class="project-link-icon" aria-hidden="true">📁</span>` +
+      `<div class="project-link-copy"><b>${esc(name)}</b><span title="${esc(projectPath)}">${esc(projectPath)}</span>` +
+      (missing ? `<em class="project-link-status warn">${esc(t("project.missing"))}</em>` : "") + `</div>` +
+      `<div class="project-link-actions">` +
+      `<button type="button" class="btn" data-project-open title="${esc(t(canOpen ? "project.openTip" : "project.openUnavailableTip"))}"${canOpen ? "" : " disabled"}>${esc(tr("project.open", "Open folder"))}</button>` +
+      `<button type="button" class="btn" data-project-edit title="${esc(t("project.editTip"))}"><span data-picker-label>${esc(tr("project.edit", "Change path"))}</span></button>` +
+      `<button type="button" class="btn danger" data-project-remove title="${esc(t("project.removeHelp"))}">${esc(tr("project.remove", "Remove"))}</button></div></div>`;
   }).join("");
 }
 async function editProjectPath(projectPath, button) {
@@ -5169,8 +5439,7 @@ $("projectLinks").addEventListener("click", async (event) => {
   const row = event.target.closest("[data-project-path]");
   if (!row) return;
   const projectPath = row.dataset.projectPath;
-  if (event.target.closest("[data-project-use]")) projectDraftActive = projectPath;
-  else if (event.target.closest("[data-project-remove]")) {
+  if (event.target.closest("[data-project-remove]")) {
     projectDraftDirs = projectDraftDirs.filter((value) => projectPathKey(value) !== projectPathKey(projectPath));
     if (projectPathKey(projectDraftActive) === projectPathKey(projectPath)) projectDraftActive = projectDraftDirs[0] || null;
   } else if (event.target.closest("[data-project-open]")) {
@@ -5210,7 +5479,7 @@ $("projectAdd").onclick = async () => {
   const picked = await browseFolder(projectDraftActive, $("projectAdd"));
   if (pick !== projectPick || state.room !== openedFor || !picked) return;
   if (!projectDraftDirs.some((value) => projectPathKey(value) === projectPathKey(picked))) projectDraftDirs.push(picked);
-  projectDraftActive = picked;
+  if (!projectDraftActive) projectDraftActive = picked;
   renderProjectManager();
 };
 $("projectApply").onclick = async () => {
@@ -5266,6 +5535,12 @@ function openSettings() {
     (previousAccounting ? tr("settings.previousAccountingNote", " This room still uses previous accounting. Select Automatic turns and review the allowance to switch; saving other settings alone will not switch it.") : "");
   $("s_pairrounds").value = s.cfg.pairRounds || 0;
   $("overlay").classList.add("open");
+  // Cached CLI metadata, warmed when the room loads. Never overwrite form edits.
+  refreshSeatModels(s).then(updated => {
+    if (!updated || !$("overlay").classList.contains("open")) return;
+    captureSeatDraftValues();
+    renderSeatCards(state.summary);
+  }).catch(() => { /* Free-form model input remains available. */ });
 }
 $("s_addSeat").onclick = () => {
   if (!settingsSeatDraft || settingsSeatDraft.length >= 3) return;
