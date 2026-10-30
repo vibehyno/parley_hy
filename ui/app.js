@@ -5406,7 +5406,9 @@ $("connectionBtn").onclick = () => {
 };
 document.addEventListener("click", (event) => { if (!$("connectionWrap").contains(event.target)) closeConnectionMenu(false); });
 $("connectionWrap").addEventListener("focusout", (event) => {
-  queueMicrotask(() => { if (!projectLaunchPending && !projectPickerPending && !$("connectionWrap").contains(document.activeElement)) closeConnectionMenu(false); });
+  // During native select/button focus transitions activeElement may briefly be body.
+  // Only dismiss for an explicit focus destination outside the menu.
+  if (event.relatedTarget && !$("connectionWrap").contains(event.relatedTarget) && !projectLaunchPending && !projectPickerPending) closeConnectionMenu(false);
 });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeConnectionMenu(); });
 window.addEventListener("resize", () => closeConnectionMenu(false));
@@ -5597,14 +5599,14 @@ $("updateClose").onclick = closeUpdate;
 $("updateLater").onclick = closeUpdate;
 $("updateApply").onclick = applyUpdate;
 $("updateOverlay").addEventListener("click", (e) => { if (e.target === $("updateOverlay")) closeUpdate(); });
-$("mCancel").onclick = () => closeSettings();
-$("overlay").addEventListener("click", (e) => { if (e.target === $("overlay")) closeSettings(); });
+$("mClose").onclick = () => closeSettings();
+
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if ($("archiveOverlay").classList.contains("open")) closeArchives();
   else if ($("updateOverlay").classList.contains("open")) closeUpdate();
   else if ($("projectOverlay").classList.contains("open")) closeProjectManager();
-  else closeSettings();
+  // Settings are dismissed explicitly through their close button.
 });
 $("mSave").onclick = async () => {
   const s = state.summary; if (!s) return;

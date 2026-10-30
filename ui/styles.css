@@ -1,4 +1,5 @@
   :root {
+    color-scheme: dark;
     --bg: #0b0e14;
     --bg2: #0e1219;
     --panel: #121722;
@@ -29,10 +30,8 @@
     --radius: 14px;
     --mono: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
   }
-  /* Parley was dark-only, so anyone on a light desktop got an uninvited dark
-     app. Only the tokens change; every rule below is written against them. */
-  @media (prefers-color-scheme: light) {
-    :root {
+  :root[data-theme="light"] {
+      color-scheme: light;
       --bg: #f7f8fa;
       --bg2: #eef1f5;
       --panel: #ffffff;
@@ -54,7 +53,6 @@
       --danger-edge: rgba(194,47,63,.35);
       --warn-wash: rgba(154,107,19,.10);
       --warn-edge: rgba(154,107,19,.32);
-    }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -164,7 +162,7 @@
 
   header {
     display: flex; align-items: center; gap: 14px; padding: 12px 20px;
-    border-bottom: 1px solid var(--border); background: rgba(14,18,25,.7); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border); background: var(--bg2); backdrop-filter: blur(8px);
   }
   #roomTitle { font-weight: 600; font-size: 15.5px; }
   #connDot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); transition: background .3s; }
@@ -1027,3 +1025,15 @@
     }
     #hopMenu { width: min(286px, calc(100vw - 16px)); }
   }
+
+  #themeToggle { display:flex; flex-shrink:0; border:1px solid var(--border2); border-radius:18px; overflow:hidden; }
+  #themeToggle button { padding:4px 9px; color:var(--text-dim); }
+  #themeToggle button[aria-pressed="true"] { background:var(--panel2); color:var(--text); }
+
+  #overlay > .settings-modal { display:flex; flex-direction:column; padding:0; overflow:hidden; }
+  .settings-head, .settings-footer { flex-shrink:0; margin:0; padding:16px 24px; background:var(--bg2); }
+  .settings-head { align-items:center; border-bottom:1px solid var(--border); gap:16px; }
+  .settings-head h2 { flex:1; }
+  #mClose { font-size:24px; line-height:1; padding:8px; }
+  .settings-body { min-height:0; overflow-y:auto; padding:20px 24px; }
+  .settings-footer { border-top:1px solid var(--border); gap:12px; flex-wrap:wrap; }

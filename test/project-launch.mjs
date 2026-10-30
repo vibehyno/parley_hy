@@ -3,18 +3,21 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
-import { projectLaunchSpec, launchVSCode } from "../lib/project-launch.mjs";
+import { projectLaunchSpec, launchProjectTool as launchVSCode } from "../lib/project-launch.mjs";
 import { isolatedServer } from "./server-fixture.mjs";
 
 test("CMD uses a visible console and cwd instead of interpolating project paths into a command", () => {
   const target = "C:\\projects\\QA & notes %TEMP%";
   const spec = projectLaunchSpec(target, "cmd", { platform: "win32", env: { SystemRoot: "C:\\Windows" } });
-  assert.equal(spec.command, "C:\\Windows\\System32\\cmd.exe");
-  assert.deepEqual(spec.args, ["/d", "/s", "/c", 'start "" "%COMSPEC%" /d /k']);
+  assert.match(spec.command, /WindowsPowerShell/);
+  const script = Buffer.from(spec.args.at(-1), "base64").toString("utf16le");
+  assert.match(script, /flags=1, show=1/);
+  assert.match(script, /false, 0x10, IntPtr.Zero, cwd/);
+  assert.ok(!script.includes(target));
   assert.equal(spec.options.cwd, target);
-  assert.equal(spec.options.windowsHide, true, "hide only the launcher; START opens the interactive console");
-  assert.equal(spec.options.env.COMSPEC, spec.command);
-  assert.equal(spec.options.windowsVerbatimArguments, true, "CMD receives the constant command without C-runtime quote escaping");
+  assert.equal(spec.options.windowsHide, true);
+  assert.equal(spec.options.env.PARLEY_CMD_EXE, "C:\\Windows\\System32\\cmd.exe");
+  assert.equal(spec.options.env.PARLEY_CMD_CWD, target);
   assert.equal(spec.options.shell, undefined);
   assert.throws(() => projectLaunchSpec("\\\\server\\share", "cmd", { platform: "win32" }), /UNC/);
   assert.throws(() => projectLaunchSpec("/tmp/project", "cmd", { platform: "linux" }), /Windows/);
@@ -51,6 +54,7 @@ test("VS Code supports versioned resources and an explicitly selected installati
 test("launch acknowledgement waits for exit and surfaces stderr, spawn errors and timeouts", async () => {
   const spec = (script) => ({ command: process.execPath, args: ["-e", script], options: { windowsHide: true } });
   await launchVSCode(spec("setTimeout(() => process.exit(0), 30)"));
+  await assert.rejects(launchVSCode({...spec('process.stderr.write("console denied"); process.exit(3)'), application:"cmd"}), error => error.code === "cmd-launch-failed" && /CMD.*console denied/.test(error.message));
   await assert.rejects(launchVSCode(spec('process.stderr.write("launch fixture failure"); process.exit(7)')),
     (error) => error.code === "vscode-launch-failed" && /7.*launch fixture failure/.test(error.message));
   await assert.rejects(launchVSCode({ command: "parley-nonexistent-vscode-fixture", args: [], options: {} }),

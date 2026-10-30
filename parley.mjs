@@ -33,7 +33,7 @@ import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive } from "./lib/conversation-archives.mjs";
 import { claimService, serviceCommand } from "./lib/service-control.mjs";
-import { projectLaunchSpec, launchVSCode } from "./lib/project-launch.mjs";
+import { projectLaunchSpec, launchProjectTool } from "./lib/project-launch.mjs";
 import { createAgyStream } from "./lib/agy-stream.mjs";
 import { agyEffortArgs } from "./lib/agy-model-options.mjs";
 import { createPublicSpeech } from "./lib/public-speech.mjs";
@@ -2007,7 +2007,8 @@ const rooms = new Map();
 function validRoomName(name) {
   return typeof name === "string" &&
     name === name.trim() &&
-    /^[a-zA-Z0-9][a-zA-Z0-9-_ ]{0,39}$/.test(name) &&
+    /^[\p{L}\p{N}][\p{L}\p{N}\p{M}_ -]{0,39}$/u.test(name) &&
+    !/^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(name) &&
     !/\s$/.test(name);
 }
 
@@ -8709,8 +8710,7 @@ const server = http.createServer(async (req, res) => {
           throw Object.assign(new Error("VS Code의 Code.exe를 선택해 주세요."), { status: 400, code: "vscode-select-required" });
         }
         const spec = projectLaunchSpec(target, application, { executable });
-        if (application === "vscode") await launchVSCode(spec);
-        else await launchDetached(spec.command, spec.args, spec.options);
+        await launchProjectTool(spec);
         return json(res, 200, { ok: true, path: target, application });
       }
       if (IS_WIN) {

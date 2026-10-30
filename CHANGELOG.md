@@ -2,6 +2,14 @@
 
 Notable changes per repository version.
 
+## 1.4.10 — 2026-10-30
+
+- Keep the connection menu open when moving from project selection to the launch button.
+- Start CMD with a separate console and report launcher failures.
+- Support Korean room creation, renaming and archive restoration; reject Windows reserved names.
+- Add persistent dark/light controls in the header, default to dark, and match the light header palette.
+- Pin settings header and footer, scroll only the body, and require explicit close instead of backdrop dismissal.
+
 ## 1.4.9 — 2026-10-30
 
 - Update Korean and English README clone instructions and update directory to the new repository and its default parley folder.
