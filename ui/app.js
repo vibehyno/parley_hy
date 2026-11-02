@@ -3579,6 +3579,7 @@ async function loadRoom(name) {
   state.providers = data.room.providers || state.providers;
   renderAll({ preserveTransient: false });
   applySummary(data.room);
+  workPanel.roomChanged();
   refreshSeatModels(data.room).catch(() => { /* Keep configured names if discovery fails. */ });
   // Room opening is navigation, not a live arrival: always show the newest
   // message immediately. The second pass runs after layout so smooth scrolling
@@ -4366,6 +4367,7 @@ let skillAcItems = [];
 let skillAcSelected = 0;
 let skillAcParsed = null;
 let skillAcRequest = 0;
+const toolCatalogPending = new Map();
 
 function skillProviderOptions() {
   const seats = state.summary?.seats || [];
@@ -4398,11 +4400,12 @@ function renderSkillAutocomplete(title, items, emptyKey = "skillAutocomplete.noM
       return `<button type="button" data-skill-ac-index="${index}" class="${index === 0 ? "sel" : ""}"><b>$${esc(choice.seat)}</b><span>${esc(toolLabel(choice.provider))}</span></button>`;
     }
     const item = choice.item;
-    const detail = window.ParleyI18n.toolDescription(item.name, item.description || "");
+    const detail = [item.kind === "mcp" ? "MCP" : item.kind === "plugin" ? "Plugin" : "Skill",
+      window.ParleyI18n.toolDescription(item.name, item.description || "")].filter(Boolean).join(" · ");
     return `<button type="button" data-skill-ac-index="${index}" class="${index === 0 ? "sel" : ""}"><b>${esc(item.displayName || item.name)}</b>${detail ? `<span>${esc(detail)}</span>` : ""}</button>`;
   }).join("");
   el.innerHTML = `<div class="skill-ac-title">${esc(title)}</div>` +
-    (rows || `<div class="skill-ac-empty">${esc(tr(emptyKey, "No matching Skills"))}</div>`);
+    (rows || `<div class="skill-ac-empty">${esc(tr(emptyKey, "No matching tools"))}</div>`);
   el.style.display = "block";
   el.querySelectorAll("[data-skill-ac-index]").forEach((button) => {
     button.onclick = () => pickSkillAutocomplete(Number(button.dataset.skillAcIndex));
@@ -4421,6 +4424,7 @@ function skillAutocompleteCheck() {
   const parsed = SkillAutocomplete.parse(input.value, input.selectionStart);
   if (!parsed) { hideSkillAutocomplete(); return false; }
   skillAcParsed = parsed;
+  const request = ++skillAcRequest;
   hideMention();
   const providers = skillProviderOptions();
   if (parsed.stage === "provider") {
@@ -4438,26 +4442,29 @@ function skillAutocompleteCheck() {
   }
   const key = `${state.room}:${selected.provider}`;
   const showCatalog = (catalog) => {
-    const filtered = SkillAutocomplete.filterSkills(catalog?.skills || [], parsed.query,
+    const filtered = SkillAutocomplete.filterTools(catalog, parsed.query,
       (item) => window.ParleyI18n.toolDescription(item.name, item.description || ""));
     renderSkillAutocomplete(`@${selected.seat} · ${toolLabel(selected.provider)}`,
-      filtered.map((item) => ({ type: "skill", seat: selected.seat, item })));
+      filtered.map((item) => ({ type: item.kind, seat: selected.seat, item })));
   };
   if (state.toolCatalogs[key]) { showCatalog(state.toolCatalogs[key]); return true; }
-  const request = ++skillAcRequest;
   const room = state.room;
-  showSkillAutocompleteMessage("skillAutocomplete.loading", "Loading Skills…");
-  const params = new URLSearchParams({ room, provider: selected.provider });
-  api(`/api/tools?${params}`).then((catalog) => {
+  showSkillAutocompleteMessage("skillAutocomplete.loading", "Loading tools…");
+  if (!toolCatalogPending.has(key)) {
+    const params = new URLSearchParams({ room, provider: selected.provider });
+    const pending = api(`/api/tools?${params}`).then((catalog) => {
+      state.toolCatalogs[key] = catalog;
+      return catalog;
+    }).finally(() => toolCatalogPending.delete(key));
+    toolCatalogPending.set(key, pending);
+  }
+  toolCatalogPending.get(key).then(() => {
     if (request !== skillAcRequest || state.room !== room) return;
-    const current = SkillAutocomplete.parse(input.value, input.selectionStart);
-    if (!current || current.provider !== parsed.provider) return;
-    state.toolCatalogs[key] = catalog;
-    skillAcParsed = current;
-    showCatalog(catalog);
+    // Re-parse the latest text; never render the query captured before loading.
+    skillAutocompleteCheck();
   }).catch(() => {
     if (request === skillAcRequest && state.room === room) {
-      showSkillAutocompleteMessage("skillAutocomplete.unavailable", "Could not load the Skill list");
+      showSkillAutocompleteMessage("skillAutocomplete.unavailable", "Could not load the tool list");
     }
   });
   return true;
@@ -4468,7 +4475,7 @@ function pickSkillAutocomplete(index) {
   if (!choice || !skillAcParsed) return;
   let replacement;
   if (choice.type === "provider") replacement = `$${choice.seat} `;
-  else replacement = SkillAutocomplete.prompt(choice.seat, choice.item.invokeName || choice.item.name);
+  else replacement = SkillAutocomplete.prompt(choice.seat, choice.item.invokeName || choice.item.name, choice.type);
   const result = SkillAutocomplete.replace(input.value, input.selectionStart, skillAcParsed, replacement);
   input.value = result.text;
   input.selectionStart = input.selectionEnd = result.cursor;
@@ -5131,7 +5138,6 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTools
 // action that bypasses it. Concurrent triggers reuse the same in-flight lookup.
 const USAGE_COLORS = { codex: "var(--codex)", claude: "var(--claude)", gemini: "#8ab4f8" };
 const USAGE_CACHE_MS = 5 * 60_000;
-let usageOpener = null;
 let usageRequest = null;
 function usageColor(provider) { return USAGE_COLORS[provider] || "var(--user)"; }
 function usageCheckedAt(snapshot = state.usage) {
@@ -5205,40 +5211,7 @@ function usageTokenStats(provider) {
     `<span class="usage-info" tabindex="0" title="${esc(tr("usage.tokenScope", "Sum of token metadata reported by this room's replies; not the account-wide total."))}">ⓘ</span></div>` +
     `<div class="usage-token-grid">${items.map(([label, value]) => `<div class="usage-token"><b>${Number(value).toLocaleString()}</b><span>${esc(label)}</span></div>`).join("")}</div>`;
 }
-function renderUsage() {
-  const snapshot = state.usage;
-  if (!snapshot || snapshot.room !== state.room) {
-    $("usageStatus").textContent = tr("usage.notChecked", "Not checked yet");
-    $("usageCards").innerHTML = `<div class="tool-empty">${esc(tr("usage.openToCheck", "Open Usage to check the current room."))}</div>`;
-    renderUsageHover();
-    return;
-  }
-  $("usageStatus").textContent = usageAgo(usageCheckedAt(snapshot));
-  $("usageCards").innerHTML = (snapshot.providers || []).map((provider) => {
-    const stale = provider.stale ? ` · ${tr("usage.stale", "previous result")}` : "";
-    const content = usageTokenStats(provider) + usageWindowRows(provider) || `<div class="tool-empty">${esc(tr("usage.noData", "No usage data returned."))}</div>`;
-    return `<section class="usage-provider"><div class="usage-provider-head"><h3 style="color:${usageColor(provider.provider)}">${esc(provider.label || provider.provider)}</h3>` +
-      `<span>${esc((provider.source || "CLI") + stale)}</span></div>${provider.error ? `<div class="usage-error">${esc(provider.error)}</div>` : ""}${content}</section>`;
-  }).join("") || `<div class="tool-empty">${esc(tr("usage.noProviders", "No providers are seated in this room."))}</div>`;
-  renderUsageHover();
-}
-function renderUsageHover() {
-  const snapshot = state.usage;
-  if (!snapshot || snapshot.room !== state.room) {
-    $("usageHover").innerHTML = `<div class="usage-hover-head"><b>${esc(tr("usage.title", "CLI usage"))}</b><span>${esc(tr("usage.notChecked", "Not checked yet"))}</span></div>` +
-      `<div class="tool-empty">${esc(tr("usage.openToCheck", "Open Usage to check the current room."))}</div>`;
-    return;
-  }
-  const rows = (snapshot.providers || []).map((provider) => {
-    const first = (provider.windows || [])[0];
-    if (first) return `<div class="usage-hover-row">${usageRing(first.remainingPercent, provider.provider)}<span>${esc(provider.label || provider.provider)}</span></div>`;
-    const stat = (provider.stats || [])[0];
-    if (stat) return `<div class="usage-hover-row"><span>${esc(provider.label || provider.provider)}<br>${esc(tr("usage.requestsShort", "{requests} requests", { requests: stat.requests }))}</span></div>`;
-    return `<div class="usage-hover-row"><span>${esc(provider.label || provider.provider)} · ${esc(tr("usage.unavailable", "unavailable"))}</span></div>`;
-  }).join("");
-  $("usageHover").innerHTML = `<div class="usage-hover-head"><b>${esc(tr("usage.title", "CLI usage"))}</b><span>${esc(usageAgo(usageCheckedAt(snapshot)))}</span></div>` +
-    `<div class="usage-hover-rows">${rows}</div>`;
-}
+function renderUsage() { workPanel.renderUsage(); }
 function usageIsFresh(room) {
   if (!state.usage || state.usage.room !== room) return false;
   const checkedAt = usageCheckedAt(state.usage);
@@ -5251,12 +5224,12 @@ async function loadUsage(force = false) {
     return state.usage;
   }
   if (usageRequest?.room === room) return usageRequest.promise;
-  $("usageRefresh").disabled = true;
-  $("usageStatus").textContent = tr("usage.loading", "Checking CLI usage…");
-  if (!state.usage || state.usage.room !== room) $("usageCards").innerHTML = "";
+  state.usageError = null;
+  state.usageLoading = room;
+  renderUsage();
   const pending = (async () => {
     const params = new URLSearchParams({ room });
-    params.set("refresh", "1");
+    if (force) params.set("refresh", "1");
     const snapshot = await api(`/api/usage?${params}`);
     if (state.room !== room) return snapshot;
     state.usage = snapshot;
@@ -5268,48 +5241,14 @@ async function loadUsage(force = false) {
     return await pending;
   } catch (error) {
     if (state.room === room) {
-      $("usageStatus").textContent = error.message;
-      if (!state.usage || state.usage.room !== room) $("usageCards").innerHTML = `<div class="usage-error">${esc(error.message)}</div>`;
+      state.usageError = { room, message: error.message };
     }
   } finally {
     if (usageRequest?.promise === pending) usageRequest = null;
-    if (state.room === room) $("usageRefresh").disabled = false;
+    if (state.usageLoading === room) state.usageLoading = null;
+    if (state.room === room) renderUsage();
   }
 }
-function openUsage() {
-  usageOpener = document.activeElement;
-  $("usageWrap").classList.add("preview-dismissed");
-  $("usageOverlay").classList.add("open");
-  $("usageClose").focus();
-  loadUsage();
-}
-function closeUsage() {
-  if (!$("usageOverlay").classList.contains("open")) return;
-  $("usageWrap").classList.add("preview-dismissed");
-  renderUsageHover();
-  // Restore focus while the modal is still open so focusin cannot reopen
-  // its preview. A later pointer entry or keyboard visit may show it again.
-  if (usageOpener && document.contains(usageOpener)) usageOpener.focus();
-  usageOpener = null;
-  $("usageOverlay").classList.remove("open");
-}
-$("usageBtn").onclick = openUsage;
-$("usageClose").onclick = closeUsage;
-$("usageRefresh").onclick = () => loadUsage(true);
-$("usageWrap").addEventListener("mouseenter", () => {
-  if ($("usageOverlay").classList.contains("open")) return;
-  $("usageWrap").classList.remove("preview-dismissed");
-  loadUsage();
-});
-$("usageWrap").addEventListener("focusin", () => {
-  if ($("usageOverlay").classList.contains("open")) return;
-  $("usageWrap").classList.remove("preview-dismissed");
-  loadUsage();
-});
-$("usageOverlay").addEventListener("click", (e) => { if (e.target === $("usageOverlay")) closeUsage(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeUsage(); });
-renderUsageHover();
-
 // The project manager edits a draft. Closing it drops the draft; Apply is the
 // only action that writes projectDir/projectDirs back to the room config.
 let projectPick = 0;
@@ -5889,6 +5828,16 @@ $("mDelete").onclick = () => deleteFlow(state.room);
 $("mDelete").hidden = false;
 $("newConvBtn").onclick = newConversation;
 $("mNewConv").onclick = newConversation;
+
+const workPanel = window.ParleyWorkPanel.create({
+  state, api, t, esc, seatName, loadUsage, usageRows: (provider) => usageTokenStats(provider) + usageWindowRows(provider), usageAgo, checkedAt: usageCheckedAt,
+  openFile: async (project, file, room, repository) => {
+    if (state.room !== room) return;
+    toast(t("workPanel.opening"));
+    try { await api("/api/open", { room, what: "project", path: project, file, repository, application: "default" }); }
+    catch (error) { toast(error.message, true); }
+  },
+});
 
 // ------------------------------------------------------------ boot
 loadRoom(state.room).catch((e) => toast(e.message, true));

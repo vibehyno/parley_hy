@@ -27,6 +27,7 @@ import { snapshotClientAssets } from "./lib/client-assets.mjs";
 import { claudeLoggedIn } from "./lib/claude-auth.mjs";
 import { normalizeFastMode, updateFastMode } from "./lib/fast-mode.mjs";
 import { extractSkillMessage, applySkillInvocationPrompt } from "./lib/skill-invocation.mjs";
+import { readLocalToolInventory } from "./lib/local-tool-inventory.mjs";
 import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
@@ -41,6 +42,8 @@ import { createPublicSpeech } from "./lib/public-speech.mjs";
 import { initialContext } from "./lib/initial-context.mjs";
 import { discoverCliModels } from "./lib/model-catalog.mjs";
 import { diagnosticText } from "./lib/diagnostic-text.mjs";
+import { changedFiles, fileDiff, resolveProjectFile, discoverRepositories, resolveRepository } from "./lib/work-changes.mjs";
+import { subagentEvents } from "./lib/subagent-events.mjs";
 import { plainPeerRequest } from "./lib/peer-routing.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1673,9 +1676,11 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   let sessionRef = sess || null, acc = "", resultText = null, assistantText = null, isError = false, usage = null;
   const speech = createPublicSpeech({ onStream, onActivity });
   const seenTools = new Set();
+  const knownSubagents = new Set();
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
     let obj; try { obj = JSON.parse(line); } catch { return; }
+    for (const child of subagentEvents("claude", obj, knownSubagents)) onActivity?.(`↳ ${child.label}`, { subagent: child });
     if (obj.session_id) sessionRef = obj.session_id;
     if (obj.type === "stream_event" && obj.event && !obj.parent_tool_use_id) {
       const ev = obj.event;
@@ -1774,6 +1779,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
     let obj; try { obj = JSON.parse(line); } catch { return; }
+    for (const child of subagentEvents("codex", obj)) onActivity?.(`↳ ${child.label}`, { subagent: child });
     if (obj.type === "turn.completed" && obj.usage) {
       usage = { out: obj.usage.output_tokens, reasoning: obj.usage.reasoning_output_tokens };
     }
@@ -3470,7 +3476,7 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
   const onActivity = (label, meta = {}) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}), ...(meta.subagent ? { subagent: meta.subagent } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -3741,7 +3747,7 @@ async function runListenerTurn(room, agent, userTurnN, scope = NO_SCOPE, opts = 
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
   const onActivity = (label, meta = {}) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}), ...(meta.subagent ? { subagent: meta.subagent } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -4150,7 +4156,7 @@ async function runHopTurn(room, agent, triggerEntry, rootN, scope = NO_SCOPE, op
   });
   const onStream = (text) => { if (gen === room.generation) streamText(room, agent, text); };
   const onActivity = (label, meta = {}) => {
-    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}) } }, { md: false, state: false });
+    if (gen === room.generation) appendEntry(room, { kind: "activity", author: agent, text: label, meta: { runId: run.runId, ...(meta.publicSpeech ? { publicSpeech: true } : {}), ...(meta.subagent ? { subagent: meta.subagent } : {}) } }, { md: false, state: false });
   };
   const onProgress = (progress) => {
     if (gen === room.generation) broadcast(room, { type: "progress", agent, runId: run.runId, progress });
@@ -7557,47 +7563,15 @@ function parsePluginInventory(stdout, providerId) {
     const cacheCandidates = marketplace && version ? [
       path.join(os.homedir(), cacheBase, "plugins", "cache", marketplace, name, version),
     ] : [];
-    for (const candidate of [row.installPath, row.path, row.source?.path, ...cacheCandidates]) {
+    const skillCandidates = Array.isArray(row.skillPaths) ? row.skillPaths
+      : [row.installPath, row.path, row.source?.path, ...cacheCandidates];
+    for (const candidate of skillCandidates) {
       if (typeof candidate === "string" && candidate.trim()) {
         roots.push({ path: candidate, source: { kind: "plugin", id: sourceId } });
       }
     }
   }
   return { items: dedupeCatalog(items), roots };
-}
-
-function readCatalogJson(file) {
-  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
-}
-
-function mcpItemsFromObject(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-  return Object.keys(value).slice(0, 500).map((name) => ({ name: catalogText(name, 80), status: "configured" }))
-    .filter((item) => item.name);
-}
-
-function configuredClaudeMcps(cwd, pluginRoots) {
-  const items = [];
-  const addConfig = (config) => items.push(...mcpItemsFromObject(config?.mcpServers));
-  addConfig(readCatalogJson(path.join(cwd, ".mcp.json")));
-  const global = readCatalogJson(path.join(os.homedir(), ".claude.json"));
-  addConfig(global);
-  if (global?.projects && typeof global.projects === "object") {
-    let realCwd = cwd;
-    try { realCwd = fs.realpathSync(cwd); } catch { /* use resolved input */ }
-    for (const [projectPath, config] of Object.entries(global.projects)) {
-      let realProject = path.resolve(projectPath);
-      try { realProject = fs.realpathSync(realProject); } catch { /* unavailable project */ }
-      const same = IS_WIN ? realProject.toLowerCase() === realCwd.toLowerCase() : realProject === realCwd;
-      if (same) addConfig(config);
-    }
-  }
-  for (const root of pluginRoots) {
-    const base = typeof root === "string" ? root : root.path;
-    addConfig(readCatalogJson(path.join(base, ".mcp.json")));
-    addConfig(readCatalogJson(path.join(base, ".claude-plugin", "plugin.json")));
-  }
-  return dedupeCatalog(items);
 }
 
 function mergeMcpItems(configured, live) {
@@ -7682,28 +7656,22 @@ async function providerToolCatalog(room, providerId, options = {}) {
   const cached = toolCatalogCache.get(cacheKey);
   if (!refresh && !health && cached && Date.now() - cached.at < TOOL_CATALOG_TTL_MS) return cached.value;
 
-  const spec = resolveCommand(seatCfg.command || PROVIDERS[providerId].defaults.command);
-  const invoke = (args, timeoutMs = 10_000) => runCli(spec, args, { cwd, timeoutMs, input: "" });
-  const pluginRun = await invoke(def.plugins);
-  const pluginData = pluginRun.code === 0 ? parsePluginInventory(pluginRun.stdout, providerId) : { items: [], roots: [] };
-  let configuredMcps = [];
+  const local = readLocalToolInventory(providerId, cwd);
+  const pluginData = parsePluginInventory(JSON.stringify(local.plugins), providerId);
   let mcpRun = null;
-  if (providerId === "claude") {
-    configuredMcps = configuredClaudeMcps(cwd, pluginData.roots);
-    if (health) mcpRun = await invoke(def.mcp, 30_000);
-  } else {
-    mcpRun = await invoke(def.mcp);
+  // A plain list/refresh never starts a provider or an MCP server.
+  // Explicit diagnostics remain separate from the configured inventory.
+  if (health) {
+    const spec = resolveCommand(seatCfg.command || PROVIDERS[providerId].defaults.command);
+    mcpRun = await runCli(spec, def.mcp, { cwd, timeoutMs: 30_000, input: "" });
   }
-  const skillRoots = [];
-  for (const base of [cwd, os.homedir()]) {
-    for (const dir of def.skillDirs) {
-      skillRoots.push({ path: path.join(base, dir, "skills"), source: { kind: "provider", id: providerId } });
-    }
-  }
+  const configuredMcps = local.mcps.map((item) => ({ ...item, name: catalogText(item.name, 80) }));
+  const skillRoots = local.skillBases.map((base) => ({
+    path: path.join(base, "skills"), source: { kind: "provider", id: providerId },
+  }));
   skillRoots.push(...pluginData.roots);
   const warnings = [];
-  if (mcpRun && mcpRun.code !== 0) warnings.push("MCP 연결 상태를 확인하지 못했어. 설정 목록은 그대로 표시할게.");
-  if (pluginRun.code !== 0) warnings.push("Plugin 목록을 불러오지 못했어.");
+  if (mcpRun && mcpRun.code !== 0) warnings.push("MCP 연결 상태를 확인하지 못했습니다. 설정 목록을 표시합니다.");
   const skills = scanSkillRoots(skillRoots, providerId);
   const plugins = pluginData.items.map(({ _sourceId, ...item }) => ({
     ...item,
@@ -7978,6 +7946,31 @@ const server = http.createServer(async (req, res) => {
         setTimeout(shutdown, 1500).unref();
       }, 250).unref();
       return;
+    }
+
+    if (route === "GET /api/work-changes" || route === "GET /api/work-diff") {
+      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const projects = normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir);
+      if (route === "GET /api/work-changes") {
+        const results = [];
+        for (const [id, dir] of projects.entries()) {
+          try {
+            const discovery = await discoverRepositories(dir, { refresh: url.searchParams.get("refresh") === "1" });
+            if (!discovery.repositories.length) results.push({ id, name: path.basename(dir), path: dir, available: false, files: [], reason: "not-git", discoveryTruncated: discovery.truncated });
+            for (const repo of discovery.repositories) {
+              const meta = { id, name: path.basename(dir), path: dir, repository: repo.relative, discoveryTruncated: discovery.truncated };
+              try { results.push({ ...meta, ...await changedFiles(repo.path) }); }
+              catch { results.push({ ...meta, available: false, files: [], reason: "read-failed" }); }
+            }
+          }
+          catch { results.push({ id, name: path.basename(dir), path: dir, available: false, files: [], reason: "read-failed" }); }
+        }
+        return json(res, 200, { room: room.name, projects: results });
+      }
+      const id = url.searchParams.get("project");
+      if (!/^\d+$/.test(id || "") || !projects[Number(id)]) return json(res, 403, { error: "Project is not connected" });
+      const repo = await resolveRepository(projects[Number(id)], url.searchParams.get("repository") || "");
+      return json(res, 200, await fileDiff(repo, url.searchParams.get("file")));
     }
 
     if (route === "GET /api/usage") {
@@ -8697,7 +8690,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "POST /api/open") {
-      const { room: name, what, path: requestedPath, application = "folder" } = await readBody(req);
+      const { room: name, what, path: requestedPath, application = "folder", file, repository: repositoryPath = "" } = await readBody(req);
       const room = loadRoom(name || "default");
       let target = what === "room" ? room.dir : workDir(room);
       if (what === "project") {
@@ -8706,6 +8699,16 @@ const server = http.createServer(async (req, res) => {
         if (!target) throw Object.assign(new Error("project is not connected to this room"), { status: 403 });
       }
       if (!fs.existsSync(target)) throw Object.assign(new Error(`folder not found: ${target}`), { status: 404 });
+      if (application === "default" && file) {
+        if (what !== "project") throw Object.assign(new Error("연결된 프로젝트 파일을 선택하세요."), { status: 400 });
+        const selected = await resolveProjectFile(await resolveRepository(target, repositoryPath), file);
+        if (/\.(exe|com|bat|cmd|ps1|vbs|msi|scr|hta)$/i.test(selected.target)) {
+          throw Object.assign(new Error("실행 파일은 미리보기에서 열 수 없습니다. 프로젝트 폴더에서 확인해 주세요."), { status: 400 });
+        }
+        const opener = IS_WIN ? path.join(process.env.WINDIR || "C:\\Windows", "explorer.exe") : process.platform === "darwin" ? "open" : "xdg-open";
+        await launchDetached(opener, [selected.target]);
+        return json(res, 200, { ok: true });
+      }
       if (application !== "folder") {
         if (what !== "project") throw Object.assign(new Error("연결된 프로젝트를 먼저 선택하세요."), { status: 400 });
         if (!fs.statSync(target).isDirectory()) throw Object.assign(new Error("프로젝트 폴더가 아닙니다."), { status: 400 });

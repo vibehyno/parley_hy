@@ -39,9 +39,17 @@
     };
   }
 
-  function prompt(seat, skillName) {
-    return `@${seat} [$${seat}:${skillName}] `;
+  function filterTools(catalog, query, describe) {
+    const entries = [["skills", "skill"], ["mcps", "mcp"], ["plugins", "plugin"]]
+      .flatMap(([key, kind]) => (catalog?.[key] || []).map((item) => ({ ...item, kind })));
+    return filterSkills(entries, query, describe);
   }
 
-  global.ParleySkillAutocomplete = { parse, filterSkills, replace, prompt };
+  function prompt(seat, name, kind = "skill") {
+    const marker = kind === "skill" ? `[$${seat}:${name}]`
+      : `[${kind === "mcp" ? "MCP" : "Plugin"}:${name}]`;
+    return `@${seat} ${marker} `;
+  }
+
+  global.ParleySkillAutocomplete = { parse, filterSkills, filterTools, replace, prompt };
 })(window);

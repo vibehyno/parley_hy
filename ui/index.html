@@ -53,10 +53,6 @@
       <div id="gitId" style="display:none"></div>
       <a id="dlTranscript" href="#" data-side-tip="Save this room's conversation as a Markdown file" data-i18n-side-tip="sidebar.downloadTranscriptTip"><span class="ico">📄</span> <span data-i18n="sidebar.downloadTranscript">Download transcript</span></a>
       <button id="openRoomDir" data-side-tip="Open this room's local conversation storage folder" data-i18n-side-tip="sidebar.roomFolderTip"><span class="ico">🗂️</span> <span data-i18n="sidebar.roomFolder">Room folder</span></button>
-      <div id="usageWrap">
-        <button id="usageBtn" type="button"><span class="ico">◔</span> <span data-i18n="sidebar.usage">Usage</span></button>
-        <div id="usageHover" role="tooltip" aria-live="polite"></div>
-      </div>
       <button id="toolsBtn" data-side-tip="Browse Skills, MCP servers and plugins available to each model" data-i18n-side-tip="sidebar.toolsTip"><span class="ico">🧰</span> <span data-i18n="sidebar.tools">Tools</span></button>
       <div id="connectionWrap">
         <button id="connectionBtn" type="button" aria-expanded="false" aria-controls="connectionMenu" data-i18n-title="sidebar.connectionTip"><span class="ico">↗</span><span id="connectionLabel" data-i18n="sidebar.connection">Connect</span></button>
@@ -99,6 +95,7 @@
       </div>
       <button class="hbtn" id="newConvBtn" title="Save the conversation to archive files and start fresh model sessions" data-i18n-title="conversation.newTitle" data-i18n="conversation.new">🧹 Clean chat</button>
       <button class="hbtn" id="archivesBtn" title="Preview archived conversations and restore to a new room" data-i18n-title="archive.title" data-i18n="archive.button">🗃 Archives</button>
+      <button class="hbtn" id="workPanelToggle" type="button" aria-controls="workPanel" aria-expanded="true" data-i18n-title="workPanel.title" data-i18n-aria-label="workPanel.title" aria-label="Work overview" title="Work overview"><svg viewBox="0 0 24 20" width="20" height="18" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2" width="21" height="16" rx="2"/><path d="M15 2v16"/></svg></button>
     </header>
     <div id="pairBanner" style="display:none;padding:6px 20px;font-size:12.5px;color:#c9b3f5;background:rgba(150,110,240,.1);border-bottom:1px solid rgba(150,110,240,.35)">
       <span id="pairBannerText"></span>
@@ -198,6 +195,21 @@
       </div>
     </div>
   </div>
+  <aside id="workPanel" aria-label="Work overview" data-i18n-aria-label="workPanel.title">
+    <div class="work-panel-head"><strong data-i18n="workPanel.title">Work overview</strong><button id="workClose" type="button" data-i18n-title="common.close" aria-label="Close" data-i18n-aria-label="common.close">×</button></div>
+    <div id="workOverview">
+      <details class="work-section" data-section="changes" open><summary><span data-i18n="workPanel.changes">Changes</span><button id="workRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh" data-i18n-aria-label="common.refresh">↻</button></summary><div id="workProjects"></div></details>
+      <details class="work-section" data-section="agents" id="workAgentSection" hidden open><summary data-i18n="workPanel.agents">Subagents</summary><div id="workAgents"></div></details>
+      <details class="work-section" data-section="usage" open><summary><span data-i18n="sidebar.usage">Usage</span><button id="workUsageRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh usage" data-i18n-aria-label="common.refresh">↻</button></summary><small id="workUsageTime"></small><div id="workUsage"></div></details>
+    </div>
+    <div id="workDiff" hidden>
+      <div class="work-diff-head"><button id="workBack" type="button" data-i18n-title="workPanel.back" aria-label="Back" data-i18n-aria-label="workPanel.back">←</button><button id="workFilePath" type="button"></button><button id="workDiffRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh" data-i18n-aria-label="common.refresh">↻</button></div>
+      <div class="work-diff-info"><span id="workDiffScope" data-i18n="workPanel.scope">All changes since the last commit</span><span id="workDiffStats"></span></div>
+      <nav id="workHunkNav" hidden data-i18n-aria-label="workPanel.hunks" aria-label="Change blocks"><button id="workHunkPrev" type="button" data-i18n="workPanel.previousHunk">↑ Previous</button><span id="workHunkPosition" aria-live="polite"></span><button id="workHunkNext" type="button" data-i18n="workPanel.nextHunk">Next ↓</button></nav>
+      <div class="diff-column-head"><span data-i18n="workPanel.before">Last commit</span><span data-i18n="workPanel.after">Current file</span></div>
+      <div id="workDiffCode" tabindex="0"></div>
+    </div>
+  </aside>
 </div>
 
 <div id="wakeMenu" role="menu"></div>
@@ -307,23 +319,13 @@
   </div>
 </div>
 
-<div id="usageOverlay">
-  <div class="modal usage-modal" role="dialog" aria-modal="true" aria-labelledby="usageTitle">
-    <div class="usage-head">
-      <div><h2 id="usageTitle" data-i18n="usage.title">CLI usage</h2><div class="sub"><span data-i18n="usage.subtitle">Current room providers only</span> <span class="usage-info" tabindex="0" data-i18n-title="usage.autoRefresh" title="Press Refresh to check the usage limits again.">ⓘ</span></div></div>
-      <div class="usage-actions"><button class="btn" id="usageRefresh" type="button" data-i18n="common.refresh">Refresh</button><button class="btn" id="usageClose" type="button" data-i18n="common.close">Close</button></div>
-    </div>
-    <div id="usageStatus" class="usage-status" aria-live="polite"></div>
-    <div id="usageCards" class="usage-cards"></div>
-  </div>
-</div>
-
 <div id="toast"></div>
 
 <script src="/ui/i18n.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/skill-autocomplete.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/composer-adjustment.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/seat-errors.js?v=__PARLEY_ASSET_VERSION__"></script>
+<script src="/ui/work-panel.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
 </body>
 </html>

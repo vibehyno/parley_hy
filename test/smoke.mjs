@@ -1864,6 +1864,16 @@ async function main() {
   }));
   fs.writeFileSync(path.join(superpowersSkill, "SKILL.md"), "---\nname: brainstorming\ndescription: Explore requirements before implementation\n---\n");
   fs.writeFileSync(path.join(mattpocockSkill, "SKILL.md"), "---\nname: writing-for-agents\ndescription: Write concise documents for agents\n---\n");
+  const installed = { plugins: {
+    "Fake Plugin@local": [{ installPath: path.dirname(path.dirname(pluginSkill)), version: "1.0.0" }],
+    "superpowers@openai-curated-remote": [{ installPath: path.dirname(path.dirname(superpowersSkill)), version: "7.0.1" }],
+    "mattpocock-skills@mattpocock": [{ installPath: path.dirname(path.dirname(mattpocockSkill)), version: "1.3.1" }],
+  } };
+  for (const dir of [".codex", ".claude", ".gemini"]) {
+    fs.mkdirSync(path.join(toolProject, dir, "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(toolProject, dir, "plugins", "installed_plugins.json"), JSON.stringify(installed));
+  }
+  fs.writeFileSync(path.join(toolProject, ".codex", "config.toml"), '[mcp_servers.configured-mcp]\ncommand = "never-expose"\n');
   for (const [roomName, provider, peer] of [
     ["tools-codex", "codex", "claude"],
     ["tools-claude", "claude", "codex"],
@@ -1885,8 +1895,9 @@ async function main() {
     ok(`${provider} tool catalog exposes safe skill, MCP and plugin names`,
       tools.status === 200 && tools.data.provider === provider &&
       tools.data.skills.some((item) => item.name === "short-review") &&
-      tools.data.mcps.some((item) => item.name === (provider === "claude" ? "configured-mcp" : "fake-mcp")) &&
+      tools.data.mcps.some((item) => item.name === "configured-mcp") &&
       tools.data.plugins.some((item) => item.name === "Fake Plugin"), exposed);
+    ok(`${provider} inventory does not run MCP checks`, mcpRunsAfter === mcpRunsBefore);
     if (provider === "claude") {
       ok("Claude default tool catalog reads configured MCPs without launching a health check",
         mcpRunsAfter === mcpRunsBefore &&

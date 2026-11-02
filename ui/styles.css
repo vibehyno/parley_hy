@@ -1056,3 +1056,83 @@
   #mClose { font-size:24px; line-height:1; padding:8px; }
   .settings-body { min-height:0; overflow-y:auto; padding:20px 24px; }
   .settings-footer { border-top:1px solid var(--border); gap:12px; flex-wrap:wrap; }
+
+/* Right-hand work overview and read-only source comparison. */
+#workPanel { width:310px; flex:0 0 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg2); border-left:1px solid var(--border2); }
+#workPanel[hidden], #workDiff[hidden], #workOverview[hidden] { display:none; }
+#workPanel.with-diff { width:min(56vw,1000px); }
+.work-panel-head, .work-section-head, .work-diff-head { display:flex; align-items:center; gap:10px; }
+.work-panel-head { min-height:54px; padding:0 16px; border-bottom:1px solid var(--border); }
+#workPanelToggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:32px; padding:6px; }
+#workPanelToggle svg { display:block; flex:none; }
+.work-panel-head strong, .work-section-head h3 { flex:1; }
+.work-panel-head button, .work-section-head button, .work-diff-head button { border-radius:7px; padding:5px 9px; }
+#workPanel button:hover { background:var(--panel2); }
+#workPanel button:focus-visible { outline:2px solid var(--user); outline-offset:-2px; }
+#workOverview { overflow:auto; padding:0 14px 20px; }
+#workOverview > .work-section { padding:12px 0; border-bottom:1px solid var(--border2); }
+#workOverview > .work-section[hidden] { display:none; }
+#workOverview > .work-section > summary { color:var(--text-dim); font-size:13px; }
+#workOverview > .work-section > summary > button { float:right; padding:0 6px; border-radius:5px; }
+#workOverview summary small { float:right; color:var(--text-faint); font-weight:400; }
+.work-repository { margin:3px 0 8px 10px; padding-left:10px; border-left:1px solid var(--border); }
+#workOverview h3 { margin:0 0 10px; font-size:13px; color:var(--text-dim); }
+#workOverview summary { cursor:pointer; padding:9px 0; font-weight:600; font-size:13px; }
+.work-file { display:flex; align-items:center; gap:7px; width:100%; padding:7px 5px; text-align:left; font-size:12px; border-radius:6px; }
+.work-file>span:first-child { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.work-file small { color:var(--text-faint); white-space:nowrap; }
+.work-counts { white-space:nowrap; font-size:11px; }
+.work-counts i { color:var(--codex); font-style:normal; }
+.work-counts b { color:var(--danger); font-weight:400; }
+.work-empty { color:var(--text-faint); margin:7px 0; font-size:12px; }
+.work-agent-group { padding:6px 0; font-size:12px; }
+.work-agent { display:flex; justify-content:space-between; gap:10px; padding:6px 0; }
+.work-agent span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.work-agent small { flex-shrink:0; color:var(--text-dim); }
+.work-usage-provider { padding-top:12px; font-size:12px; }
+#workUsageTime { font-size:11px; color:var(--text-faint); }
+#workUsage .usage-ring { width:44px; height:44px; flex:0 0 44px; aspect-ratio:1; }
+#workUsage .usage-ring::before { inset:5px; }
+#workUsage .usage-ring span { font-size:11px; }
+#workUsage .usage-window-copy { min-width:0; font-size:11px; }
+#workUsage .usage-window { padding:10px 0; gap:10px; }
+#workDiff { min-height:0; flex:1; display:flex; flex-direction:column; }
+.work-diff-head { padding:10px; border-bottom:1px solid var(--border); }
+.work-diff-info { display:flex; gap:12px; justify-content:space-between; padding:8px 12px; color:var(--text-faint); font-size:11px; border-bottom:1px solid var(--border); }
+#workDiffStats { white-space:nowrap; }
+#workDiffStats i { color:var(--codex); font-style:normal; }
+#workDiffStats b { color:var(--danger); font-weight:500; }
+#workHunkNav { display:flex; align-items:center; justify-content:flex-end; gap:12px; padding:7px 12px; border-bottom:1px solid var(--border); font-size:12px; }
+#workHunkNav[hidden] { display:none; }
+#workHunkNav button { padding:5px 8px; border-radius:6px; }
+#workHunkNav button:disabled { opacity:.35; cursor:default; }
+#workHunkPosition { min-width:42px; text-align:center; color:var(--text-dim); font-variant-numeric:tabular-nums; }
+#workFilePath { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; font:12px var(--mono); color:var(--user); }
+.diff-column-head { display:grid; grid-template-columns:1fr 1fr; padding:7px 12px; background:var(--panel); color:var(--text-dim); font-size:11px; }
+#workDiffCode { flex:1; min-height:0; overflow:auto; font:13px/1.8 var(--mono); background:var(--code-bg); tab-size:4; scrollbar-gutter:stable; }
+.diff-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.diff-cell { display:flex; min-width:0; border-right:1px solid var(--border); }
+.diff-cell code { white-space:pre-wrap; overflow-wrap:anywhere; padding:0 7px; min-width:0; }
+.diff-line { user-select:none; color:var(--text-faint); width:38px; flex-shrink:0; text-align:right; padding-right:7px; }
+.diff-sign { width:14px; flex-shrink:0; user-select:none; text-align:center; }
+.diff-cell.removed .diff-sign { color:var(--danger); }
+.diff-cell.added .diff-sign { color:var(--codex); }
+.diff-cell.removed { background:var(--danger-wash); }
+.diff-cell.added { background:color-mix(in srgb,var(--codex) 14%,transparent); }
+.diff-cell mark { color:inherit; border-radius:2px; padding:0; }
+.diff-cell.removed mark { background:color-mix(in srgb,var(--danger) 38%,transparent); box-shadow:inset 0 -1px var(--danger); }
+.diff-cell.added mark { background:color-mix(in srgb,var(--codex) 38%,transparent); box-shadow:inset 0 -1px var(--codex); }
+.diff-hunk.current { box-shadow:inset 3px 0 var(--user); }
+.diff-hunk { padding:8px 12px; color:var(--text-dim); background:var(--panel2); white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:1100px) {
+  #workPanel, #workPanel.with-diff { position:fixed; right:0; top:54px; bottom:0; z-index:90; width:min(92vw,850px); box-shadow:-15px 0 40px #0003; }
+}
+@media (max-width:700px) {
+  .diff-row { display:block; }
+  .diff-row.context .after { display:none; }
+  .diff-cell:empty { display:none; }
+  .diff-column-head { display:none; }
+}
+
+body:has(#workPanel:not([hidden])) #main > header { flex-wrap:wrap; row-gap:6px; }
+body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-diff:not([hidden])) #composer { width:calc(100% - 32px); }

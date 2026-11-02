@@ -2,6 +2,47 @@
 
 Notable changes per repository version.
 
+## 1.4.18 — 2026-11-02
+
+- Exclude generated Serena/Python/pytest/mypy/ruff caches from change lists while preserving files, Git settings and Serena configuration entries.
+- Classify large binary files before the text-preview size check and replace the default-app suggestion with accurate unsupported-text or size-limit messages.
+
+## 1.4.17 — 2026-11-02
+
+- Replace raw Git status codes with localized labels and display per-file added/deleted line counts.
+- Count lines for untracked and unborn-repository text files; keep binary, unreadable and over-512KiB counts unknown.
+- Start diffs at the first change block and provide previous/next navigation with a position counter and disabled boundaries.
+- Highlight changed words within paired lines, with bounded comparison for long lines; do not color empty opposite cells as deletions.
+
+## 1.4.16 — 2026-11-02
+
+- Consolidate usage in the work panel and remove the sidebar entry and separate modal; retain conversation tokens, quotas and refresh.
+- Collapse changes, subagents and usage independently and persist section preferences in the browser.
+- Discover Git repositories up to three levels beneath connected folders, excluding dependencies/build folders, with a five-minute cache and manual rescan.
+- Scope nested-repository diffs and default-app file opening to the selected repository.
+- Clarify that diffs show all changes since the last commit, with line numbers, change counts and addition/removal markers. Historical per-task diffs are not supported.
+
+## 1.4.15 — 2026-11-02
+
+- Place the work-panel toggle after Archives when closed and before the panel title when open; retain the same toggle and keyboard focus.
+- Fix stretched usage rings by matching their flex basis and height at 44px.
+
+## 1.4.14 — 2026-11-02
+
+- Added a collapsible work panel with linked-project changes, reported subagents and provider usage.
+- Added read-only HEAD-to-working-file diffs, including new/deleted files, side-by-side desktop and unified narrow-screen views.
+- Open a diff's file path in the OS default app; constrain access to linked projects and reject direct launches of executable file types.
+- Record structured Codex/Claude subagent lifecycle events without inferring agents or completion from prose.
+- Refresh usage every five minutes while the page is visible, sharing the server cache; manual refresh bypasses cached data.
+- Refresh visible project changes every 15 seconds and clear selected diffs on room changes.
+
+## 1.4.13 — 2026-11-02
+
+- Search Skills, MCP servers and plugins together with `$model query`, with type labels and compact selection badges.
+- Read provider inventories from local configuration and installed plugin metadata; ordinary listing and refresh never launch a CLI or probe MCP connections.
+- Share pending autocomplete requests, cache results and apply the latest query when loading finishes.
+- Keep configured inventory separate from runtime availability; explicit connection diagnostics remain opt-in.
+
 ## 1.4.12 — 2026-11-02
 
 - Insert compact MCP/plugin markers instead of English instruction sentences, with chat badges and improved light-theme contrast.

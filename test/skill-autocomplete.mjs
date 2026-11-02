@@ -42,3 +42,48 @@ test("replacement preserves text after the cursor and prompt uses the selected s
   assert.equal(result.text, "검토 @reviewer [$reviewer:superpowers:brainstorming]  뒤 문장");
   assert.equal(result.cursor, "검토 @reviewer [$reviewer:superpowers:brainstorming] ".length);
 });
+
+test("one search includes Skills, MCPs and plugins and inserts the right compact marker", () => {
+  const catalog = {
+    skills: [{ name: "play", displayName: "codex:play" }],
+    mcps: [{ name: "playwright", status: "configured" }],
+    plugins: [{ name: "play-tools" }],
+  };
+  const matches = api.filterTools(catalog, "PLAY");
+  assert.deepEqual(plain(matches.map((item) => item.kind)), ["skill", "mcp", "plugin"]);
+  assert.equal(api.prompt("codex", "playwright", "mcp"), "@codex [MCP:playwright] ");
+  assert.equal(api.prompt("claude", "play-tools", "plugin"), "@claude [Plugin:play-tools] ");
+});
+
+test("typing during loading shares a request, uses the latest query and caches the inventory", async () => {
+  const app = fs.readFileSync(path.join(root, "ui", "app.js"), "utf8");
+  const input = { value: "$codex p", selectionStart: 8 };
+  let requests = 0, resolve;
+  const rendered = [];
+  const context = vm.createContext({
+    SkillAutocomplete: api, input, URLSearchParams,
+    state: { room: "test", toolCatalogs: {} },
+    window: { ParleyI18n: { toolDescription: () => "" } },
+    hideMention() {}, hideSkillAutocomplete() {},
+    skillProviderOptions: () => [{ type: "provider", seat: "codex", provider: "codex", label: "Codex" }],
+    toolLabel: (provider) => provider, tr: (_, fallback) => fallback,
+    showSkillAutocompleteMessage() {},
+    renderSkillAutocomplete: (_, rows) => rendered.push(rows),
+    api: () => { requests++; return new Promise((done) => { resolve = done; }); },
+  });
+  vm.runInContext("let skillAcParsed; let skillAcRequest = 0; const toolCatalogPending = new Map();\n" +
+    app.slice(app.indexOf("function skillAutocompleteCheck("), app.indexOf("function pickSkillAutocomplete(")), context);
+  context.skillAutocompleteCheck();
+  input.value = "$codex play"; input.selectionStart = input.value.length;
+  context.skillAutocompleteCheck();
+  assert.equal(requests, 1);
+  resolve({ mcps: [{ name: "playwright" }, { name: "postgres" }] });
+  await new Promise(setImmediate);
+  assert.equal(rendered.length, 1);
+  assert.equal(rendered[0].length, 1);
+  assert.equal(rendered[0][0].item.name, "playwright");
+  input.value = "$codex post"; input.selectionStart = input.value.length;
+  context.skillAutocompleteCheck();
+  assert.equal(requests, 1);
+  assert.equal(rendered.at(-1)[0].item.name, "postgres");
+});
