@@ -64,3 +64,30 @@ test("diagnostics mask credential fields and bearer tokens", () => {
   assert.ok(!text.includes("private"));
   assert.ok(text.includes("error"));
 });
+
+
+test("dismissal survives reload, stays room/seat scoped and allows a new occurrence", () => {
+  const data = new Map();
+  const storage = { getItem: k => data.get(k), setItem: (k, v) => data.set(k, v) };
+  const error = { id: 3, ts: "2026-11-02T00:36:16Z", text: "auth failed" };
+  const { createDismissals } = globalThis.ParleySeatErrors;
+  createDismissals(storage).dismiss("room", "claude", error);
+  const restored = createDismissals(storage);
+  assert.equal(restored.has("room", "claude", error), true);
+  assert.equal(restored.has("other", "claude", error), false);
+  assert.equal(restored.has("room", "codex", error), false);
+  assert.equal(restored.has("room", "claude", { ...error, id: 4 }), false);
+  assert.equal(restored.has("room", "claude", { ...error, ts: "2026-11-03T00:36:16Z" }), false);
+  assert.equal(restored.has("room", "claude", null), false);
+});
+
+test("timestamp comes from the error event; disabled storage still allows dismissal", () => {
+  const entry = { n: 3, ts: "2026-11-02T00:36:16Z", text: "failed", meta: { agent: "claude", error: true } };
+  const error = latestSeatError([entry], "claude");
+  assert.equal(error.ts, entry.ts);
+  const store = globalThis.ParleySeatErrors.createDismissals({
+    getItem() { throw new Error("blocked"); }, setItem() { throw new Error("blocked"); },
+  });
+  store.dismiss("room", "claude", error);
+  assert.equal(store.has("room", "claude", error), true);
+});

@@ -77,7 +77,13 @@ test("usage UI shares a five-minute cache across hover and open, with explicit r
   assert.match(app, /usageWrap[\s\S]*?mouseenter[\s\S]*?loadUsage\(\)/);
   assert.match(app, /usageRefresh[\s\S]*?loadUsage\(true\)/);
   assert.match(styles, /conic-gradient\(var\(--ring-color\)/);
-  assert.match(styles, /#usageWrap:hover #usageHover:not\(:empty\)/);
+  const previewRule = styles.match(/([^{}]+)\{\s*display: block;\s*\}/g)
+    .find(rule => rule.includes("#usageHover"));
+  assert.ok(previewRule);
+  for (const selector of previewRule.split("{")[0].split(",")) {
+    assert.ok(selector.includes("#usageWrap:not(.preview-dismissed)"),
+      "both hover and restored keyboard focus must respect dismissal");
+  }
 });
 
 test("usage endpoint is room-scoped and does not return account identity", () => {

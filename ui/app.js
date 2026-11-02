@@ -2129,13 +2129,16 @@ function injectSeatStyles() {
   if (!el) { el = document.createElement("style"); el.id = "seatStyles"; document.head.appendChild(el); }
   el.textContent = css;
 }
+let seatErrorStorage;
+try { seatErrorStorage = window.localStorage; } catch { /* storage unavailable */ }
+const seatErrorDismissals = window.ParleySeatErrors.createDismissals(seatErrorStorage);
 function renderSeatsUI(s) {
   const seats = s.seats;
   const groupMention = seats.length > 2 ? "all" : "both";
   $("pills").innerHTML = seats.map((a) =>
     `<div class="pill" data-seat="${esc(a)}" id="pill_${esc(a)}"><span class="st"></span>` +
     `<b style="color:${seatColor(a)}">${esc(seatName(a))}</b>` +
-    `<span class="seat-error" hidden><button type="button" class="seat-error-button" aria-expanded="false">⚠</button><span class="seat-error-details" role="tooltip"></span></span>` +
+    `<span class="seat-error" hidden><button type="button" class="seat-error-button" aria-expanded="false">⚠</button><span class="seat-error-details" role="dialog"><span class="seat-error-head"><time class="seat-error-time"></time><button type="button" class="seat-error-close">×</button></span><span class="seat-error-text"></span></span></span>` +
     `${s.seatInfo?.[a]?.fastModeSupported ? `<button class="fast" data-seat="${esc(a)}">⚡</button>` : ""}` +
     `<button class="ear" data-seat="${esc(a)}">👂</button>` +
     `<button class="moon" data-seat="${esc(a)}">😴</button></div>`).join("");
@@ -2283,9 +2286,11 @@ function applySummary(s) {
     const pill = $("pill_" + a);
     if (!pill) continue;
     const ag = s.agents[a];
-    const seatError = window.ParleySeatErrors.latestSeatError(state.entries, a, s.resolvedErrors, ag.command, state.receipts);
+    let seatError = window.ParleySeatErrors.latestSeatError(state.entries, a, s.resolvedErrors, ag.command, state.receipts);
+    if (seatErrorDismissals.has(state.room, a, seatError)) seatError = null;
     const errorBox = pill.querySelector(".seat-error");
     errorBox.hidden = !seatError;
+    errorBox.seatError = seatError;
     if (!seatError) window.ParleySeatErrors.setPopoverOpen(errorBox, false);
     if (seatError) {
       const button = errorBox.querySelector("button");
@@ -2293,7 +2298,19 @@ function applySummary(s) {
       button.setAttribute("aria-describedby", `seat_error_${a}`);
       const details = errorBox.querySelector(".seat-error-details");
       details.id = `seat_error_${a}`;
-      details.textContent = seatError.text;
+      details.setAttribute("aria-label", t("seat.error"));
+      details.querySelector(".seat-error-text").textContent = seatError.text;
+      const time = details.querySelector(".seat-error-time");
+      const date = seatError.ts ? new Date(seatError.ts) : null;
+      const validDate = date && Number.isFinite(date.getTime());
+      time.textContent = validDate
+        ? t("seat.errorTime") + " · " + date.toLocaleString(currentLocale(), { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : t("seat.errorTimeUnknown");
+      if (validDate) time.dateTime = date.toISOString();
+      else time.removeAttribute("datetime");
+      const close = details.querySelector(".seat-error-close");
+      close.title = t("common.close");
+      close.setAttribute("aria-label", t("common.close"));
     }
     const asleep = !!ag.asleep;
     pill.classList.toggle("linked", ag.linked);
@@ -2686,6 +2703,16 @@ document.addEventListener("keydown", trapProjectTab);
 
 window.ParleySeatErrors.bindPopovers($("pills"));
 $("pills").addEventListener("click", async (e) => {
+  const errorClose = e.target.closest(".seat-error-close");
+  if (errorClose) {
+    const box = errorClose.closest(".seat-error");
+    const pill = box.closest(".pill");
+    if (box.seatError) seatErrorDismissals.dismiss(state.room, pill.dataset.seat, box.seatError);
+    window.ParleySeatErrors.setPopoverOpen(box, false);
+    box.hidden = true;
+    pill.querySelector(".fast, .ear, .moon")?.focus({ preventScroll: true });
+    return;
+  }
   const errorButton = e.target.closest(".seat-error-button");
   if (errorButton) {
     return;

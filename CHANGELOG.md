@@ -2,6 +2,15 @@
 
 Notable changes per repository version.
 
+## 1.4.11 — 2026-11-02
+
+- Fixed a CSS specificity conflict that kept the usage preview visible after closing its modal; both hover and keyboard focus now respect dismissal.
+- Increased selected-room contrast with a distinct background, left accent and semibold room name in both themes.
+- Expanded chat and composer to 80% of the main area (up to 1,400px), with smaller margins on narrow screens and wider agent replies.
+- Enabled table cell wrapping while retaining horizontal scrolling within wide tables.
+- Added occurrence date/time (including seconds) and a dismiss button to seat error alerts.
+- Persist dismissed alerts per room and seat in the browser; show new errors and retain original transcript records.
+
 ## 1.4.10 — 2026-10-30
 
 - Keep the connection menu open when moving from project selection to the launch button.

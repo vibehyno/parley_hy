@@ -10,9 +10,28 @@
       if (entry.n <= completedAfter) return null;
       if (entry.kind === "agent" && entry.author === agent && !entry.meta?.error) return null;
       if (entry.meta?.agent !== agent || !entry.meta?.error || entry.meta?.stopped || resolved[String(entry.n)]) continue;
-      return { id: entry.n, text: entry.meta.technicalError || entry.text };
+      return { id: entry.n, ts: entry.ts, text: entry.meta.technicalError || entry.text };
     }
     return null;
+  }
+  function createDismissals(storage) {
+    const memory = new Map();
+    const key = (room, agent) => "parley.dismissedSeatError:" + JSON.stringify([room, agent]);
+    const fingerprint = error => JSON.stringify([error.id, error.ts || null, error.text]);
+    return {
+      has(room, agent, error) {
+        if (!error) return false;
+        const k = key(room, agent);
+        let value = memory.get(k);
+        try { value = storage?.getItem(k) ?? value; } catch { /* storage unavailable */ }
+        return value === fingerprint(error);
+      },
+      dismiss(room, agent, error) {
+        const k = key(room, agent), value = fingerprint(error);
+        memory.set(k, value);
+        try { storage?.setItem(k, value); } catch { /* keep this page's dismissal */ }
+      },
+    };
   }
   function setPopoverOpen(box, open) {
     box.classList.toggle("open", open);
@@ -51,5 +70,5 @@
       if (event.key === "Escape") closeAll();
     });
   }
-  root.ParleySeatErrors = { latestSeatError, setPopoverOpen, bindPopovers };
+  root.ParleySeatErrors = { latestSeatError, createDismissals, setPopoverOpen, bindPopovers };
 })(typeof window === "undefined" ? globalThis : window);

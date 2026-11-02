@@ -12,6 +12,8 @@
        11-12px text this token is actually used for. */
     --text-faint: #79808f;
     --user: #7aa2f7;
+    --room-active-bg: #203453;
+    --room-active-text: #e4eeff;
     --claude: #e8845c;
     --codex: #2fd6a8;
     --danger: #f26d6d;
@@ -42,6 +44,8 @@
       --text-dim: #5a6376;
       --text-faint: #5f6879;
       --user: #2f6fd0;
+      --room-active-bg: #d4e4ff;
+      --room-active-text: #163f79;
       --claude: #b8502a;
       --codex: #0f8f6a;
       --danger: #c22f3f;
@@ -101,7 +105,8 @@
     padding: 8px 4px 8px 10px; color: inherit; border-radius: 9px 0 0 9px;
   }
   .room-item:hover { background: var(--panel); color: var(--text); }
-  .room-item.active { background: var(--panel2); color: var(--text); }
+  .room-item.active { background: var(--room-active-bg); color: var(--room-active-text); box-shadow: inset 3px 0 0 var(--user); }
+  .room-item.active .ropen { font-weight: 600; }
   .room-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
   /* status icons and the hover actions occupy the same slot on the right, so
      a mode marker never sits next to a destructive button */
@@ -146,7 +151,8 @@
     padding: 12px; border: 1px solid var(--border2); border-radius: 12px; background: var(--bg2);
     box-shadow: 0 14px 38px rgba(0,0,0,.5); color: var(--text); z-index: 45;
   }
-  #usageWrap:hover #usageHover:not(:empty), #usageBtn:focus-visible + #usageHover:not(:empty) { display: block; }
+  #usageWrap:not(.preview-dismissed):hover #usageHover:not(:empty),
+  #usageWrap:not(.preview-dismissed) #usageBtn:focus-visible + #usageHover:not(:empty) { display: block; }
   #usageWrap.preview-dismissed #usageHover { display: none; }
   #usageHover { pointer-events: none; }
   .side-foot button:hover, .side-foot a:hover { background: var(--panel); color: var(--text); }
@@ -185,6 +191,10 @@
     background: var(--bg); color: var(--text); white-space: pre-wrap;
     overflow-wrap: anywhere; font-size: 13px; line-height: 1.6; box-shadow: 0 8px 28px #0007;
   }
+  .seat-error-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; white-space: normal; }
+  .seat-error-time { color: var(--text-dim); font-size: 12px; }
+  .seat-error-close { flex-shrink: 0; padding: 2px 8px; font-size: 20px; line-height: 1; cursor: pointer; }
+  .seat-error-text { display: block; text-align: left; }
   .seat-error.open .seat-error-details { display: block; }
   .pill.claude b { color: var(--claude); font-weight: 600; }
   .pill.codex b { color: var(--codex); font-weight: 600; }
@@ -253,14 +263,14 @@
 
   /* ---------- chat ---------- */
   #chatWrap { flex: 1; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; }
-  #chat { max-width: 880px; width: 100%; margin: 0 auto; padding: 26px 24px 10px; display: flex; flex-direction: column; gap: 18px; }
+  #chat { max-width: 1400px; width: 80%; margin: 0 auto; padding: 26px 0 10px; display: flex; flex-direction: column; gap: 18px; }
 
   .msg { display: flex; flex-direction: column; max-width: 78%; animation: rise .18s ease-out; }
   @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
   .msg.user { align-self: flex-end; align-items: flex-end; }
-  .msg.agent { align-self: flex-start; }
+  .msg.agent { align-self: flex-start; max-width: 100%; min-width: 0; }
   .msg.public-speech { animation: none; }
-  .completed-work { align-self: flex-start; width: min(100%, 900px); margin: 8px 0; color: var(--muted); }
+  .completed-work { align-self: flex-start; width: 100%; min-width: 0; margin: 8px 0; color: var(--muted); }
   .completed-work > summary { cursor: pointer; padding: 6px 0; font-size: 12px; }
   .completed-work > .msg { margin-top: 12px; }
   .meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-faint); margin: 0 6px 5px; }
@@ -328,8 +338,8 @@
   .skill-chip { display: inline-flex; align-items: center; gap: 6px; margin: 1px 3px 1px 0; padding: 3px 8px; border: 1px solid rgba(124,154,255,.42); border-radius: 999px; background: rgba(88,118,214,.2); color: #c9d5ff; font-family: var(--mono); font-size: .86em; font-weight: 650; vertical-align: baseline; }
   .skill-chip > span { color: #91a8ff; font-size: .9em; font-weight: 700; }
   .md-table-wrap { max-width: 100%; margin: 10px 0; overflow-x: auto; border: 1px solid var(--border2); border-radius: 9px; }
-  .bubble table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: .92em; }
-  .bubble th, .bubble td { max-width: 420px; padding: 8px 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  .bubble table { width: 100%; border-collapse: collapse; font-size: .92em; }
+  .bubble th, .bubble td { min-width: 120px; max-width: 420px; overflow-wrap: anywhere; padding: 8px 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
   .bubble th { background: rgba(255,255,255,.055); color: var(--text); font-weight: 650; }
   .bubble tbody tr:nth-child(even) { background: rgba(255,255,255,.025); }
   .bubble tr:last-child td { border-bottom: 0; }
@@ -450,8 +460,8 @@
   .starter b.c1 { color: var(--claude); } .starter b.c2 { color: var(--codex); } .starter b.c3 { color: var(--user); }
 
   /* ---------- composer ---------- */
-  #composerWrap { padding: 10px 24px 18px; }
-  #composer { max-width: 880px; margin: 0 auto; position: relative; }
+  #composerWrap { padding: 10px 0 18px; }
+  #composer { width: 80%; max-width: 1400px; margin: 0 auto; position: relative; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center; min-width: 0; }
   .chip {
     padding: 4px 13px; border-radius: 999px; font-size: 12.5px; border: 1px solid var(--border2);
@@ -1002,6 +1012,9 @@
   #toast.err { border-color: rgba(242,109,109,.5); color: #f2a1a1; }
 
   #navToggle { display: flex; align-items: center; justify-content: center; }
+  @media (max-width: 1000px) {
+    #chat, #composer { width: calc(100% - 32px); }
+  }
   #navScrim { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.45); }
   @media (max-width: 760px) {
     /* The sidebar slides over the chat rather than disappearing: without it
@@ -1016,7 +1029,8 @@
     body.nav-open #navScrim { display: block; }
     header { flex-wrap: wrap; row-gap: 6px; }
     .msg { max-width: 92%; }
-    #composerWrap { padding: 8px 10px 12px; }
+    #composerWrap { padding: 8px 0 12px; }
+    #chat, #composer { width: calc(100% - 20px); }
     .chips { gap: 5px; }
     .chip { padding-left: 10px; padding-right: 10px; }
     #routeHint {
