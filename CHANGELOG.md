@@ -2,6 +2,16 @@
 
 Notable changes per repository version.
 
+## 1.4.12 — 2026-11-02
+
+- Insert compact MCP/plugin markers instead of English instruction sentences, with chat badges and improved light-theme contrast.
+- Added AGY-specific public updates between inspection, editing and validation, plus brief checkpoints during long tool batches.
+- Deliver changed AGY instructions once per existing session without repeating them or changing other providers.
+- Localized permission confirmations, saved-setting notices and historical permission messages in Korean and English.
+- Collapse command and tool logs by default with an arrow toggle on the first tool record, without a count or extra visible label.
+- Preserve expanded logs as new actions arrive and keep each model's records separate.
+- Keep raw commands in the expandable log while retaining public progress messages.
+
 ## 1.4.11 — 2026-11-02
 
 - Fixed a CSS specificity conflict that kept the usage preview visible after closing its modal; both hover and keyboard focus now respect dismissal.

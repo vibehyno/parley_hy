@@ -257,6 +257,9 @@
   .activity.claude .adot { background: var(--claude); }
   .activity.codex .adot { background: var(--codex); }
   .activity-more { opacity: .82; }
+  .activity-more { min-width: 0; text-align: left; }
+  .activity-chevron { flex-shrink: 0; }
+  .activity-more[aria-expanded="false"] > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .activity-more:hover { color: var(--text); opacity: 1; }
   .history-more { align-self: center; padding: 2px 10px; color: var(--user); font-size: 12px; }
   .history-more:hover { text-decoration: underline; }
@@ -336,6 +339,8 @@
   .bubble a:hover { text-decoration: underline; }
   .bubble code { font-family: var(--mono); font-size: .88em; background: rgba(255,255,255,.08); padding: 2px 5px; border-radius: 5px; }
   .skill-chip { display: inline-flex; align-items: center; gap: 6px; margin: 1px 3px 1px 0; padding: 3px 8px; border: 1px solid rgba(124,154,255,.42); border-radius: 999px; background: rgba(88,118,214,.2); color: #c9d5ff; font-family: var(--mono); font-size: .86em; font-weight: 650; vertical-align: baseline; }
+  :root[data-theme="light"] .skill-chip { color: #214c91; border-color: #9db9e8; background: #e3edff; }
+  :root[data-theme="light"] .skill-chip > span { color: #365a92; }
   .skill-chip > span { color: #91a8ff; font-size: .9em; font-weight: 700; }
   .md-table-wrap { max-width: 100%; margin: 10px 0; overflow-x: auto; border: 1px solid var(--border2); border-radius: 9px; }
   .bubble table { width: 100%; border-collapse: collapse; font-size: .92em; }

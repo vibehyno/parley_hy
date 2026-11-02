@@ -196,3 +196,33 @@ test("opening a room settles the transcript at the newest message", () => {
   assert.match(appSource, /scrollBottom\(true, true\);/);
   assert.match(appSource, /requestAnimationFrame\(\(\) => requestAnimationFrame/);
 });
+
+
+test("permission notices, saved toast and confirmation follow Korean and English locale", () => {
+  const app = fs.readFileSync(appFile, "utf8");
+  const code = app.slice(app.indexOf("function permissionNotice("), app.indexOf("function entryEl("));
+  const ko = loadI18n({ language: "ko-KR" }).api;
+  const en = loadI18n({ language: "en-US" }).api;
+  const context = vm.createContext({ t: ko.t });
+  vm.runInContext(code, context);
+  const samples = [
+    "codex sandbox changed to danger-full-access — fresh session",
+    "⚠ Claude Full access enabled — permissions",
+    "🔒 Claude Full access disabled — Claude starts a fresh session in plan mode.",
+    "Gemini permission mode changed to accept-edits — fresh session",
+    "🔨 Switched to work mode — allowed",
+    "💬 Switched to talk mode — defaults",
+    "ℹ️ Claude is lurking with Full access.",
+    "⏳ Saved — codex and claude are mid-answer, existing calls keep permissions",
+  ];
+  for (const text of samples) {
+    const result = context.permissionNotice(text);
+    assert.match(result, /[가-힣]/);
+    assert.ok(!result.includes("permission."), result);
+  }
+  assert.equal(context.permissionNotice("unrelated system message"), "unrelated system message");
+  assert.match(ko.t("settings.saved"), /저장/);
+  assert.match(ko.t("settings.fullAccessConfirm", {who:"지니",scope:"C:/project"}), /지니[\s\S]*C:\/project/);
+  context.t = en.t;
+  assert.match(context.permissionNotice(samples[0]), /permissions changed/);
+});

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { checkActivityRunUi } from "./activity-run-harness.mjs";
 /**
  * Parley smoke test — boots a real server against fake agent CLIs and drives
  * it over HTTP. No provider login, no tokens, no network. Run: `npm test`.
@@ -1506,135 +1507,6 @@ async function checkSoloPairControlUi() {
     JSON.stringify({ sentBodies, hopChoice: state.hopChoice }));
 }
 
-function checkActivityRunUi() {
-  const src = fs.readFileSync(path.join(here, "..", "ui", "app.js"), "utf8");
-  const from = src.indexOf("function activityRunKey(");
-  const to = src.indexOf("function appendEntryRange(");
-  const block = from >= 0 && to > from ? src.slice(from, to) : "";
-
-  class N {
-    constructor(tag) {
-      this.tagName = (tag || "div").toUpperCase();
-      this.children = []; this.parentNode = null;
-      this.dataset = {}; this.className = ""; this.type = ""; this.onclick = null;
-      this._text = "";
-      const classes = new Set();
-      this.classList = {
-        add: (...n) => n.forEach((c) => classes.add(c)),
-        remove: (...n) => n.forEach((c) => classes.delete(c)),
-        contains: (c) => classes.has(c),
-      };
-    }
-    // Only the label markup the toggle writes: enough to give it element
-    // children that the code then addresses by position.
-    set innerHTML(v) {
-      this.children = (String(v).match(/<span/g) || []).map(() => {
-        const s = new N("span"); s.parentNode = this; return s;
-      });
-    }
-    get firstElementChild() { return this.children[0] || null; }
-    get lastElementChild() { return this.children[this.children.length - 1] || null; }
-    set textContent(v) { this._text = String(v); }
-    get textContent() { return this._text; }
-    appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
-    insertBefore(c, ref) {
-      const i = this.children.indexOf(ref);
-      c.parentNode = this;
-      this.children.splice(i < 0 ? this.children.length : i, 0, c);
-      return c;
-    }
-    before(node) { this.parentNode.insertBefore(node, this); }
-    after(node) {
-      const p = this.parentNode;
-      node.parentNode = p;
-      p.children.splice(p.children.indexOf(this) + 1, 0, node);
-    }
-    remove() {
-      const p = this.parentNode;
-      if (!p) return;
-      p.children.splice(p.children.indexOf(this), 1);
-      this.parentNode = null;
-    }
-    querySelectorAll(sel) {
-      const want = [...String(sel).matchAll(/\[([\w-]+)="([^"]*)"]/g)].map(([, name, value]) =>
-        [name.replace(/^data-/, "").replace(/-([a-z])/g, (_, c) => c.toUpperCase()), value]);
-      return this.children.filter((c) => want.every(([k, v]) => String(c.dataset[k]) === v));
-    }
-  }
-
-  const chat = new N("div");
-  const state = { entries: [], expandedActivity: new Set(), live: {} };
-  const entryEl = (e) => {
-    const node = new N("div");
-    node.dataset.n = String(e.n);
-    node.className = `${e.kind} ${e.author}`;
-    return node;
-  };
-  const entryIndexOf = (n) => state.entries.findIndex((e) => e.n === n);
-  let runs = null;
-  try {
-    runs = block ? new Function("state", "chat", "document", "entryEl", "entryIndexOf",
-      "renderedStartIndex", "ACTIVITY_INLINE_LIMIT",
-      `${block}; return { appendActivityEntry };`)(
-      state, chat, { createElement: (t) => new N(t) }, entryEl, entryIndexOf, () => 0, 8) : null;
-  } catch { /* reported below */ }
-  if (typeof (runs && runs.appendActivityEntry) !== "function") {
-    return ok("the activity run functions load in isolation", false);
-  }
-
-  const arrive = (n, author) => {
-    const e = { n, kind: "activity", author, text: `action ${n}` };
-    state.entries.push(e);
-    return runs.appendActivityEntry(e);
-  };
-  const runNodes = (startN) => chat.children.filter((c) => c.dataset.runStart !== undefined
-    && (startN === undefined || String(c.dataset.runStart) === String(startN)));
-  const label = (t) => t.lastElementChild.textContent;
-
-  state.entries.push({ n: 0, kind: "user", author: "user", text: "go" });
-  chat.appendChild(entryEl(state.entries[0]));
-  const live = new N("div");
-  live.dataset.liveAgent = "claude";
-  chat.appendChild(live);
-
-  for (let n = 1; n <= 8; n++) arrive(n, "claude");
-  const inline = runNodes();
-  ok("a run renders its actions inline up to the limit", inline.length === 8);
-  // The bubble is a live one; moving it in the DOM restarts its animation.
-  ok("…above the live bubble, which is never moved to get there",
-    chat.children[chat.children.length - 1] === live);
-
-  arrive(9, "claude");
-  const toggle = chat.children.find((c) => c.dataset.activityRun);
-  ok("the action past the limit collapses into an overflow toggle",
-    !!toggle && label(toggle) === "▸ 1 more action" && runNodes().length === 9);
-  ok("…without recreating a single row already on screen",
-    runNodes().slice(0, 8).every((node, i) => node === inline[i]));
-
-  for (let n = 10; n <= 12; n++) arrive(n, "claude");
-  ok("further actions only change the count the toggle shows",
-    label(toggle) === "▸ 4 more actions" && runNodes().length === 9 &&
-    runNodes()[0] === inline[0]);
-
-  toggle.onclick();
-  ok("expanding puts the overflow above its toggle",
-    runNodes().length === 13 && runNodes()[12] === toggle && label(toggle) === "▾ Hide 4 actions");
-  arrive(13, "claude");
-  ok("an action arriving into an expanded run is appended, not rebuilt",
-    runNodes().length === 14 && runNodes()[13] === toggle &&
-    label(toggle) === "▾ Hide 5 actions" && runNodes()[0] === inline[0]);
-  toggle.onclick();
-  ok("collapsing takes out the overflow rows and nothing else",
-    runNodes().length === 9 && runNodes()[0] === inline[0]);
-
-  const liveAt = chat.children.indexOf(live);
-  arrive(14, "codex");
-  ok("the other seat opens its own run, still above the live bubble",
-    chat.children.indexOf(live) === liveAt + 1 && runNodes(14).length === 1);
-  arrive(15, "codex");
-  ok("…and its next action extends that run rather than starting another",
-    runNodes(14).length === 2 && runNodes().length === 11);
-}
 
 async function main() {
   console.log(`\nParley smoke test — server at ${base}\n`);
@@ -1959,7 +1831,7 @@ async function main() {
   // a runner execute the rest of the suite without orphaning its fixture.
   if (process.env.PARLEY_SKIP_NATIVE_PICKER !== "1") await checkFolderPicker();
   await checkFolderPickerUi();
-  checkActivityRunUi();
+  checkActivityRunUi(ok);
   await checkWakeMenuUi();
   await checkSoloPairControlUi();
 

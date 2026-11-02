@@ -488,6 +488,8 @@ function renderMD(src) {
   let t = esc(src);
   t = t.replace(/\[\$([a-z][a-z0-9_-]*):([a-z0-9][a-z0-9:_-]*)\]/gi,
     '<span class="skill-chip" title="$1 모델에서 $2 Skill 사용"><span>$1</span>$2</span>');
+  t = t.replace(/\[(MCP|Plugin):([^\]\r\n]+)\]/g,
+    '<span class="skill-chip tool-chip"><span>$1</span>$2</span>');
   t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
   t = t.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   t = t.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,;:!?)]|$)/g, "$1<em>$2</em>");
@@ -1047,6 +1049,20 @@ function appendCompletedWork(parent, entries) {
   };
   parent.appendChild(detail);
 }
+// Translate legacy system notices at display time so saved conversations follow the UI language.
+function permissionNotice(text) {
+  const value = String(text || "");
+  let m;
+  if ((m = value.match(/^(.+?) sandbox changed to (\S+) —/))) return t("notice.permissionChanged", { who: m[1], mode: t(`permission.${m[2]}`) });
+  if ((m = value.match(/^⚠ (.+?) Full access enabled —/))) return t("notice.fullEnabled", { who: m[1] });
+  if ((m = value.match(/^🔒 (.+?) Full access disabled — .+? starts a fresh session in (\S+) mode\./))) return t("notice.fullDisabled", { who: m[1], mode: t(`permission.${m[2]}`) });
+  if ((m = value.match(/^(.+?) permission mode changed to (\S+) —/))) return t("notice.permissionChanged", { who: m[1], mode: t(`permission.${m[2]}`) });
+  if (value.startsWith("🔨 Switched to work mode —")) return t("notice.workMode");
+  if (value.startsWith("💬 Switched to talk mode —")) return t("notice.talkMode");
+  if ((m = value.match(/^ℹ️ (.+?) is lurking with Full access\./))) return t("notice.fullLurking", { who: m[1] });
+  if ((m = value.match(/^⏳ Saved — (.+?) (?:is|are) mid-answer,/))) return t("notice.savedRunning", { who: m[1] });
+  return value;
+}
 function entryEl(e) {
   const div = document.createElement("div");
   if (e.n !== undefined && e.n !== null) div.dataset.n = e.n;
@@ -1065,7 +1081,7 @@ function entryEl(e) {
     div.className = "sysmsg" + (e.meta && e.meta.error ? " err" : "");
     div.innerHTML = esc(Array.isArray(e.meta?.connectedProjects)
       ? t(e.meta.connectedProjects.length ? "project.updatedNote" : "project.unlinkedNote", { count: e.meta.connectedProjects.length })
-      : e.text);
+      : permissionNotice(e.text));
     const recovery = e.meta && e.meta.error && recoveryForEntry(e);
     if (recovery) {
       const b = document.createElement("button");
@@ -1173,7 +1189,6 @@ const HISTORY_PAGE = 150;
 // Entries kept above a jump target, so it lands in context rather than flush
 // against the "Show earlier" button.
 const HISTORY_CONTEXT = 20;
-const ACTIVITY_INLINE_LIMIT = 8;
 
 // A run is identified by its first entry, and the identity survives the run
 // growing. That is what lets an arriving action extend what is already rendered
@@ -1206,13 +1221,14 @@ function overflowNodesOf(toggle) {
     `[data-run-start="${toggle.dataset.runStart}"][data-run-overflow="1"]`)];
 }
 
-function setToggleLabel(toggle, count, expanded) {
-  // The label is the only part that changes as a run grows; rewriting the whole
-  // button would restart the dot beside it.
-  if (!toggle.firstElementChild) toggle.innerHTML = `<span class="adot"></span><span></span>`;
-  toggle.lastElementChild.textContent = expanded
-    ? `▾ Hide ${count} action${count === 1 ? "" : "s"}`
-    : `▸ ${count} more action${count === 1 ? "" : "s"}`;
+function setToggleLabel(toggle, expanded) {
+  if (!toggle.firstElementChild) toggle.innerHTML = `<span class="activity-chevron"></span><span></span>`;
+  const first = activityRunEntries(Number(toggle.dataset.runStart))[0];
+  toggle.firstElementChild.textContent = expanded ? "▾" : "▸";
+  toggle.lastElementChild.textContent = first?.text || "";
+  toggle.title = first?.text || "";
+  toggle.setAttribute("aria-label", t(expanded ? "progress.hideActions" : "progress.showActions"));
+  toggle.setAttribute("aria-expanded", String(expanded));
 }
 
 // Bring a rendered toggle back in step with state.entries: the count it shows,
@@ -1223,9 +1239,14 @@ function syncActivityToggle(toggle) {
   const expanded = state.expandedActivity.has(toggle.dataset.activityRun);
   if (expanded) {
     const have = overflowNodesOf(toggle).length;
-    for (const e of run.slice(ACTIVITY_INLINE_LIMIT + have)) toggle.before(activityNode(e, startN, true));
+    let tail = overflowNodesOf(toggle).at(-1) || toggle;
+    for (const e of run.slice(1 + have)) {
+      const node = activityNode(e, startN, true);
+      tail.after(node);
+      tail = node;
+    }
   }
-  setToggleLabel(toggle, Math.max(0, run.length - ACTIVITY_INLINE_LIMIT), expanded);
+  setToggleLabel(toggle, expanded);
 }
 
 function activityToggle(author, startN) {
@@ -1247,15 +1268,13 @@ function activityToggle(author, startN) {
 
 function appendActivityRun(parent, run) {
   const startN = run[0].n;
-  for (const e of run.slice(0, ACTIVITY_INLINE_LIMIT)) parent.appendChild(activityNode(e, startN, false));
-  if (run.length <= ACTIVITY_INLINE_LIMIT) return;
   const key = activityRunKey(run[0].author, startN);
-  if (state.expandedActivity.has(key)) {
-    for (const e of run.slice(ACTIVITY_INLINE_LIMIT)) parent.appendChild(activityNode(e, startN, true));
-  }
   const toggle = activityToggle(run[0].author, startN);
   parent.appendChild(toggle);
-  setToggleLabel(toggle, run.length - ACTIVITY_INLINE_LIMIT, state.expandedActivity.has(key));
+  if (state.expandedActivity.has(key)) {
+    for (const e of run.slice(1)) parent.appendChild(activityNode(e, startN, true));
+  }
+  setToggleLabel(toggle, state.expandedActivity.has(key));
 }
 
 // The durable transcript sits above the live bubbles and any transient note.
@@ -1279,21 +1298,17 @@ function appendActivityEntry(e) {
     && isToolActivity(state.entries[s - 1]) && state.entries[s - 1].author === e.author
     && state.entries[s - 1].meta?.runId === e.meta?.runId) s--;
   const startN = state.entries[s].n;
-  if (s === i) { appendDurable(activityNode(e, startN, false)); return true; }
-
-  const nodes = chat.querySelectorAll(`[data-run-start="${startN}"]`);
-  const last = nodes[nodes.length - 1];
-  if (!last) return false; // the run was never rendered; let the caller rebuild
-  const toggle = last.dataset.activityRun ? last : null;
-  if (i - s < ACTIVITY_INLINE_LIMIT) {
-    const node = activityNode(e, startN, false);
-    if (toggle) toggle.before(node); else last.after(node);
+  if (s === i) {
+    const toggle = activityToggle(e.author, startN);
+    appendDurable(toggle);
+    syncActivityToggle(toggle);
     return true;
   }
-  if (toggle) { syncActivityToggle(toggle); return true; }
-  const fresh = activityToggle(e.author, startN);
-  last.after(fresh);
-  syncActivityToggle(fresh);
+
+  const toggle = [...chat.querySelectorAll(`[data-run-start="${startN}"]`)]
+    .find(node => node.dataset.activityRun);
+  if (!toggle) return false;
+  syncActivityToggle(toggle);
   return true;
 }
 
@@ -1780,6 +1795,8 @@ function ensureLive(agent, startedAt, label) {
 }
 
 function progressText(progress) {
+  // Command details live in the expandable activity log, not the status line.
+  if (progress?.kind === "activity") return t("progress.activity");
   if (progress && progress.text) return String(progress.text);
   return t(`progress.${progress?.kind || "preparing"}`);
 }
@@ -5064,10 +5081,9 @@ async function loadToolCatalog(refresh = false, health = false) {
   }
 }
 function insertToolPrompt(seat, kind, name) {
-  const phrases = { skill: "skill", "MCP server": "MCP server", plugin: "plugin" };
-  const phrase = kind === "skill"
-    ? `@${seat} [$${seat}:${name}] `
-    : `@${seat} Use the "${name}" ${phrases[kind] || kind} to `;
+  const marker = kind === "skill" ? `[$${seat}:${name}]`
+    : `[${kind === "MCP server" ? "MCP" : "Plugin"}:${name}]`;
+  const phrase = `@${seat} ${marker} `;
   const input = $("input");
   input.value = input.value.trim() ? `${input.value.trimEnd()}\n${phrase}` : phrase;
   closeTools();
@@ -5682,14 +5698,8 @@ $("mSave").onclick = async () => {
     const after = effectiveSeatPermission(a, { ...previous, ...agents[a] }, roomMode);
     if (isFullAccess(before) || !isFullAccess(after)) continue;
     const who = item.cfg.displayName || seatLabel(a);
-    const scope = s.cfg.projectDir || "the room workspace";
-    const accepted = confirm(
-      `⚠ Give ${who} Full access in this room?\n\n` +
-      `${who} will bypass its ordinary permission prompts and checks. It can modify protected paths such as .git; it can also run commands, use inherited credentials and network access, and change files outside:\n${scope}\n\n` +
-      `Explicit ask/deny rules, managed policy, OS permissions, and the CLI's own hard safety limits may still restrict actions.\n\n` +
-      `Parley requests separate read-only invocations for protected @both discussions, pair reviews, and lurk turns. They discard the seat's ordinary native session; the next ordinary turn is re-briefed from room history. Ordinary handoffs and pair-worker turns still receive Full access. Trusted external CLI settings or wrappers remain outside this boundary.\n\n` +
-      `${who} will start a fresh session. Running an agent with full access directly on a trusted host grants host-level access; an isolated container or VM is the recommended place for it.`
-    );
+    const scope = s.cfg.projectDir || t("workspace.sandbox");
+    const accepted = confirm(t("settings.fullAccessConfirm", { who, scope }));
     if (!accepted) return;
   }
   const config = {
@@ -5707,7 +5717,7 @@ $("mSave").onclick = async () => {
   const wantNotify = $("s_notify").checked;
   if (wantNotify && !notifyEnabled()) {
     if (await requestNotifyPermission()) setNotifyEnabled(true);
-    else toast("Your browser blocked notifications for this page.", true);
+    else toast(t("settings.notificationsBlocked"), true);
   } else if (!wantNotify) {
     setNotifyEnabled(false);
   }
@@ -5722,8 +5732,8 @@ $("mSave").onclick = async () => {
     // the new settings within that same reply.
     const late = (saved && saved.runningInvocations) || [];
     toast(late.length
-      ? `Saved — ${late.join(" and ")} ${late.length > 1 ? "are" : "is"} mid-answer, and the ${late.length > 1 ? "runs" : "run"} already in progress ${late.length > 1 ? "keep" : "keeps"} the previous permissions.`
-      : "Settings saved.");
+      ? t("notice.savedRunning", { who: late.map(seatLabel).join(", ") })
+      : t("settings.saved"));
   } catch (e) { toast(e.message, true); }
 };
 let archiveView = { generation: 0, room: null, id: null, restoring: false };
