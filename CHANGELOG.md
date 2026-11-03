@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.2 — 2026-11-03
+
+- Rename the product to MoYEO, command to moyeo, installer to setupMoyeo.cmd and data root to ~/.moyeo.
+- Create and verify a complete legacy backup before removing the migrated source directory; preserve backups and block migration while running.
+- Migrate on the first launch after updating; rerun setup to register the new global command. Update README and comparison.
+
 ## 1.5.1 — 2026-11-03
 
 - Install/update Codex and Claude via npm latest and AGY via its official native installer during setup.

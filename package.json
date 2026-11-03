@@ -1,11 +1,11 @@
 {
-  "name": "moa-room",
-  "version": "1.5.1",
+  "name": "moyeo-room",
+  "version": "1.5.2",
   "private": false,
-  "description": "MOA - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
+  "description": "MoYEO - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
   "bin": {
-    "moa": "parley.mjs"
+    "moyeo": "parley.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -45,7 +45,7 @@
     "chat"
   ],
   "files": [
-    "setupMoa.cmd",
+    "setupMoyeo.cmd",
     "parley.mjs",
     "lib/",
     "ui/",

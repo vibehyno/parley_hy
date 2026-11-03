@@ -351,7 +351,7 @@ function secs(ms) { return (ms / 1000).toFixed(1) + "s"; }
 // ---- syntax highlighting ----
 // For an app whose whole point is watching two coding agents exchange code,
 // monochrome blocks were the most visible gap. This is deliberately a small
-// tokenizer rather than a vendored library: MOA ships two files and no
+// tokenizer rather than a vendored library: MoYEO ships two files and no
 // dependencies, and a hundred kilobytes of highlighter inlined into the page
 // would cost more than it is worth.
 //
@@ -1786,7 +1786,7 @@ function addEntry(e) {
   // so the rebuild has to put them back where they were.
   if (!inOrder) {
     renderAll({ stickToBottom: wasAtBottom, anchor: true });
-    if (document.hidden && e.kind !== "activity") { document.title = "● MOA"; notifyForEntry(e); }
+    if (document.hidden && e.kind !== "activity") { document.title = "● MoYEO"; notifyForEntry(e); }
     return;
   }
   if (state.renderFromN !== null && e.n < state.renderFromN) return;
@@ -1803,7 +1803,7 @@ function addEntry(e) {
   chat.appendChild(rowEl);
   // Keep any live bubbles after the durable transcript entry.
   for (const live of Object.values(state.live)) chat.appendChild(live.el);
-  if (document.hidden && e.kind !== "activity") { document.title = "● MOA"; notifyForEntry(e); }
+  if (document.hidden && e.kind !== "activity") { document.title = "● MoYEO"; notifyForEntry(e); }
   scrollBottom(e.kind === "user" || wasAtBottom);
 }
 
@@ -1842,7 +1842,7 @@ function notifyForEntry(e) {
     notifyAway(`${seatLabel(e.author)} replied`, e.text);
   } else if (e.kind === "system" && e.meta) {
     if (e.meta.pairPause || /needs your decision|needs-user/i.test(e.text || "")) {
-      notifyAway("MOA is waiting on you", e.text);
+      notifyAway("MoYEO is waiting on you", e.text);
     } else if (e.meta.error) {
       notifyAway("A turn failed", e.text);
     }
@@ -3384,7 +3384,7 @@ function renderHopControl() {
   }
 
   // Solo cannot inherit @both. Fall back to Auto—not a particular seat—so
-  // MOA keeps its normal routing rule instead of quietly choosing the first
+  // MoYEO keeps its normal routing rule instead of quietly choosing the first
   // provider in the list. Explicit @both text remains intact and is blocked at
   // Send; only the selected routing chip changes here.
   if (choice === "solo" && state.chip === "both") {
@@ -4355,7 +4355,7 @@ function dragCarriesFiles(e) {
     Array.from(transfer.types || []).includes("Files"));
 }
 // Without cancelling the browser's default file-drop behaviour, Chrome
-// navigates away from MOA and opens the dropped file. Keep the whole window
+// navigates away from MoYEO and opens the dropped file. Keep the whole window
 // safe as a target, then feed the exact same validation path as the paperclip.
 window.addEventListener("dragover", (e) => {
   if (!dragCarriesFiles(e)) return;

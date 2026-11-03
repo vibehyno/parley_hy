@@ -2,6 +2,12 @@
 
 Parley HY 저장소의 버전별 주요 변경 사항.
 
+## 1.5.2 — 2026-11-03
+
+- 제품명 MoYEO, 명령 moyeo, 설치 파일 setupMoyeo.cmd, 데이터 경로 ~/.moyeo로 전환.
+- 기존 .moa/.parley/.roundtable 데이터의 전체 백업·복사 검증 후 이전 원본 폴더 삭제. 백업 유지, 실행 중 이전 차단.
+- git pull 후 첫 실행 시 이전 처리. 새 전역 명령 등록은 설치 스크립트 실행 필요. README 차이점·사용 가이드 갱신.
+
 ## 1.5.1 — 2026-11-03
 
 - setupMoa.cmd에서 Codex·Claude npm 최신 버전과 AGY 공식 네이티브 CLI 자동 설치·업데이트.
