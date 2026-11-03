@@ -31,6 +31,7 @@ import { readLocalToolInventory } from "./lib/local-tool-inventory.mjs";
 import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
+import { codexTurnUsage } from "./lib/codex-usage.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive, conversationArchiveSources, deleteConversationArchive } from "./lib/conversation-archives.mjs";
 import { claimService, serviceCommand } from "./lib/service-control.mjs";
@@ -914,6 +915,7 @@ function applyAdapterSession(room, agent, res, epoch) {
   // exactly how a finishing turn would stamp a new permission onto an old
   // session. The next turn re-briefs from the transcript under the new setting.
   if (epoch !== undefined && epoch !== seatEpoch(room, agent)) return;
+  if (res.codexUsage !== undefined) room.state.agents[agent].codexUsage = res.codexUsage;
   // Retain the effective permissions of the session actually launched, not
   // merely the room default. Consecutive protected turns can resume Plan.
   if (res.resetSession) room.state.agents[agent].sessionRef = null;
@@ -1808,10 +1810,17 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   if (cfg.effort) args.push("-c", "model_reasoning_effort=" + cfg.effort);
   args.push(...extraArgs);
   if (browserConnection) args.push(...browserCliArgs("codex"));
+  // The seat toggle wins over conflicting extra CLI configuration.
+  args.push("-c", `service_tier=${JSON.stringify(cfg.fastMode ? "fast" : "default")}`);
   args.push("-"); // prompt on stdin
 
   const input = briefing ? briefing + "\n\n---\n\n" + prompt : prompt;
   let threadRef = sess || null, acc = "", lastMsg = null, usage = null;
+  const previousUsage = room.state.agents[seat].codexUsage;
+  // A stopped/failed call may consume tokens without reporting completion.
+  // Persist invalidation before launch so the next response cannot absorb it.
+  room.state.agents[seat].codexUsage = null;
+  saveState(room);
   const speech = createPublicSpeech({ onStream, onActivity });
   let publicItem = null;
   const seenItems = new Set();
@@ -1820,7 +1829,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     let obj; try { obj = JSON.parse(line); } catch { return; }
     for (const child of subagentEvents("codex", obj)) onActivity?.(`↳ ${child.label}`, { subagent: child });
     if (obj.type === "turn.completed" && obj.usage) {
-      usage = { out: obj.usage.output_tokens, reasoning: obj.usage.reasoning_output_tokens };
+      usage = obj.usage;
     }
     if (obj.type === "turn.started" && onProgress) onProgress({ kind: "reasoning" });
     if (obj.type === "thread.started" && obj.thread_id) threadRef = obj.thread_id;
@@ -1889,7 +1898,8 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   }
   const text = fileText ?? lastMsg ?? (acc || null);
   if (!text && !allowEmpty) throw new AdapterError("codex returned an empty reply");
-  return { text: text || "", emptyReply: !text, sessionRef: threadRef || "--last", sentinelThread: !threadRef || threadRef === "--last", usage };
+  const tokens = codexTurnUsage(usage, { sessionRef: threadRef, resumed: !!sess, previous: previousUsage });
+  return { text: text || "", emptyReply: !text, sessionRef: threadRef || "--last", sentinelThread: !threadRef || threadRef === "--last", usage: tokens.usage, codexUsage: tokens.baseline };
 }
 
 function effectiveAgyApprovalMode(cfg, roomMode) {

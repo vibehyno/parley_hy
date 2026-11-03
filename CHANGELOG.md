@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.5 — 2026-11-03
+
+- Count Codex usage per invocation instead of repeating cumulative thread totals; omit unknown resumed baselines.
+- Let the seat speed setting override extra CLI arguments; describe Fast as a request, not confirmed server treatment.
+- Document the four-call timing sample, unchanged-effort behavior, and unverified billing/server-tier limits.
+
 ## 1.5.4 — 2026-11-03
 
 - Place Cancel on the right of the archive deletion dialog and preserve its default focus.
