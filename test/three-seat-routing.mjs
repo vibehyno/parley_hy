@@ -16,6 +16,7 @@ test("three CLI adapters route Korean alias handoffs and all-seat messages throu
   }
   try {
     for (const [name, budget, text, expected] of [
+      ["user-report", 8, "USER_REPORT_START", ["codex", "claude", "codex"]],
       ["handoff", 8, "ROUTE_THREE_START", ["codex", "claude", "codex", "gemini"]],
       ["alias", 0, "@뚱뚱아 SAY:DIRECT_OK", ["gemini"]],
       ["all-seats", 0, "@all SAY:ALL_OK", ["codex", "claude", "gemini"]],
@@ -38,6 +39,10 @@ test("three CLI adapters route Korean alias handoffs and all-seat messages throu
         JSON.stringify(state.entries.map(({ n, author, text }) => ({ n, author, text }))));
       assert.ok(!replies.some(entry => entry.text.includes("WRONG_RECIPIENT")));
       assert.ok(!state.entries.some(entry => entry.meta?.error));
+      if (name === "user-report") {
+        assert.match(replies.at(-1).text, /USER_REPORT_DONE/);
+        assert.ok(!replies.some(entry => entry.text.includes("UNEXPECTED_REPORT_BOUNCE")));
+      }
       if (name === "handoff") {
         assert.equal(replies.at(-1).text, "ROUTE_THREE_COMPLETE");
         assert.ok(state.room.agents.gemini.sessionRef);
@@ -48,7 +53,7 @@ test("three CLI adapters route Korean alias handoffs and all-seat messages throu
   } finally { await server.close(); }
 });
 
-function scenario({ redirectInReply = false, target = "codex", budget = 5, asleep = false, stop = false, fail = false } = {}) {
+function scenario({ redirectInReply = false, reportTo = "gemini", target = "codex", budget = 5, asleep = false, stop = false, fail = false } = {}) {
   const room = { generation: 1, entries: [], state: { agents: Object.fromEntries(
     ["codex", "claude", "gemini"].map(id => [id, { cursor: 0 }])) } };
   const calls = [], outcomes = [];
@@ -74,7 +79,7 @@ function scenario({ redirectInReply = false, target = "codex", budget = 5, aslee
     },
     deliverCausalAnswer: async (_room, { recipient, reply }) => {
       calls.push([recipient, reply.n, "answer-return"]);
-      return { seen: true, entry: agent(4, recipient, "gemini") };
+      return { seen: true, entry: agent(4, recipient, reportTo) };
     },
     causalAnswerRange: reply => ({ triggerN: reply.n }),
     appendEntry: (_room, entry) => room.entries.push(entry),
@@ -113,4 +118,21 @@ test("third-seat handoff obeys budget, sleep and stop without redirecting to ano
     if (options.stop) assert.deepEqual(f.outcomes, [["gemini", "request-stopped"]]);
     if (options.fail) assert.deepEqual(f.outcomes, [["claude", "request-failed"]]);
   }
+});
+
+
+test("completed review returns a user report without bouncing back to the reviewer", async () => {
+  const f = scenario({ reportTo: null });
+  f.coordinator.enqueueInitial([f.agent(2, "codex", "claude")]);
+  await f.coordinator.settle(); f.coordinator.finalize();
+  assert.deepEqual(f.calls, [["claude", 2, "explicit"], ["codex", 3, "answer-return"]]);
+  assert.deepEqual(f.room.entries, []);
+});
+
+test("explicit follow-up still reaches the reviewer; pending work is not silently closed", async () => {
+  const f = scenario({ reportTo: "claude", budget: 2 });
+  f.coordinator.enqueueInitial([f.agent(2, "codex", "claude")]);
+  await f.coordinator.settle(); f.coordinator.finalize();
+  assert.deepEqual(f.calls, [["claude", 2, "explicit"], ["codex", 3, "answer-return"],
+    ["claude", 4, "continuation"]]);
 });

@@ -256,7 +256,17 @@ if (process.env.FAKE_TRACE_PROMPTS === "1") {
 }
 
 let reply, wroteFile = null;
-if (has("ROUTE_THREE")) {
+if (has("USER_REPORT_START")) {
+  reply = "@claude USER_REPORT_REVIEW";
+} else if (has("USER_REPORT_REVIEW")) {
+  reply = "검토 완료. USER_REPORT_APPROVED";
+} else if (has("USER_REPORT_APPROVED")) {
+  reply = prompt.includes("The user is waiting for your conclusion")
+    ? "희영아, 검토는 통과했어. 구현은 아직 남아 있어. USER_REPORT_DONE"
+    : "[pass]";
+} else if (has("USER_REPORT_DONE")) {
+  reply = "UNEXPECTED_REPORT_BOUNCE";
+} else if (has("ROUTE_THREE")) {
   if (has("ROUTE_THREE_START")) reply = "@claude ROUTE_THREE_REVIEW";
   else if (has("ROUTE_THREE_REVIEW")) reply = "검토 완료. ROUTE_THREE_RETURN";
   else if (has("ROUTE_THREE_RETURN")) reply = "@뚱뚱아 ROUTE_THREE_EXECUTE";

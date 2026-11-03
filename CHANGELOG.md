@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.31 — 2026-11-03
+
+- Ask the requesting agent to report review outcomes, verification and remaining work to the user, distinguishing plans from completed work.
+- Stop implicitly bouncing user-facing reports back to the reviewer; continue only for a peer request, preserving budget, stop and sleep handling.
+
 ## 1.4.30 — 2026-11-03
 
 - Reuse a persistent dedicated Chrome profile per room for shared tabs across reconnects and server restarts, separate from regular Chrome.
