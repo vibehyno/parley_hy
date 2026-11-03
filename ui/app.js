@@ -5929,13 +5929,37 @@ async function openArchives() {
 }
 $("archivesBtn").onclick = openArchives;
 $("emptyArchivesBtn").onclick = openArchives;
+function confirmArchiveDeletion() {
+  return new Promise(resolve => {
+    const previousFocus = document.activeElement;
+    const dialog = document.createElement("dialog");
+    dialog.className = "archive-delete-dialog";
+    dialog.setAttribute("aria-labelledby", "archiveDeleteHeading");
+    dialog.setAttribute("aria-describedby", "archiveDeleteWarning");
+    dialog.innerHTML = `<h3 id="archiveDeleteHeading">${esc(t("archive.deleteTitle"))}</h3>` +
+      `<p id="archiveDeleteWarning">${esc(t("archive.deleteConfirm"))}</p>` +
+      `<div class="archive-delete-actions"><button type="button" class="btn" data-cancel autofocus>${esc(t("common.cancel"))}</button>` +
+      `<button type="button" class="btn danger" data-delete>${esc(t("archive.deleteForever"))}</button></div>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("[data-cancel]").onclick = () => dialog.close("cancel");
+    dialog.querySelector("[data-delete]").onclick = () => dialog.close("delete");
+    dialog.addEventListener("close", () => {
+      const confirmed = dialog.returnValue === "delete";
+      dialog.remove(); previousFocus?.focus(); resolve(confirmed);
+    }, {once:true});
+    dialog.showModal();
+  });
+}
 $("archiveDelete").onclick = async () => {
-  if (!archiveView.id || archiveView.restoring || !confirm(t("archive.deleteConfirm"))) return;
+  if (!archiveView.id || archiveView.restoring) return;
+  const selected = {source:archiveView.source, room:archiveView.room, id:archiveView.id};
+  if (!await confirmArchiveDeletion()) return;
+  if (archiveView.restoring || archiveView.id !== selected.id || archiveView.source !== selected.source || archiveView.room !== selected.room) return;
   archiveView.restoring = true;
   $("archiveDelete").disabled = true;
   $("archiveRestore").disabled = true;
   try {
-    await api("/api/archive/delete", { source:archiveView.source, room:archiveView.room, id:archiveView.id });
+    await api("/api/archive/delete", selected);
     archiveView.restoring = false;
     await openArchives();
   } catch(error) {

@@ -1242,3 +1242,9 @@ body.no-room #emptyArchivesBtn { display:block; }
 .seat-order [draggable]:active { cursor:grabbing; }
 .seat-order button { cursor:pointer; padding:4px 8px; }
 .seat-order button:disabled { opacity:.3; cursor:default; }
+
+.archive-delete-dialog { width:min(460px,calc(100vw - 40px)); box-sizing:border-box; padding:24px; border:1px solid var(--border2); border-radius:16px; background:var(--panel); color:var(--text); font:inherit; }
+.archive-delete-dialog::backdrop { background:rgba(0,0,0,.6); }
+.archive-delete-dialog h3 { margin:0 0 12px; font-size:18px; }
+.archive-delete-dialog p { margin:0 0 24px; line-height:1.7; }
+.archive-delete-actions { display:flex; justify-content:flex-end; gap:10px; }

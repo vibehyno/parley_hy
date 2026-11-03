@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.3 — 2026-11-03
+
+- Show a permanent-deletion warning dialog before deleting an archive.
+- Focus Cancel by default; Escape cancels and only explicit confirmation sends deletion.
+
 ## 1.5.2 — 2026-11-03
 
 - Rename the product to MoYEO, command to moyeo, installer to setupMoyeo.cmd and data root to ~/.moyeo.
