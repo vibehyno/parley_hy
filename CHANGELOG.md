@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.49 — 2026-11-03
+
+- Use one monochrome tool icon for collapsed and expanded CLI activity records.
+- Preserve command text and disclosure controls; show the skill name from actual Claude Skill tool events.
+- Do not infer tool usage from a user request alone.
+
 ## 1.4.48 — 2026-11-03
 
 - Save explicit ongoing user preferences in shared or per-seat memory without additional model calls; skip one-off requests and conservative exclusion patterns.

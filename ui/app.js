@@ -1074,7 +1074,7 @@ function entryEl(e) {
   }
   if (isToolActivity(e)) {
     div.className = "activity " + e.author;
-    div.innerHTML = `<span class="adot"></span><span>${esc(e.text)}</span>`;
+    div.innerHTML = `<span class="activity-tool-icon" aria-hidden="true"></span><span>${esc(activityLabel(e.text))}</span>`;
     return div;
   }
   if (e.kind === "system") {
@@ -1221,6 +1221,11 @@ const HISTORY_CONTEXT = 20;
 // the extension can find them without holding any of them in a closure.
 function activityRunKey(author, startN) { return `${author}:${startN}`; }
 
+function activityLabel(text) {
+  // Strip only provider-added leading pictograms, never command contents.
+  return String(text || "").replace(/^(?:🔧|🔌|✏️?|👁️?|▶|🔎|🛠️?|⌨️?)\s+/, "");
+}
+
 function activityNode(e, startN, overflow) {
   const node = entryEl(e);
   node.dataset.runStart = startN;
@@ -1247,11 +1252,11 @@ function overflowNodesOf(toggle) {
 }
 
 function setToggleLabel(toggle, expanded) {
-  if (!toggle.firstElementChild) toggle.innerHTML = `<span class="activity-chevron"></span><span></span>`;
+  if (!toggle.firstElementChild) toggle.innerHTML = `<span class="activity-chevron"></span><span class="activity-tool-icon" aria-hidden="true"></span><span></span>`;
   const first = activityRunEntries(Number(toggle.dataset.runStart))[0];
   toggle.firstElementChild.textContent = expanded ? "▾" : "▸";
-  toggle.lastElementChild.textContent = first?.text || "";
-  toggle.title = first?.text || "";
+  toggle.lastElementChild.textContent = activityLabel(first?.text);
+  toggle.title = activityLabel(first?.text);
   toggle.setAttribute("aria-label", t(expanded ? "progress.hideActions" : "progress.showActions"));
   toggle.setAttribute("aria-expanded", String(expanded));
 }

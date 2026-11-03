@@ -1613,6 +1613,7 @@ function gitIdentity(dir) {
 const fileBase = (p) => String(p || "").split(/[\\/]/).pop();
 
 function claudeToolLabel(name, input) {
+  if (name === "Skill") return `Skill · ${truncate(input.skill || input.name || name, 70)}`;
   if (name === "Write" || name === "Edit" || name === "NotebookEdit") return `✏️ ${name} ${fileBase(input.file_path)}`;
   if (name === "Read") return `👁 Read ${fileBase(input.file_path)}`;
   if (name === "Bash") return `▶ ${truncate(input.description || input.command || "shell", 70)}`;
