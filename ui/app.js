@@ -2274,7 +2274,7 @@ function seatModelTitle(s, seat) {
 
 async function refreshSeatModels(s) {
   const commands = summary => JSON.stringify(summary.seats.map(id =>
-    [id, summary.cfg.agents[id].provider, summary.cfg.agents[id].command]));
+    [id, summary.cfg.agents[id]]));
   const signature = commands(s);
   const { seatInfo } = await api(`/api/models?room=${encodeURIComponent(s.name)}`);
   if (state.summary?.name !== s.name || commands(state.summary) !== signature) return false;
@@ -2297,7 +2297,10 @@ function applySummary(s) {
   state.providers = s.providers || state.providers;
   injectSeatStyles();
   const seatUiSignature = JSON.stringify(s.seats.map((id) => [id, seatLabel(id), seatMention(id), seatAvatar(id), seatAvatarImage(id), seatColor(id)]));
-  if ($("pills").dataset.signature !== seatUiSignature) renderSeatsUI(s);
+  if ($("pills").dataset.signature !== seatUiSignature) {
+    renderSeatsUI(s);
+    renderAll({ stickToBottom: nearBottom(), anchor: true });
+  }
   syncChipUI();
   $("roomTitle").textContent = s.name;
   for (const a of s.seats) {

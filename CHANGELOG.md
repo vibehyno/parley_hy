@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.43 — 2026-11-03
+
+- Immediately refresh model cards and conversation presentation after identity changes.
+- Reject stale model-discovery results after seat configuration changes.
+
 ## 1.4.42 — 2026-11-03
 
 - Fix an undefined item reference in model status rendering that interrupted room-list loading; stored rooms and transcripts remain unchanged.
