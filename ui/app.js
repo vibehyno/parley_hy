@@ -3707,7 +3707,7 @@ async function refreshRooms() {
     row.className = "room-item" + (name === state.room ? " active" : "");
     row.innerHTML =
       `<button type="button" class="ropen"><span class="dot"></span>` +
-      `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
+      `<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
       `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : ""}</span></button>` +
       `<span class="racts"><button type="button" class="ract" data-act="rename" title="${esc(t("settings.rename"))}" aria-label="${esc(t("settings.rename"))} ${esc(name)}">✎</button>` +
       `<button type="button" class="ract del" data-act="delete" title="${esc(t("settings.delete"))}" aria-label="${esc(t("settings.delete"))} ${esc(name)}">✕</button>` +
@@ -4856,7 +4856,7 @@ function renderSeatCards(s) {
     }
     syncAgyEffort(item.id);
   }
-  if ($("s_addSeat")) $("s_addSeat").disabled = draft.length >= 3;
+  if ($("s_addSeat")) $("s_addSeat").disabled = false;
   if ($("s_seatLimit")) $("s_seatLimit").textContent = draft.length >= 3
     ? tr("settings.seatLimitReached", "Three seats are connected.")
     : tr("settings.seatLimit", "Up to three seats per room.");
@@ -5494,7 +5494,8 @@ function openSettings(create = false) {
   }).catch(() => { /* Free-form model input remains available. */ });
 }
 $("s_addSeat").onclick = () => {
-  if (!settingsSeatDraft || settingsSeatDraft.length >= 3) return;
+  if (!settingsSeatDraft) return;
+  if (settingsSeatDraft.length >= 3) { toast(t("settings.seatLimitReached")); return; }
   captureSeatDraftValues();
   const provider = $("s_addProvider").value;
   const id = nextSeatId(provider);
@@ -5558,7 +5559,7 @@ document.addEventListener("keydown", (e) => {
 $("mSave").onclick = async () => {
   const s = settingsContext; if (!s || $("mSave").disabled) return;
   const desiredName = $("s_roomName").value.trim().normalize("NFC");
-  if (!/^[\p{L}\p{N}][\p{L}\p{N}\p{M}_ -]{0,39}$/u.test(desiredName) || /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(desiredName)) {
+  if (((settingsCreating || desiredName !== s.name) && Array.from(desiredName).length > 20) || !/^[\p{L}\p{N}][\p{L}\p{N}\p{M}_ -]{0,39}$/u.test(desiredName) || /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(desiredName)) {
     toast(t("room.invalidName"), true); $("s_roomName").focus(); return;
   }
   captureSeatDraftValues();
@@ -5670,7 +5671,7 @@ function closeArchives() {
 async function selectArchive(id, source, room) {
   archiveView.source = source;
   archiveView.room = room;
-  $("archiveRoomName").value = `${(room || "archive").slice(0,18)}-restored-${Date.now().toString(36)}`;
+  $("archiveRoomName").value = `${Array.from(room || "archive").slice(0,8).join("")}-${Date.now().toString(36)}`;
   const generation = ++archiveView.generation;
   archiveView.id = null;
   $("archiveRestore").disabled = true;
@@ -5712,7 +5713,7 @@ async function openArchives() {
   $("archivePreview").replaceChildren();
   $("archiveList").textContent = t("archive.loading");
   $("archiveInfo").textContent = "";
-  $("archiveRoomName").value = `${(state.room || "archive").slice(0, 18)}-restored-${Date.now().toString(36)}`;
+  $("archiveRoomName").value = `${Array.from(state.room || "archive").slice(0,8).join("")}-${Date.now().toString(36)}`;
   $("archiveOverlay").classList.add("open");
   $("archiveClose").focus();
   try {

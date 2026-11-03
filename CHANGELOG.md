@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.40 — 2026-11-03
+
+- Limit new, renamed and restored room names to 20 characters while preserving access to existing longer names. Keep sidebar names on one line with ellipsis.
+- Show a maximum-capacity notice when Add model is clicked with three seats.
+
 ## 1.4.39 — 2026-11-03
 
 - Give Dark and Light theme buttons equal width and center their labels in app settings.

@@ -7377,7 +7377,7 @@ async function deleteRoom(room) {
 
 function renameRoom(room, newName) {
   newName = cleanRoomName(newName);
-  if (!validRoomName(newName)) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 40)."), { status: 400 });
+  if (!validRoomName(newName) || (newName !== room.name && Array.from(newName).length > 20)) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 20)."), { status: 400 });
   if (newName === room.name) return room;
   if (fs.existsSync(path.join(ROOT, newName))) throw Object.assign(new Error(`a room called "${newName}" already exists`), { status: 409 });
   // Both of these move the room's folder, which is a live working directory for
@@ -7425,7 +7425,7 @@ function archiveSource(key, roomName) {
 
 function restoreConversationArchive(source, id, name) {
   const roomName = cleanRoomName(name);
-  if (!validRoomName(roomName)) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 40)."), { status: 400 });
+  if (!validRoomName(roomName) || Array.from(roomName).length > 20) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 20)."), { status: 400 });
   const destination = path.join(ROOT, roomName);
   if (rooms.has(roomName) || fs.existsSync(destination)) throw Object.assign(new Error("A room with that name already exists."), { status: 409 });
   const archive = readConversationArchive(source.dir, id);
@@ -8098,7 +8098,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "POST /api/rooms") {
       const { name, seats, projectDir } = await readBody(req);
       const roomName = cleanRoomName(name);
-      if (!validRoomName(roomName)) return json(res, 400, { error: "Room names: letters, numbers, dashes, underscores (max 40)." });
+      if (!validRoomName(roomName) || Array.from(roomName).length > 20) return json(res, 400, { error: "Room names: letters, numbers, dashes, underscores (max 20)." });
       let linked = null;
       if (projectDir) {
         linked = path.resolve(String(projectDir).trim());
