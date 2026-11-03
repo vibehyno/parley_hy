@@ -563,8 +563,73 @@ function renderMD(src) {
       `<button class="cb-copy">copy</button></div><pre><code>` +
       `${highlightCode(esc(b.code.replace(/\n$/, "")), b.lang)}</code></pre></div>`;
   });
-  return html;
+  return linkifyChatHTML(html);
 }
+function linkifyChatHTML(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    if (node.parentElement?.closest("a, code, pre, .skill-chip")) continue;
+    const pattern = /https?:\/\/[^\s<>"'`]+/gi;
+    const text = node.textContent;
+    const fragment = document.createDocumentFragment();
+    let end = 0;
+    for (const match of text.matchAll(pattern)) {
+      let url = match[0].replace(/[.,!?;:]+$/, "");
+      while (url.endsWith(")") && (url.match(/\)/g) || []).length > (url.match(/\(/g) || []).length) url = url.slice(0, -1);
+      try { if (!new URL(url).hostname) continue; } catch { continue; }
+      fragment.append(text.slice(end, match.index));
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.textContent = url;
+      fragment.append(anchor); end = match.index + url.length;
+    }
+    if (end) { fragment.append(text.slice(end)); node.replaceWith(fragment); }
+  }
+  for (const anchor of template.content.querySelectorAll("a")) {
+    anchor.target = "_blank"; anchor.rel = "noopener noreferrer";
+    anchor.classList.add("chat-link");
+  }
+  return template.innerHTML;
+}
+
+// A shared hover card avoids clipping by message bubbles and disappearing
+// before the pointer can reach its Open link. No background page requests.
+let chatLinkCard = null, chatLinkTimer = null;
+function hideChatLinkCard() {
+  clearTimeout(chatLinkTimer); chatLinkCard?.remove(); chatLinkCard = null;
+}
+function scheduleChatLinkHide() { clearTimeout(chatLinkTimer); chatLinkTimer = setTimeout(hideChatLinkCard, 180); }
+function showChatLinkCard(anchor) {
+  hideChatLinkCard();
+  const url = new URL(anchor.href);
+  const card = document.createElement("div");
+  card.className = "chat-link-card"; card.setAttribute("role", "tooltip");
+  const host = document.createElement("strong"); host.textContent = url.hostname;
+  const open = document.createElement("a");
+  open.href = url.href; open.target = "_blank"; open.rel = "noopener noreferrer";
+  open.textContent = document.documentElement.lang.startsWith("ko") ? "열기 ↗" : "Open ↗";
+  const address = document.createElement("div"); address.textContent = url.href;
+  card.append(host, open, address);
+  card.onpointerenter = () => clearTimeout(chatLinkTimer);
+  card.onpointerleave = scheduleChatLinkHide;
+  document.body.append(card); chatLinkCard = card;
+  const rect = anchor.getBoundingClientRect();
+  card.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - card.offsetWidth - 8))}px`;
+  card.style.top = `${Math.max(8, rect.bottom + card.offsetHeight + 8 > innerHeight ? rect.top - card.offsetHeight - 8 : rect.bottom + 8)}px`;
+}
+document.addEventListener("pointerover", e => {
+  const anchor = e.target.closest?.("a.chat-link");
+  if (anchor && !anchor.contains(e.relatedTarget)) showChatLinkCard(anchor);
+});
+document.addEventListener("pointerout", e => {
+  if (e.target.closest?.("a.chat-link")) scheduleChatLinkHide();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideChatLinkCard(); });
+document.addEventListener("scroll", hideChatLinkCard, true);
+window.addEventListener("blur", hideChatLinkCard);
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".cb-copy");
   if (btn) {

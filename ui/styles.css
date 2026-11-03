@@ -279,6 +279,17 @@
   .activity-more { opacity: .82; }
   .activity-more { min-width: 0; text-align: left; }
   .activity-chevron { flex-shrink: 0; }
+  .chat-link { text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+  .chat-link-card {
+    position: fixed; z-index: 10000; width: min(340px, calc(100vw - 16px));
+    padding: 14px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--panel); color: var(--text); box-shadow: 0 8px 24px #0004;
+    font-family: var(--app-font), sans-serif; font-size: 13px; box-sizing: border-box;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px;
+  }
+  .chat-link-card strong { overflow-wrap: anywhere; }
+  .chat-link-card > a { color: var(--text); text-decoration: none; }
+  .chat-link-card > div { grid-column: 1 / -1; color: var(--text-dim); overflow-wrap: anywhere; max-height: 100px; overflow: auto; }
   .activity-tool-icon {
     display: inline-block; width: 15px; height: 15px; flex: 0 0 15px;
     background: currentColor;

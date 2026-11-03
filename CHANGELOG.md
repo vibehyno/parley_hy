@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.50 — 2026-11-03
+
+- Auto-link plain HTTP(S) chat URLs and open links in a new tab.
+- Show a domain/address/Open hover card; dismiss on pointer exit or Escape.
+- Preserve URLs inside code. Remote site images and metadata are not fetched.
+
 ## 1.4.49 — 2026-11-03
 
 - Use one monochrome tool icon for collapsed and expanded CLI activity records.
