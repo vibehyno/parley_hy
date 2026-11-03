@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.46 — 2026-11-03
+
+- Guide all providers to respond naturally to peer opinions and connect relevant judgments to subsequent work or results.
+- No fixed wording, mandatory acknowledgements, or extra turns; existing silence and handoff rules retained.
+
 ## 1.4.45 — 2026-11-03
 
 - Distinguish outdated servers and request errors from CLI version detection failures.
