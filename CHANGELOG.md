@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.4.47 — 2026-11-03
+
+- Add room-level conversational and task-focused communication preferences while preserving permissions and persona. Current requests and room notes override mode defaults.
+- Add a per-seat learned-instructions editor backed by room-local files, delivered on the next call without session reset.
+- Protect edits against concurrent changes and active work; preserve saved instructions in conversation archives.
+- Existing global CLI memory and unrecorded model context are not imported.
+
 ## 1.4.46 — 2026-11-03
 
 - Guide all providers to respond naturally to peer opinions and connect relevant judgments to subsequent work or results.

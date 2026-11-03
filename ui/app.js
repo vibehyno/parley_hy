@@ -4856,7 +4856,8 @@ function renderSeatCards(s) {
       `</div>`;
     f += `<div class="fld seat-persona-prompt"><label>${esc(tr("settings.persona", "Persona"))}</label>` +
       `<textarea data-seat="${esc(a)}" data-f="persona" maxlength="1000" rows="4" placeholder="${esc(tr("settings.personaPlaceholder", "Describe this model's responsibilities, style and decision criteria."))}"></textarea>` +
-      `<div class="note">${esc(tr("settings.personaHelp", "Sent once per room session, then only again after a change or new session."))}</div></div>`;
+      `<div class="note">${esc(tr("settings.personaHelp", "Sent once per room session, then only again after a change or new session."))}</div>` +
+      `<button type="button" class="btn" data-learned-seat="${esc(a)}">${esc(t("settings.learnedInstructions"))}</button></div>`;
     f += (p.fields || []).map((field) => seatFieldHTML(a, field, p)).join("");
     f += `<div class="fld"><label>${esc(tr("settings.lurkStyle", "Lurk assertiveness (when 👂 is on)"))}</label><select data-seat="${esc(a)}" data-f="lurkStyle">` +
       `<option value="quiet">${esc(tr("settings.lurkQuiet", "quiet — only uncorrected errors"))}</option>` +
@@ -4891,6 +4892,39 @@ function renderSeatCards(s) {
     ? tr("settings.seatLimitReached", "Three seats are connected.")
     : tr("settings.seatLimit", "Up to three seats per room.");
 }
+
+$("seatCards").addEventListener("click", async event => {
+  const button = event.target.closest("[data-learned-seat]");
+  if (!button) return;
+  const item = settingsSeatDraft?.find(item => item.id === button.dataset.learnedSeat);
+  if (!item?.existing || settingsCreating) return toast(t("settings.learnedSaveRoom"));
+  const room = settingsContext.name, seat = item.id;
+  button.disabled = true;
+  try {
+    const data = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(seat)}`);
+    const dialog = document.createElement("dialog");
+    dialog.className = "learned-instructions-modal";
+    dialog.innerHTML = `<header><h3>${esc(t("settings.learnedInstructions"))} · ${esc(item.cfg.displayName || seat)}</h3><button type="button" data-close aria-label="${esc(t("common.close"))}">×</button></header>` +
+      `<p class="note">${esc(t("settings.learnedHelp"))}</p><div class="sub">${esc(data.file)}</div>` +
+      `<textarea maxlength="16000" spellcheck="false" aria-label="${esc(t("settings.learnedInstructions"))}"></textarea>` +
+      `<p class="learned-status" role="status"></p><footer><button type="button" data-close>${esc(t("common.cancel"))}</button><button type="button" class="primary" data-save>${esc(t("common.save"))}</button></footer>`;
+    document.body.appendChild(dialog);
+    dialog.querySelector("textarea").value = data.text;
+    const previousFocus = document.activeElement;
+    dialog.addEventListener("close", () => { dialog.remove(); previousFocus?.focus(); });
+    dialog.querySelectorAll("[data-close]").forEach(el => el.onclick = () => dialog.close());
+    dialog.querySelector("[data-save]").onclick = async () => {
+      const save = dialog.querySelector("[data-save]"); save.disabled = true;
+      try {
+        await api("/api/room-instructions", {room, seat, text:dialog.querySelector("textarea").value, revision:data.revision});
+        dialog.close(); toast(t("settings.learnedSaved"));
+      } catch (error) { dialog.querySelector(".learned-status").textContent = error.message; }
+      finally { save.disabled = false; }
+    };
+    dialog.showModal();
+  } catch (error) { toast(error.message, true); }
+  finally { button.disabled = false; }
+});
 
 function avatarDraft(seat) { return (settingsSeatDraft || []).find((item) => item.id === seat) || null; }
 function avatarFilePicker(seat) {
@@ -5508,6 +5542,7 @@ function openSettings(create = false) {
   renderSeatCards(s);
   $("s_notify").checked = notifyEnabled();
   $("s_roomnote").value = s.cfg.roomNote || "";
+  $("s_communicationMode").value = s.cfg.communicationMode || "conversation";
   refreshDefaultSeatOptions(s.cfg.defaultAgent || s.seats[0]);
   $("s_timeout").value = Math.round((s.cfg.timeoutMs || 300000) / 1000);
   $("s_hopbudget").value = String(normalizedHopBudget(s.cfg.hopBudget, -1));
@@ -5658,6 +5693,7 @@ $("mSave").onclick = async () => {
     accounting: $("s_accounting").value,
     pairRounds: Math.min(99, Math.max(0, Number($("s_pairrounds").value) || 0)),
     roomNote: $("s_roomnote").value.trim() || null,
+    communicationMode: $("s_communicationMode").value,
     agents,
   };
   // The notification preference is this browser's, not the room's, so it is

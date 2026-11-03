@@ -250,6 +250,9 @@
       <button class="btn" id="s_addSeat" type="button" data-i18n="settings.addSeat">+ Add seat</button>
       <span class="note" id="s_seatLimit" data-i18n="settings.seatLimit">Up to three seats per room.</span>
     </div>
+    <div class="fld"><label for="s_communicationMode" data-i18n="settings.communicationMode">Communication style</label>
+      <select id="s_communicationMode"><option value="conversation" data-i18n="settings.conversationMode">Conversational</option><option value="task" data-i18n="settings.taskMode">Task-focused</option></select>
+      <div class="note" data-i18n="settings.communicationHelp">Current request → room note → mode defaults. Permissions stay unchanged.</div></div>
     <div class="fld" style="margin-top:14px"><label for="s_roomnote" data-i18n="settings.roomNote">Room note (shared rules delivered once per CLI session — also /note)</label>
       <textarea id="s_roomnote" rows="6" placeholder="e.g. We're building a YT-transcription app; keep answers short." data-i18n-placeholder="settings.roomNotePlaceholder" spellcheck="false"></textarea></div>
     <div class="fld notification-field"><label data-i18n="settings.notifications">Notifications</label>

@@ -23,6 +23,8 @@ test("archive restores ordered history and saved settings into a fresh, idle roo
     } });
     assert.equal((await server.api("POST", "/api/message", { room: "default", text: "@claude SAY:ARCHIVE_HISTORY", target: "auto" })).status, 200);
     const before = await settled(server);
+    const memory = (await server.api("GET", "/api/room-instructions?room=default&seat=claude")).data;
+    await server.api("POST", "/api/room-instructions", {room:"default",seat:"claude",revision:memory.revision,text:"Keep final reports concise"});
     const source = path.join(server.root, "default");
     const events = fs.readFileSync(path.join(source, "events.jsonl"), "utf8");
     const transcript = fs.readFileSync(path.join(source, "transcript.md"), "utf8");
@@ -41,6 +43,7 @@ test("archive restores ordered history and saved settings into a fresh, idle roo
     assert.equal(restored.status, 200, JSON.stringify(restored.data));
     assert.equal(restored.data.usedCurrentSettings, false);
     const dest = path.join(server.root, "restored");
+    assert.equal(fs.readFileSync(path.join(dest,"learned-instructions","claude.md"),"utf8"),"Keep final reports concise");
     assert.equal(fs.readFileSync(path.join(dest, "events.jsonl"), "utf8"), events);
     assert.equal(fs.readFileSync(path.join(dest, "transcript.md"), "utf8"), transcript);
     const snapshot = await settled(server, "restored");
