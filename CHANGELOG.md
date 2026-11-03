@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.4.39 — 2026-11-03
+
+- Give Dark and Light theme buttons equal width and center their labels in app settings.
+
 ## 1.4.38 — 2026-11-03
 
 - Browse archives across active and deleted rooms and restore into a new room.

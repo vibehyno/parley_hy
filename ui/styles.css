@@ -1067,7 +1067,7 @@
   }
 
   #themeToggle { display:flex; flex-shrink:0; border:1px solid var(--border2); border-radius:18px; overflow:hidden; }
-  #themeToggle button { padding:4px 9px; color:var(--text-dim); }
+  #themeToggle button { flex:1; text-align:center; padding:4px 9px; color:var(--text-dim); }
   #themeToggle button[aria-pressed="true"] { background:var(--panel2); color:var(--text); }
 
   #overlay > .settings-modal { display:flex; flex-direction:column; padding:0; overflow:hidden; }
