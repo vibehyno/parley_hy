@@ -5667,15 +5667,19 @@ function closeArchives() {
   $("archiveOverlay").classList.remove("open");
   $("archivesBtn").focus();
 }
-async function selectArchive(id) {
+async function selectArchive(id, source, room) {
+  archiveView.source = source;
+  archiveView.room = room;
+  $("archiveRoomName").value = `${(room || "archive").slice(0,18)}-restored-${Date.now().toString(36)}`;
   const generation = ++archiveView.generation;
   archiveView.id = null;
   $("archiveRestore").disabled = true;
+  $("archiveDelete").disabled = true;
   $("archiveInfo").textContent = t("archive.loading");
   $("archivePreview").replaceChildren();
-  for (const button of $("archiveList").querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.archiveId === id));
+  for (const button of $("archiveList").querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.archiveId === id && button.dataset.source === source));
   try {
-    const data = await api(`/api/archive?room=${encodeURIComponent(archiveView.room)}&id=${encodeURIComponent(id)}`);
+    const data = await api(`/api/archive?room=${encodeURIComponent(archiveView.room)}&id=${encodeURIComponent(id)}&source=${encodeURIComponent(source)}`);
     if (generation !== archiveView.generation) return;
     archiveView.id = id;
     $("archiveInfo").textContent = t("archive.previewCount", { count: data.entries.length, total: data.total }) + " " +
@@ -5693,6 +5697,7 @@ async function selectArchive(id) {
     }
     $("archivePreview").append(fragment);
     $("archiveRestore").disabled = false;
+    $("archiveDelete").disabled = false;
   } catch (error) {
     if (generation === archiveView.generation) $("archiveInfo").textContent = error.message;
   }
@@ -5703,14 +5708,15 @@ async function openArchives() {
   archiveView.room = state.room;
   archiveView.id = null;
   $("archiveRestore").disabled = true;
+  $("archiveDelete").disabled = true;
   $("archivePreview").replaceChildren();
   $("archiveList").textContent = t("archive.loading");
   $("archiveInfo").textContent = "";
-  $("archiveRoomName").value = `${state.room.slice(0, 18)}-restored-${Date.now().toString(36)}`;
+  $("archiveRoomName").value = `${(state.room || "archive").slice(0, 18)}-restored-${Date.now().toString(36)}`;
   $("archiveOverlay").classList.add("open");
   $("archiveClose").focus();
   try {
-    const data = await api(`/api/archives?room=${encodeURIComponent(archiveView.room)}`);
+    const data = await api("/api/archives?all=1");
     if (generation !== archiveView.generation) return;
     $("archiveList").replaceChildren();
     if (!data.archives.length) { $("archiveList").textContent = t("archive.empty"); return; }
@@ -5718,19 +5724,37 @@ async function openArchives() {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.archiveId = archive.id;
-      button.textContent = new Date(archive.createdAt).toLocaleString(currentLocale());
+      button.dataset.source = archive.source;
+      button.textContent = `${archive.room}${archive.deleted ? " · " + t("archive.deletedRoom") : ""} · ${new Date(archive.createdAt).toLocaleString(currentLocale())}`;
       const detail = document.createElement("small");
       detail.textContent = t(archive.hasSettings ? "archive.withSettings" : "archive.legacy");
       button.append(detail);
-      button.onclick = () => { if (!archiveView.restoring) selectArchive(archive.id); };
+      button.onclick = () => { if (!archiveView.restoring) selectArchive(archive.id, archive.source, archive.room); };
       $("archiveList").append(button);
     }
-    await selectArchive(data.archives[0].id);
+    await selectArchive(data.archives[0].id, data.archives[0].source, data.archives[0].room);
   } catch (error) {
     if (generation === archiveView.generation) $("archiveList").textContent = error.message;
   }
 }
 $("archivesBtn").onclick = openArchives;
+$("emptyArchivesBtn").onclick = openArchives;
+$("archiveDelete").onclick = async () => {
+  if (!archiveView.id || archiveView.restoring || !confirm(t("archive.deleteConfirm"))) return;
+  archiveView.restoring = true;
+  $("archiveDelete").disabled = true;
+  $("archiveRestore").disabled = true;
+  try {
+    await api("/api/archive/delete", { source:archiveView.source, room:archiveView.room, id:archiveView.id });
+    archiveView.restoring = false;
+    await openArchives();
+  } catch(error) {
+    toast(error.message,true);
+    archiveView.restoring = false;
+    $("archiveDelete").disabled = false;
+    $("archiveRestore").disabled = false;
+  }
+};
 $("archiveClose").onclick = closeArchives;
 $("archiveOverlay").addEventListener("click", (event) => { if (event.target === $("archiveOverlay")) closeArchives(); });
 $("archiveRestoreForm").onsubmit = async (event) => {
@@ -5738,10 +5762,11 @@ $("archiveRestoreForm").onsubmit = async (event) => {
   if (!archiveView.id || archiveView.restoring || $("archiveRestore").disabled) return;
   archiveView.restoring = true;
   $("archiveRestore").disabled = true;
+  $("archiveDelete").disabled = true;
   $("archiveRestore").textContent = t("archive.restoring");
   try {
     const result = await api("/api/archive/restore", {
-      room: archiveView.room, id: archiveView.id, name: $("archiveRoomName").value.trim(),
+      room: archiveView.room, source: archiveView.source, id: archiveView.id, name: $("archiveRoomName").value.trim(),
     });
     archiveView.restoring = false;
     closeArchives();
@@ -5753,6 +5778,7 @@ $("archiveRestoreForm").onsubmit = async (event) => {
   finally {
     archiveView.restoring = false;
     $("archiveRestore").disabled = !archiveView.id;
+    $("archiveDelete").disabled = !archiveView.id;
     $("archiveRestore").textContent = t("archive.restore");
   }
 };

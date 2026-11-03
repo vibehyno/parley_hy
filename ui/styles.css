@@ -1203,4 +1203,7 @@ body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-dif
 #permissionSelect { max-width:180px; padding:6px 10px; border:1px solid var(--border2); background:var(--panel); color:var(--text); border-radius:9px; font:inherit; font-size:13px; }
 .codeblock code { font-weight:600; }
 body.no-room .side-foot { display:flex !important; }
-body.no-room .side-foot > :not(#appSettingsBtn) { display:none !important; }
+body.no-room .side-foot > :not(#appSettingsBtn):not(#emptyArchivesBtn) { display:none !important; }
+
+#emptyArchivesBtn { display:none; }
+body.no-room #emptyArchivesBtn { display:block; }

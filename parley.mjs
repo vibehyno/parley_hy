@@ -32,7 +32,7 @@ import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
-import { archiveConversation, listConversationArchives, readConversationArchive } from "./lib/conversation-archives.mjs";
+import { archiveConversation, listConversationArchives, readConversationArchive, conversationArchiveSources, deleteConversationArchive } from "./lib/conversation-archives.mjs";
 import { claimService, serviceCommand } from "./lib/service-control.mjs";
 import { projectLaunchSpec, launchProjectTool } from "./lib/project-launch.mjs";
 import { createAgyStream } from "./lib/agy-stream.mjs";
@@ -7416,6 +7416,13 @@ function renameRoom(room, newName) {
   return room;
 }
 
+function archiveSource(key, roomName) {
+  if (!key) return loadRoom(roomName || "default");
+  const source = conversationArchiveSources(ROOT).find(item => item.key === key);
+  if (!source) throw Object.assign(new Error("Archive source no longer exists"), { status: 404 });
+  return { ...source, cfg: readJSON(path.join(source.dir, "room.json")) || defaultConfig() };
+}
+
 function restoreConversationArchive(source, id, name) {
   const roomName = cleanRoomName(name);
   if (!validRoomName(roomName)) throw Object.assign(new Error("Room names: letters, numbers, dashes, underscores (max 40)."), { status: 400 });
@@ -8425,11 +8432,17 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "GET /api/archives") {
+      if (url.searchParams.get("all") === "1") {
+        const archives = conversationArchiveSources(ROOT).flatMap(source => listConversationArchives(source.dir)
+          .map(item => ({ ...item, source: source.key, room: source.name, deleted: source.deleted })));
+        archives.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+        return json(res, 200, { archives });
+      }
       const room = loadRoom(url.searchParams.get("room") || "default");
       return json(res, 200, { archives: listConversationArchives(room.dir) });
     }
     if (route === "GET /api/archive") {
-      const room = loadRoom(url.searchParams.get("room") || "default");
+      const room = archiveSource(url.searchParams.get("source"), url.searchParams.get("room"));
       const archive = readConversationArchive(room.dir, url.searchParams.get("id"));
       const messages = archive.records.filter((entry) => entry.kind !== "receipt");
       return json(res, 200, {
@@ -8438,9 +8451,15 @@ const server = http.createServer(async (req, res) => {
         total: messages.length, hasSettings: !!archive.manifest,
       });
     }
+    if (route === "POST /api/archive/delete") {
+      const body = await readBody(req);
+      const source = archiveSource(body.source, body.room);
+      deleteConversationArchive(source.dir, body.id);
+      return json(res, 200, { ok: true });
+    }
     if (route === "POST /api/archive/restore") {
       const body = await readBody(req);
-      const source = loadRoom(body.room || "default");
+      const source = archiveSource(body.source, body.room);
       return json(res, 200, restoreConversationArchive(source, body.id, body.name));
     }
 

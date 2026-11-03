@@ -106,3 +106,30 @@ test("failed archival rolls back files instead of losing the current conversatio
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("global archives survive source deletion and selected deletion preserves restored history", async () => {
+  const server = await isolatedServer();
+  try {
+    await server.configure("default", {});
+    await server.api("POST", "/api/new", {room:"default"});
+    let all = (await server.api("GET", "/api/archives?all=1")).data.archives;
+    assert.equal(all.length,1);
+    assert.equal(all[0].room,"default");
+    const id=all[0].id;
+    assert.equal((await server.api("POST", "/api/room/delete", {room:"default"})).status,200);
+    all=(await server.api("GET", "/api/archives?all=1")).data.archives;
+    assert.equal(all.length,1);
+    assert.equal(all[0].deleted,true);
+    const source=all[0].source;
+    assert.equal((await server.api("GET", `/api/archive?source=${source}&id=${id}`)).status,200);
+    const restored=await server.api("POST","/api/archive/restore",{source,id,name:"Recovered"});
+    assert.equal(restored.status,200,JSON.stringify(restored.data));
+    const before=fs.readFileSync(path.join(server.root,"Recovered","events.jsonl"),"utf8");
+    assert.equal((await server.api("POST","/api/archive/delete",{source,id:"../events"})).status,400);
+    assert.equal((await server.api("POST","/api/archive/delete",{source:"../outside",id})).status,404);
+    assert.equal((await server.api("POST","/api/archive/delete",{source,id})).status,200);
+    assert.equal((await server.api("GET","/api/archives?all=1")).data.archives.length,0);
+    assert.equal(fs.readFileSync(path.join(server.root,"Recovered","events.jsonl"),"utf8"),before);
+    assert.equal(fs.existsSync(path.join(server.root,"default")),false);
+  } finally { await server.close(); }
+});

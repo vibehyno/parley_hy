@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.38 — 2026-11-03
+
+- Browse archives across active and deleted rooms and restore into a new room.
+- Confirm permanent deletion of individual archives while preserving live/restored rooms and shared attachments.
+- Keep archives accessible with no rooms. Deleted-room archives remain available until .trash is cleared.
+
 ## 1.4.37 — 2026-11-03
 
 - Keep room settings at a maximum width of 1320px regardless of seat count. A single seat fills the grid; two seats share two columns, with responsive layouts retained.
