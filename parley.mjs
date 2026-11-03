@@ -2848,6 +2848,19 @@ function noteChainFailure(room, label, err) {
   } catch { /* the append is what failed — the console line is the record */ }
 }
 
+const cliVersionCache = new Map();
+function installedCliVersion(command) {
+  const cached = cliVersionCache.get(command);
+  if (cached && Date.now() - cached.at < 300000) return cached.promise;
+  const promise = captureCommand(resolveCommand(command), ["--version"], { timeoutMs: 5000 }).then(result => {
+    const text = result.stdout.replace(/\x1b\[[0-9;]*m/g, "").trim();
+    const version = result.code === 0 ? text.match(/(?:^|[^\w.])v?(\d+\.\d+(?:\.\d+)?(?:[-+][\w.-]+)?)(?=$|[^\w.])/)?.[1] : null;
+    return { version: version || null };
+  });
+  cliVersionCache.set(command, { at:Date.now(), promise });
+  return promise;
+}
+
 // ---- first-run health ----
 // A missing CLI already shows on the seat pill. An unauthenticated one did not:
 // it surfaced as an opaque exit code on the user's first real message, which is
@@ -8184,6 +8197,12 @@ const server = http.createServer(async (req, res) => {
     // in a long-lived room.
     // What a first run actually needs to know, per seat, before anything is
     // spent: is the CLI there, is it signed in, and if not, what to do about it.
+    if (route === "GET /api/cli-versions") {
+      const name = url.searchParams.get("room");
+      const room = name ? loadRoom(name) : null;
+      const commands = [...new Set(["codex", "claude", "agy", ...Object.values(room?.cfg.agents || {}).map(cfg => cfg.command)].filter(Boolean))];
+      return json(res, 200, { versions: Object.fromEntries(await Promise.all(commands.map(async command => [command, await installedCliVersion(command)]))) });
+    }
     if (route === "GET /api/doctor") {
       const room = loadRoom(url.searchParams.get("room") || "default");
       return json(res, 200, {

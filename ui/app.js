@@ -4816,6 +4816,14 @@ function nextSeatId(provider) {
   for (let i = 2; i < 100; i++) if (!used.has(`${provider}${i}`)) return `${provider}${i}`;
   return `${provider}-${Date.now().toString(36).slice(-4)}`;
 }
+let cliVersions = {};
+function updateCliVersionLabels() {
+  for (const el of document.querySelectorAll("[data-cli-version-seat]")) {
+    const item = settingsSeatDraft?.find(item => item.id === el.dataset.cliVersionSeat);
+    const record = cliVersions[item?.cfg.command];
+    el.textContent = record?.version ? "CLI v" + record.version : t(record ? "settings.cliVersionUnknown" : "settings.cliVersionLoading");
+  }
+}
 function renderSeatCards(s) {
   const draft = settingsSeatDraft || s.seats.map((id) => ({
     id,
@@ -4864,7 +4872,7 @@ function renderSeatCards(s) {
       `<span class="seat-face" style="background:${esc(color)}">${avatarPreview}</span>` +
       `<span class="agc" style="color:${esc(color)}">${esc(shownName)}</span>` +
       `<select class="seat-provider-select" data-provider-seat="${esc(a)}" aria-label="${esc(t("settings.addSeatProvider"))}">${Object.entries(state.providers).map(([id, meta]) => `<option value="${esc(id)}" ${id === item.provider ? "selected" : ""}>${esc(meta.sub || meta.label || id)}</option>`).join("")}</select>` +
-      `<small>@${esc(item.cfg.mentionAlias || a)} · ${esc(tr("settings.stableMention", "compatible: @{id}", { id: a }))}</small></h3>` +
+      `<small class="seat-cli-version" data-cli-version-seat="${esc(a)}"></small><small>@${esc(item.cfg.mentionAlias || a)} · ${esc(tr("settings.stableMention", "compatible: @{id}", { id: a }))}</small></h3>` +
       (removable ? `<button type="button" class="seat-remove" data-remove-seat="${esc(a)}" title="${esc(tr("settings.removeSeat", "Remove seat"))}" aria-label="${esc(tr("settings.removeSeat", "Remove seat"))}">✕</button>` : "") +
       `</div><div class="seat-order"><span draggable="true" data-drag-seat="${esc(a)}" title="${esc(t("settings.dragSeat"))}">⠿</span><button type="button" data-move-seat="${esc(a)}" data-step="-1" ${index === 0 ? "disabled" : ""} aria-label="${esc(t("settings.moveLeft"))}" title="${esc(t("settings.moveLeft"))}">←</button><button type="button" data-move-seat="${esc(a)}" data-step="1" ${index === draft.length - 1 ? "disabled" : ""} aria-label="${esc(t("settings.moveRight"))}" title="${esc(t("settings.moveRight"))}">→</button></div>${f}<div class="sess">${sess}</div></div>`;
   }).join("");
@@ -4877,6 +4885,7 @@ function renderSeatCards(s) {
     }
     syncAgyEffort(item.id);
   }
+  updateCliVersionLabels();
   if ($("s_addSeat")) $("s_addSeat").disabled = false;
   if ($("s_seatLimit")) $("s_seatLimit").textContent = draft.length >= 3
     ? tr("settings.seatLimitReached", "Three seats are connected.")
@@ -5485,6 +5494,13 @@ function openSettings(create = false) {
   $("roomPath").textContent = s.dir;
   $("s_locale").value = currentLocale();
   $("mDelete").hidden = settingsCreating;
+  api("/api/cli-versions" + (s.name ? "?room=" + encodeURIComponent(s.name) : "")).then(data => {
+    cliVersions = { ...cliVersions, ...data.versions };
+    if (settingsContext === s) updateCliVersionLabels();
+  }).catch(() => {
+    for (const item of settingsSeatDraft || []) cliVersions[item.cfg.command] ||= {version:null};
+    updateCliVersionLabels();
+  });
   $("s_addProvider").innerHTML = Object.entries(state.providers || {}).map(([id, provider]) =>
     `<option value="${esc(id)}">${esc(provider.label || id)}</option>`).join("");
   renderSeatCards(s);

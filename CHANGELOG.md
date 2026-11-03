@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.44 — 2026-11-03
+
+- Restyle provider selectors with consistent height, spacing, rounded borders and theme colors.
+- Display installed CLI versions, cache --version results for five minutes and deduplicate concurrent checks; show unavailable when detection fails.
+
 ## 1.4.43 — 2026-11-03
 
 - Immediately refresh model cards and conversation presentation after identity changes.
