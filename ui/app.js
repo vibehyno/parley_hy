@@ -3580,6 +3580,7 @@ async function loadRoom(name) {
   renderAll({ preserveTransient: false });
   applySummary(data.room);
   workPanel.roomChanged();
+  sharedBrowserPanel.roomChanged();
   refreshSeatModels(data.room).catch(() => { /* Keep configured names if discovery fails. */ });
   // Room opening is navigation, not a live arrival: always show the newest
   // message immediately. The second pass runs after layout so smooth scrolling
@@ -5840,6 +5841,7 @@ const workPanel = window.ParleyWorkPanel.create({
 });
 
 // ------------------------------------------------------------ boot
+const sharedBrowserPanel = window.ParleySharedBrowser.create({ state, api, t, esc, seatName });
 loadRoom(state.room).catch((e) => toast(e.message, true));
 checkForUpdate();
 input.focus();

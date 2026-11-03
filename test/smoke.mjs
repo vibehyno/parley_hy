@@ -3150,9 +3150,9 @@ async function main() {
   const causalReadonly = causalReadonlyRoom.entries.find((e) => e.author === "claude" &&
     e.meta && e.meta.causalAttention && /^ARGVJSON /.test(e.text));
   const causalReadonlyArgv = argvFrom(causalReadonly);
-  ok("generic causal answer delivery is forced read-only in a Work room",
-    !!causalReadonly && hasArg(causalReadonlyArgv, "--permission-mode", "plan") &&
-    !hasArg(causalReadonlyArgv, "--permission-mode", "bypassPermissions"),
+  ok("generic causal answer delivery retains selected Full access",
+    !!causalReadonly && !hasArg(causalReadonlyArgv, "--permission-mode", "plan") &&
+    hasArg(causalReadonlyArgv, "--permission-mode", "bypassPermissions"),
     JSON.stringify({ entry: causalReadonly, argv: causalReadonlyArgv }));
 
   await api("POST", "/api/rooms", { name: "lurk-custom" });
@@ -3754,10 +3754,10 @@ async function main() {
   const readOnlyReturn = d.entries.find((e) => e.kind === "agent" && e.author === "claude" &&
     e.meta && e.meta.catchUpReturn);
   const readOnlyReturnArgv = argvFrom(readOnlyReturn);
-  ok("the catch-up right-of-reply is forced read-only in a Work room",
+  ok("the catch-up right-of-reply retains selected Full access",
     !!readOnlyReturn && readOnlyReturnArgv &&
-    hasArg(readOnlyReturnArgv, "--permission-mode", "plan") &&
-    !hasArg(readOnlyReturnArgv, "--permission-mode", "bypassPermissions"),
+    !hasArg(readOnlyReturnArgv, "--permission-mode", "plan") &&
+    hasArg(readOnlyReturnArgv, "--permission-mode", "bypassPermissions"),
     JSON.stringify({ entry: readOnlyReturn, argv: readOnlyReturnArgv }));
 
   // Attachment selection follows actionability, not simple recency. A later
@@ -4699,9 +4699,9 @@ async function main() {
   await api("POST", "/api/retry", { room: "scopelatch" });
   d = await idle("scopelatch", 40000);
   const latchedArgv = argvFrom(lastAgent(d, "claude"));
-  ok("a boundary acquired mid-exchange is latched against a later Work→Talk flip",
-    hasArg(latchedArgv, "--permission-mode", "plan") &&
-    !hasArg(latchedArgv, "--permission-mode", "bypassPermissions"), JSON.stringify(latchedArgv));
+  ok("selected Full access survives retry and Work→Talk changes",
+    !hasArg(latchedArgv, "--permission-mode", "plan") &&
+    hasArg(latchedArgv, "--permission-mode", "bypassPermissions"), JSON.stringify(latchedArgv));
 
   // Rooms written by 1.0.1 recorded the boundary only on the user entry. Retry
   // has to read it from there, or a protected historical @both comes back with
@@ -4732,9 +4732,9 @@ async function main() {
   await api("POST", "/api/retry", { room: "legacyscope2" });
   d = await idle("legacyscope2", 40000);
   const legacyArgv = argvFrom(lastAgent(d, "claude"));
-  ok("retrying it recovers the boundary from the entry rather than going full-access",
-    hasArg(legacyArgv, "--permission-mode", "plan") &&
-    !hasArg(legacyArgv, "--permission-mode", "bypassPermissions"), JSON.stringify(legacyArgv));
+  ok("legacy retry respects the currently selected Full access setting",
+    !hasArg(legacyArgv, "--permission-mode", "plan") &&
+    hasArg(legacyArgv, "--permission-mode", "bypassPermissions"), JSON.stringify(legacyArgv));
 
   await api("POST", "/api/rooms", { name: "splitpair" });
   await useFakes("splitpair");
@@ -6258,9 +6258,9 @@ async function main() {
   // Narrowing lastUser.target to one seat also takes away makeScope's ability
   // to acquire the @both no-edit boundary, so it has to be latched at wake.
   const bothRetryArgv = argvFrom(lastAgent(d, "claude"));
-  ok("…still under the @both no-edit boundary, which the narrowed target cannot re-derive",
-    hasArg(bothRetryArgv, "--permission-mode", "plan") &&
-    !hasArg(bothRetryArgv, "--permission-mode", "bypassPermissions"),
+  ok("…retains selected Full access after narrowing the retry target",
+    !hasArg(bothRetryArgv, "--permission-mode", "plan") &&
+    hasArg(bothRetryArgv, "--permission-mode", "bypassPermissions"),
     JSON.stringify(bothRetryArgv));
   const bothRoot = d.entries.find((e) => e.kind === "user" && /FAILONCESEAT:claude ARGJSON/.test(e.text));
   const recoveredClaudeReply = bothRoot && bothRetrySlice.find((e) => e.kind === "agent" &&
@@ -6585,24 +6585,24 @@ async function main() {
   await say("claudefull", "@both ARGJSON");
   d = await idle("claudefull");
   let protectedArgv = argvFrom(lastAgent(d, "claude"));
-  ok("a protected @both turn uses an isolated Plan invocation",
-    hasArg(protectedArgv, "--permission-mode", "plan") &&
-    !hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
-    !protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
-  ok("the isolated @both turn is briefed with prior room history",
-    argValue(protectedArgv, "--append-system-prompt").includes("FULLACCESS_ORIGIN"));
-  ok("the protected Plan session is retained for subsequent discussion turns",
+  ok("a full-access @both turn resumes without a Plan downgrade",
+    !hasArg(protectedArgv, "--permission-mode", "plan") &&
+    hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
+    protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
+  ok("the resumed @both turn does not repeat the full briefing",
+    !protectedArgv.includes("--append-system-prompt"));
+  ok("the Full-access session is retained for subsequent discussion turns",
     d.room.agents.claude.linked === true &&
-    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "plan");
+    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "bypassPermissions");
 
   await say("claudefull", "@claude ARGJSON");
   d = await idle("claudefull");
   fullArgv = argvFrom(lastAgent(d, "claude"));
-  ok("the ordinary turn after isolation starts fresh in Full access",
-    hasArg(fullArgv, "--permission-mode", "bypassPermissions") && !fullArgv.includes("--resume"),
+  ok("the ordinary turn after discussion resumes in Full access",
+    hasArg(fullArgv, "--permission-mode", "bypassPermissions") && fullArgv.includes("--resume"),
     JSON.stringify(fullArgv));
-  ok("the ordinary turn after isolation is re-briefed from room history",
-    argValue(fullArgv, "--append-system-prompt").includes("FULLACCESS_ORIGIN"));
+  ok("the ordinary turn after discussion does not repeat the full briefing",
+    !fullArgv.includes("--append-system-prompt"));
 
   const beforeHandoff = d.entries.length;
   await say("claudefull", "@codex TAGHOP:claude");
@@ -6622,15 +6622,15 @@ async function main() {
   d = await idle("claudefull");
   const lurkEntry = [...d.entries].reverse().find((e) => e.author === "claude" && e.meta && e.meta.lurk);
   protectedArgv = argvFrom(lurkEntry);
-  ok("a Full-access Claude listener is isolated in Plan",
-    hasArg(protectedArgv, "--permission-mode", "plan") &&
-    !hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
-    !protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
-  ok("the isolated listener receives prior room history",
-    argValue(protectedArgv, "--append-system-prompt").includes("LISTENER_ORIGIN"));
-  ok("listener transition retains a restricted Plan session",
+  ok("a Full-access Claude listener retains permissions and session",
+    !hasArg(protectedArgv, "--permission-mode", "plan") &&
+    hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
+    protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
+  ok("the resumed listener does not repeat the full briefing",
+    !protectedArgv.includes("--append-system-prompt"));
+  ok("listener transition retains a Full-access session",
     d.room.agents.claude.linked === true &&
-    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "plan");
+    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "bypassPermissions");
   await cfg("claudefull", { agents: { claude: { lurk: false } } });
 
   await say("claudefull", "@claude ARGJSON");
@@ -6645,15 +6645,15 @@ async function main() {
   const reviewEntry = [...d.entries].reverse().find((e) =>
     e.author === "claude" && e.meta && e.meta.pair === "review");
   protectedArgv = argvFrom(reviewEntry);
-  ok("a Full-access Claude pair reviewer is isolated in Plan",
-    hasArg(protectedArgv, "--permission-mode", "plan") &&
-    !hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
-    !protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
-  ok("the isolated reviewer receives prior room history",
-    argValue(protectedArgv, "--append-system-prompt").includes("REVIEW_ORIGIN"));
-  ok("reviewer transition retains a restricted Plan session",
+  ok("a Full-access Claude pair reviewer retains permissions and session",
+    !hasArg(protectedArgv, "--permission-mode", "plan") &&
+    hasArg(protectedArgv, "--permission-mode", "bypassPermissions") &&
+    protectedArgv.includes("--resume"), JSON.stringify(protectedArgv));
+  ok("the resumed reviewer does not repeat the full briefing",
+    !protectedArgv.includes("--append-system-prompt"));
+  ok("reviewer transition retains a Full-access session",
     d.room.agents.claude.linked === true &&
-    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "plan");
+    JSON.parse(fs.readFileSync(path.join(ROOT, "claudefull", "state.json"), "utf8")).agents.claude.permissionScope === "bypassPermissions");
   await say("claudefull", "/pair end");
 
   const beforeWorker = d.entries.length;

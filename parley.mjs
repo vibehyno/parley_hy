@@ -3,7 +3,7 @@
  * Parley — one local chat room shared by you, Claude (Claude Code CLI)
  * and Codex (OpenAI Codex CLI), served as a local web app.
  *
- * - Zero runtime dependencies. Node >= 20, built-in modules only.
+ * - Node >= 20; browser sharing uses Playwright and the MCP SDK.
  * - Shells out to the official `claude` and `codex` CLIs under the user's own
  *   logins. Never reads, stores or forwards credentials.
  * - Binds to 127.0.0.1 only.
@@ -45,6 +45,23 @@ import { diagnosticText } from "./lib/diagnostic-text.mjs";
 import { changedFiles, fileDiff, resolveProjectFile, discoverRepositories, resolveRepository } from "./lib/work-changes.mjs";
 import { subagentEvents } from "./lib/subagent-events.mjs";
 import { plainPeerRequest } from "./lib/peer-routing.mjs";
+import { SharedBrowser } from "./lib/shared-browser.mjs";
+import { browserBridge, browserCliArgs, browserInstruction, agyBrowserNeedsSetup, browserSetupRequired } from "./lib/shared-browser-config.mjs";
+import { agyBrowserPermissions } from "./lib/agy-browser-permissions.mjs";
+
+const sharedBrowser = new SharedBrowser();
+const agyBrowserRegistrations = new Map();
+async function ensureAgyBrowser(command, setupApproved = false) {
+  if (!agyBrowserNeedsSetup()) return;
+  if (!setupApproved) throw new Error("AGY 브라우저 연결 설정이 필요합니다. 공유 브라우저 연결을 닫고 다시 열어 설정을 확인해주세요.");
+  if (agyBrowserRegistrations.has(command)) return agyBrowserRegistrations.get(command);
+  const pending = (async () => {
+    const result = await captureCommand(resolveCommand(command), ["mcp", "add", "parley-browser", process.execPath, browserBridge], { timeoutMs: 15000 });
+    if (result.code !== 0) throw new Error("AGY 공유 브라우저 MCP 등록에 실패했습니다. 터미널에서 agy mcp list로 확인해주세요.");
+  })();
+  agyBrowserRegistrations.set(command, pending);
+  try { await pending; } finally { if (agyBrowserRegistrations.get(command) === pending) agyBrowserRegistrations.delete(command); }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Keep the browser and backend on the same build. Previously the server read
@@ -260,7 +277,6 @@ const PROVIDERS = {
       // Arrow functions, so effectiveClaudePermissionMode being declared later
       // in the file is fine — they are evaluated at call time, not at load.
       sessionScope: { field: "permissionScope", of: (seatCfg, roomMode) => effectiveClaudePermissionMode(seatCfg, roomMode) },
-      isolateProtectedTurn: (seatCfg, roomMode) => effectiveClaudePermissionMode(seatCfg, roomMode) === "bypassPermissions",
       // Protected turns run under --permission-mode plan — the read-only
       // boundary is enforced by the CLI, not only described by the prompt.
       protectedTurnEnforced: true,
@@ -832,35 +848,45 @@ function cliArgValue(args, option) {
 }
 
 // `auto` is Parley's legacy name for "follow the room", not Claude Code's
-// newer classifier-backed Auto mode. An explicit Extra CLI arg still wins.
+// newer classifier-backed Auto mode. The explicit Full access selection wins
+// over legacy Extra CLI permission arguments.
 function effectiveClaudePermissionMode(cfg, roomMode) {
+  if (cfg.permissionMode === "bypassPermissions") return "bypassPermissions";
   const override = cliArgValue(cfg.extraArgs || [], "--permission-mode");
   if (override !== null) return override || "invalid";
   const configured = CLAUDE_PERMISSION_MODES.has(cfg.permissionMode) ? cfg.permissionMode : "auto";
   return configured === "auto" ? (roomMode === "work" ? "acceptEdits" : "default") : configured;
 }
 
-// Scheduling policy for full-access listeners. This predicate no longer
-// discards sessions: effective permission transitions are handled before
-// prompt composition, and consecutive protected turns resume Plan.
-function isolatedProtectedTurn(room, agent, { discussion, readOnly } = {}) {
-  if (!(discussion || readOnly)) return false;
-  const isolate = capsOf(room, agent).isolateProtectedTurn;
-  return typeof isolate === "function" && !!isolate(room.cfg.agents[agent], room.cfg.mode);
+// Full access is a seat permission, not a property of the delivery route.
+function fullAccessEnabled(room, agent) {
+  const cfg = room.cfg.agents[agent];
+  const provider = providerIdOf(room, agent);
+  if (provider === "codex") return cfg.sandbox === "danger-full-access";
+  if (provider === "claude") return effectiveClaudePermissionMode(cfg, room.cfg.mode) === "bypassPermissions";
+  if (provider === "gemini") return effectiveAgyApprovalMode(cfg, room.cfg.mode) === "full";
+  return false;
 }
 
-// The permission scope a Claude turn's native session lives under.
-//
-// Plan is a separate *session* only for a seat whose configured mode would
-// defeat it: Claude documents that Plan's write blocks do not hold inside a
-// session that has bypass available, so a Full-access seat keeps one session
-// for ordinary turns and a separate Plan session for protected ones. For every
-// other seat Plan is just a flag on the same native session: a discussion turn
-// resumes the work session with `--permission-mode plan`, and the next work
-// turn resumes it again, so alternating the two keeps the session's context.
-function claudeSessionScope(room, agent, protectedTurn) {
-  const configured = effectiveClaudePermissionMode(room.cfg.agents[agent], room.cfg.mode);
-  return protectedTurn && isolatedProtectedTurn(room, agent, { readOnly: true }) ? "plan" : configured;
+function browserTurnReadOnly(room, agent, { discussion, readOnly } = {}) {
+  if (fullAccessEnabled(room, agent)) return false;
+  if (room.cfg.mode !== "work" || discussion || readOnly) return true;
+  const cfg = room.cfg.agents[agent];
+  const provider = providerIdOf(room, agent);
+  if (provider === "claude") return effectiveClaudePermissionMode(cfg, room.cfg.mode) === "plan";
+  if (provider === "gemini") return effectiveAgyApprovalMode(cfg, room.cfg.mode) === "plan";
+  return false;
+}
+
+// Preserve the existing coalesced-listener scheduling without reducing permissions.
+function deferFullAccessListener(room, agent) {
+  return providerIdOf(room, agent) === "claude" && fullAccessEnabled(room, agent);
+}
+
+// Keep the configured native session across delivery types. Non-full seats
+// may still request Plan per invocation; full seats never silently downgrade.
+function claudeSessionScope(room, agent) {
+  return effectiveClaudePermissionMode(room.cfg.agents[agent], room.cfg.mode);
 }
 
 // Can the seat's saved session serve this turn as it is? Anything else must be
@@ -1220,7 +1246,7 @@ Participants may not have received identical context. You may name missing conte
 // every static contract-text change even when a contributor forgets to bump
 // this number. Version 4 also heals development sessions that were falsely
 // stamped as v3 while a malformed template literal composed the number 0.
-const PROMPT_VERSION = 6;
+const PROMPT_VERSION = 8;
 // Dormant retirement floor for a future *contradictory* contract change: a
 // seat whose delivered version is below this is not updated in place — its
 // session is discarded at turn start for a full fresh re-brief. 0 retires
@@ -1249,6 +1275,10 @@ The full transcript is at {{TRANSCRIPT_FILE}}. Your working directory is {{WORKD
 Style: you are a chat participant, not running a coding task. Reply in plain conversational text, concise by default. Do not use tools or modify files unless the user explicitly asks for it. Never speak for your peers or fabricate their messages. You may address a peer directly by using their listed @call-name; if the room's hop limit allows it, they will see your message and may respond.
 
 When the user or another seat asks you to investigate, review, or perform work, send a short public reply about what you understood and will do BEFORE your first tool call, then perform the work and report the result in this SAME invocation. Use your CLI's public intermediate message channel, not private reasoning or a sentence saved for the final answer. Use the user's language and this room's persona. No canned acknowledgement or mandatory wording: answer simple questions directly and do not turn a capability question into permission to execute old tasks from room history. Do not claim that Parley or another model has acknowledged the request. Ask for confirmation only when it is actually required. Keep completion reports focused on changes, validation and unresolved issues. Do not compute hashes or generate raw logs merely to report completion. When the task requires integrity evidence, keep the full values in evidence files and show them in chat only when explicitly requested or necessary to explain a failure.
+
+Even a short question such as "can you see this page?" requires a brief public reply BEFORE tools if you need to inspect the page to answer. Answer directly without a preamble only when no tool is needed. An intention like "I'll check" is progress, never the completed result. After tools, answer the actual question with what you observed, or clearly state the blocker if a tool failed or permission was denied. Do not claim completion from a tool request alone.
+
+Execution permissions come from this seat's current CLI configuration. Full access remains Full access during discussions, reviews, listener responses and handoffs; an earlier discussion-only read-only instruction does not override it. Your role still determines which work is requested, not which permissions the process has. Report a permission blocker only from an actual tool denial and include its concrete cause, rather than assuming that a review or Talk label means the process is read-only.
 
 For work that takes long enough to use tools or several steps, publish a short user-visible progress update at meaningful transitions: what you are doing, what you observed, or what you will do next. These updates are steering points for the user, so keep them concrete and non-repetitive. Never reveal private chain-of-thought or hidden reasoning; report only actions, observations, and decisions intended for the user. When all work is done, finish with one concise consolidated result covering changes, verification, and any remaining limitation.`;
 const PROMPT_FINGERPRINT = crypto.createHash("sha256")
@@ -1605,9 +1635,9 @@ function codexItemLabel(item) {
 }
 
 /** Claude Code CLI: print mode + stream-json for live partial text. */
-async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
+async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false, browserConnection = null }) {
   const cfg = room.cfg.agents[seat];
-  const protectedTurn = !!(discussion || readOnly);
+  const protectedTurn = !!(discussion || readOnly) && !fullAccessEnabled(room, seat);
   const permissionConfigScope = effectiveClaudePermissionMode(cfg, room.cfg.mode);
   const sessionScope = claudeSessionScope(room, seat, protectedTurn);
   const sess = room.state.agents[seat].sessionRef;
@@ -1618,7 +1648,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   // A protected discussion/review turn must not be reopened by an advanced
   // per-room permission override. Provider/user-level CLI settings remain part
   // of the local trust boundary, so the prompt still carries the same rule.
-  const extraArgs = protectedTurn ? withoutArgWithValue(checked, "--permission-mode") : checked;
+  const extraArgs = withoutArgWithValue(checked, "--permission-mode");
   const args = ["-p"];
   // The next known option terminates Claude's variadic directory list.
   // Attachment access uses disposable copies, never the authoritative store.
@@ -1633,17 +1663,14 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   // Extra CLI args remain an advanced override (raw bypass is rejected above).
   if (protectedTurn) {
     args.push("--permission-mode", "plan");
-  } else if (!checked.some((a) => a === "--permission-mode" || a.startsWith("--permission-mode="))) {
-    const pm = cfg.permissionMode || "auto";
-    if (pm === "plan" || pm === "acceptEdits" || pm === "bypassPermissions") args.push("--permission-mode", pm);
-    else if (room.cfg.mode === "work") args.push("--permission-mode", "acceptEdits");
-  }
+  } else args.push("--permission-mode", permissionConfigScope);
   if (cfg.model) args.push("--model", cfg.model);
   if (cfg.effort) args.push("--effort", cfg.effort);
   args.push(...extraArgs);
   // An explicit per-invocation overlay prevents a room seat from silently
   // inheriting another Claude session's global Fast preference.
   args.push("--settings", JSON.stringify({ fastMode: !!cfg.fastMode }));
+  if (browserConnection) args.push(...browserCliArgs("claude"));
 
   let input = prompt;
   if (images.length) {
@@ -1739,7 +1766,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
 }
 
 /** Codex CLI: exec mode + JSONL events; final text via --output-last-message. */
-async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onActivity, onProgress, images = [], inputDir = null, allowEmpty = false }) {
+async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onActivity, onProgress, images = [], inputDir = null, allowEmpty = false, browserConnection = null }) {
   const cfg = room.cfg.agents[seat];
   const sess = room.state.agents[seat].sessionRef;
   const extraArgs = checkedExtraArgs(room, seat, cfg.extraArgs);
@@ -1769,6 +1796,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   if (cfg.model) args.push("-m", cfg.model);
   if (cfg.effort) args.push("-c", "model_reasoning_effort=" + cfg.effort);
   args.push(...extraArgs);
+  if (browserConnection) args.push(...browserCliArgs("codex"));
   args.push("-"); // prompt on stdin
 
   const input = briefing ? briefing + "\n\n---\n\n" + prompt : prompt;
@@ -1864,9 +1892,9 @@ function effectiveAgyApprovalMode(cfg, roomMode) {
  * Google Antigravity CLI (`agy`) print mode with JSON output. AGY assigns the
  * conversation id on a fresh turn and resumes it with `--conversation`.
  */
-async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false }) {
+async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onActivity, onProgress, discussion, readOnly, images = [], inputDir = null, allowEmpty = false, browserConnection = null }) {
   const cfg = room.cfg.agents[seat];
-  const protectedTurn = !!(discussion || readOnly);
+  const protectedTurn = !!(discussion || readOnly) && !fullAccessEnabled(room, seat);
   const sess = room.state.agents[seat].sessionRef;
   const extraArgs = checkedExtraArgs(room, seat, cfg.extraArgs);
   const args = ["--input-format", "stream-json", "--output-format", "stream-json"];
@@ -1880,7 +1908,11 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   const approval = protectedTurn ? "plan" : effectiveAgyApprovalMode(cfg, room.cfg.mode);
   if (approval === "full") args.push("--mode", "auto", "--dangerously-skip-permissions");
   else args.push("--mode", approval, "--sandbox");
-  args.push(...extraArgs);
+  let browserSettings = null;
+  if (browserConnection) {
+    browserSettings = agyBrowserPermissions(extraArgs, { readOnly: browserTurnReadOnly(room, seat, { discussion, readOnly }), cwd: workDir(room) });
+    args.push(...browserSettings.args);
+  } else args.push(...extraArgs);
 
   // The briefing is a system-level instruction for the other two providers, but
   // Gemini's headless mode has no equivalent flag, so it leads the prompt. The
@@ -1903,9 +1935,20 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
     } catch { /* final stdout parse below */ }
   };
 
-  const r = await runCli(resolveCommand(cfg.command), args, {
-    cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input, onLine, room, agent: seat,
-  });
+  let r, settingsDir;
+  try {
+    if (browserSettings) {
+      settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'parley-agy-permissions-'));
+      const settingsPath = path.join(settingsDir, 'settings.json');
+      fs.writeFileSync(settingsPath, JSON.stringify(browserSettings.settings), { mode: 0o600 });
+      args.push('--settings', settingsPath);
+    }
+    r = await runCli(resolveCommand(cfg.command), args, {
+      cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input, onLine, room, agent: seat,
+    });
+  } finally {
+    if (settingsDir) { try { fs.unlinkSync(path.join(settingsDir, 'settings.json')); fs.rmdirSync(settingsDir); } catch {} }
+  }
 
   if (!result && r.stdout) {
     for (const line of r.stdout.trim().split(/\r?\n/).reverse()) {
@@ -1929,9 +1972,13 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
     throw new AdapterError(`${seat}: ${diagnosticText(errorText || `AGY returned status ${result.status}`)}`);
   }
   if (errorText) throw new AdapterError(`${seat}: ${diagnosticText(errorText)}`);
+  if (/soft[- ]den(?:ied|ying)|tool[^\r\n]*(?:permission denied|approval required)/i.test(r.stderr || '')) {
+    throw new AdapterError(`${seat}: 도구 호출에 필요한 승인을 받지 못해 작업이 완료되지 않았습니다. AGY 권한 설정을 확인해주세요.`);
+  }
   const sessionRef = typeof result?.conversation_id === "string" ? result.conversation_id : null;
   if (!sessionRef) throw new AdapterError(`${seat} returned no conversation id`);
   const text = typeof result?.response === "string" ? publicStream.finalText(result.response) : null;
+  if (!text && result?.response?.trim()) throw new AdapterError(`${seat}: 진행 안내 뒤에 최종 결과 없이 종료되었습니다. 도구 승인 여부와 CLI 상태를 확인해주세요.`);
   if (!text && !allowEmpty) throw new AdapterError(`${seat} returned an empty reply`);
 
   let usage = null;
@@ -1957,7 +2004,7 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
 // once produced 0 here, which reads as "no briefing", launches an unbriefed
 // session, and then stamps it as briefed. Fail the turn loudly instead.
 function briefedAdapter(send) {
-  return (room, opts) => {
+  return async (room, opts) => {
     const valid = opts.briefing === null ||
       (typeof opts.briefing === "string" && opts.briefing.trim().length > 0);
     if (!valid) {
@@ -1995,7 +2042,21 @@ function briefedAdapter(send) {
           startedAt: run.startedAt, runId: run.runId, ...runProvenance(room, run) });
       }
     }
-    return send(room, opts);
+    let token = null;
+    try {
+      if (sharedBrowser.state(room).connected) {
+        if (providerIdOf(room, opts.seat) === "gemini") await ensureAgyBrowser(room.cfg.agents[opts.seat].command);
+        token = sharedBrowser.grant(room, opts.seat, {
+          readOnly: browserTurnReadOnly(room, opts.seat, opts),
+          valid: () => !run?.stopRequested && (!run || room.runs.get(opts.seat) === run),
+        });
+        if (token) {
+          const connection = `${server.address().port}/${token}`;
+          opts = { ...opts, browserConnection: connection, prompt: opts.prompt + browserInstruction(connection) };
+        }
+      }
+      return await send(room, opts);
+    } finally { if (token) sharedBrowser.revoke(token); }
   };
 }
 // Keyed by provider, not by seat name — which is what lets a seat be called
@@ -2164,9 +2225,7 @@ function loadRoom(name, seatChoice, create = false) {
     const scope = pid && (PROVIDERS[pid].capabilities || {}).sessionScope;
     if (!scope || !state.agents[id]) continue;
     const expected = scope.of(cfg.agents[id], cfg.mode);
-    const retainedPlan = pid === "claude" && state.agents[id][scope.field] === "plan" &&
-      state.agents[id].permissionConfigScope === expected;
-    if (state.agents[id][scope.field] !== expected && !retainedPlan) {
+    if (state.agents[id][scope.field] !== expected) {
       state.agents[id].sessionRef = null;
       state.agents[id][scope.field] = expected;
       stateMigrated = true;
@@ -2868,8 +2927,7 @@ function roomSummary(room) {
       // never render them as if they sum.
       held: heldForSeat(room, a).length,
       catchUp: catchUpState(room, a),
-      liveLurkEligible: !!room.cfg.agents[a].lurk && !isAsleep(room, a) &&
-        !isolatedProtectedTurn(room, a, { readOnly: true }),
+      liveLurkEligible: !!room.cfg.agents[a].lurk && !isAsleep(room, a) && !deferFullAccessListener(room, a),
     }])),
     pair: pairSnapshot(room),
     // Settings affect the next room-sourced cycle. If a cycle is already in
@@ -3285,6 +3343,9 @@ function noteBlock(room, agent, delivery) {
 // (flags/modes) or only by the prose of the discussion note. Where it is only
 // prose, the full note IS the enforcement and is never shortened.
 function discussionBlock(room, agent, delivery) {
+  if (fullAccessEnabled(room, agent)) {
+    return staticBlock(room, agent, delivery, "discussionFull", DISCUSSION_FULL_NOTE, false);
+  }
   return staticBlock(room, agent, delivery, "discussion", DISCUSSION_NOTE,
     !!capsOf(room, agent).protectedTurnEnforced);
 }
@@ -3350,6 +3411,7 @@ function askSourceBlock(room, agent, source, attachmentContext, inDelta) {
 // Claude is Plan-scoped; a configured bypass session is never reused for the
 // protected call. Codex keeps its thread, so its boundary remains instructional.
 const DISCUSSION_NOTE = "(This message went to every seated agent — treat it as a table discussion. Form your own view before converging; identify the crux and add, challenge, or synthesize rather than paraphrasing. Ground disagreement in evidence, consequences, or tradeoffs, and move the discussion toward a decision without manufacturing conflict. Reply in chat and read files if useful, but do not modify files or run mutating commands this turn. If you want a peer to answer, tag them explicitly — tagging is delivery. The user will tag one agent to implement.)";
+const DISCUSSION_FULL_NOTE = "(This message went to every seated agent. Form your own view, coordinate responsibilities and explicitly tag a peer when requesting their response. The user selected Full access: discussion, review and listener routing do not reduce your configured execution permissions. Any earlier discussion-only read-only instruction does not apply to this turn. Follow the user's requested scope and assigned role; permission to use tools is not an instruction to change unrelated files or duplicate another agent's work.)";
 
 // Pair steps need to distinguish a deliberate per-seat Stop from a provider
 // failure. Ordinary turns keep returning null on Stop; their callers already
@@ -5252,10 +5314,7 @@ function launchUserDispatch(room, userTurn, {
         queueLurkCatchUp(room, a, userTurn.n, throughN);
         return false;
       }
-      // Preserve coalesced lurking for full-access seats. Switching between
-      // full-access work and Plan still requires a fresh session, although
-      // consecutive protected turns now retain and resume their Plan session.
-      if (isolatedProtectedTurn(room, a, { readOnly: true })) {
+      if (deferFullAccessListener(room, a)) {
         const throughN = room.entries.length ? room.entries[room.entries.length - 1].n : userTurn.n;
         queueLurkCatchUp(room, a, userTurn.n, throughN);
         return false;
@@ -7902,12 +7961,40 @@ const server = http.createServer(async (req, res) => {
       return res.end(asset.body);
     }
 
+    // MCP has only an ephemeral, room/seat/turn-scoped capability, never the UI token.
+    if (route === "POST /api/browser/tool") {
+      if (req.headers.origin) return json(res, 403, { error: "Browser page requests are not allowed on the MCP bridge." });
+      const token = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(req.headers.authorization || "")?.[1];
+      sharedBrowser.authorize(token);
+      return json(res, 200, await sharedBrowser.call(token, await readBody(req, 64000)));
+    }
+
     // Everything past this point is the API, and needs the page's token.
     if (!authorized(req, url, route)) {
       return json(res, 403, { error: "forbidden — the Parley API needs the session token from its own page" });
     }
 
     if (serviceStopping) return json(res, 503, { error: "Parley 종료 중입니다." });
+    if (route === "GET /api/browser") {
+      const room = loadRoom(url.searchParams.get("room") || "default");
+      return json(res, 200, sharedBrowser.state(room));
+    }
+    if (route === "POST /api/browser") {
+      const body = await readBody(req);
+      const room = loadRoom(body.room || "default");
+      if (body.action === "open") {
+        if (!sharedBrowser.state(room).connected && browserSetupRequired(seatIds(room).map(seat => providerIdOf(room, seat))) && body.setupApproved !== true) {
+          return json(res, 409, { code: "BROWSER_SETUP_REQUIRED", error: "브라우저 공유에 필요한 설치 및 연결 설정을 확인해주세요." });
+        }
+        await sharedBrowser.open(room, async () => {
+          for (const seat of seatIds(room)) if (providerIdOf(room, seat) === "gemini") await ensureAgyBrowser(room.cfg.agents[seat].command, body.setupApproved === true);
+        });
+      } else if (body.action === "close") await sharedBrowser.close(room);
+      else if (body.action === "manual") sharedBrowser.setManual(room, body.manual);
+      else if (body.action === "focus") await sharedBrowser.focus(room, body.scope);
+      else return json(res, 400, { error: "Unknown browser action" });
+      return json(res, 200, sharedBrowser.state(room));
+    }
     if (route === "GET /api/service/status") {
       return json(res, 200, { ...service.info, version: SERVICE_VERSION,
         busy: [...rooms.values()].some((room) => room.busy.size || room.exchanges > 0 || room.pairActive || queueSize(room)) });
@@ -8049,6 +8136,7 @@ const server = http.createServer(async (req, res) => {
       const { room: name } = await readBody(req);
       const room = loadRoom(name || "default");
       const trashed = deleteRoom(room);
+      await sharedBrowser.close(room);
       return json(res, 200, { ok: true, trash: trashed, rooms: roomsWithModes() });
     }
 
@@ -8635,25 +8723,11 @@ const server = http.createServer(async (req, res) => {
         if (prevMode !== room.cfg.mode && was !== full && now !== full) continue;
         const label = titleCase(id);
         const text = now === full
-          ? `⚠ ${label} Full access enabled — ordinary ${id} turns bypass ordinary permission prompts and checks. Protected discussion, review and listener turns use Plan sessions. Sessions restart when effective permissions change; consecutive turns with the same permissions resume.`
+          ? `⚠ ${label} Full access enabled — all ${id} turns retain the selected permissions for files, commands and browser tools, including discussions, reviews and listeners. Sessions restart only when effective permissions change.`
           : was === full
             ? `🔒 ${label} Full access disabled — ${label} starts a fresh session in ${now} mode.`
             : `${label} permission mode changed to ${now} — ${label} starts a fresh session so it applies cleanly.`;
         appendEntry(room, { kind: "system", author: "system", text });
-      }
-      // Keep the existing coalesced-listener policy. Only a transition between
-      // work and protected context now requires a new native session.
-      for (const id of seatIds(room)) {
-        const full = capsOf(room, id).fullAccessScope;
-        if (!full || !capsOf(room, id).isolateProtectedTurn) continue;
-        const comboNow = nextScopes[id] === full && !!next.agents[id].lurk;
-        const comboBefore = prevScopes[id] === full && prevLurk[id];
-        if (comboNow && !comboBefore) {
-          appendEntry(room, {
-            kind: "system", author: "system",
-            text: `ℹ️ ${titleCase(id)} is lurking with Full access. Listener reactions arrive as coalesced catch-ups in Plan mode. Consecutive protected turns reuse that session; switching between protected turns and full-access work starts a fresh session with room history.`,
-          });
-        }
       }
       // Settings show the new permission the moment it is saved, while the live
       // process is still running under the old one. Saying so is not a nicety:
@@ -8754,8 +8828,9 @@ function killAllChildren() {
   }
 }
 
-function shutdown() {
+async function shutdown() {
   killAllChildren();
+  await Promise.race([sharedBrowser.closeAll(), new Promise(resolve => setTimeout(resolve, 3000))]);
   process.exit(0);
 }
 process.on("SIGINT", shutdown);

@@ -61,6 +61,12 @@ const finalResult = {
   num_turns: resumed ? 2 : 1,
   usage,
 };
+if (prompt.includes('AGYACKONLY')) {
+  const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
+  emit({event:'step_update',step_update:{step_index:1,step_type:'agent_response',text_delta:'확인해볼게.'}});
+  emit({event:'step_update',step_update:{step_index:2,step_type:'tool',tool_name:'call_mcp_tool'}});
+  finalResult.response = '확인해볼게.\n';
+}
 if (prompt.includes("AGYSTREAM")) {
   const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
   emit({ event: "init", conversation_id: conversationId });

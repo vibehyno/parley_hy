@@ -2,6 +2,68 @@
 
 Notable changes per repository version.
 
+## 1.4.28 — 2026-11-02
+
+- Preserve selected Full access for Claude and AGY discussions, reviews and listeners instead of silently forcing Plan. Apply the same policy to files, commands and shared-browser tools.
+- Set Codex's non-interactive approval policy for Full access. Keep permissions and sessions across repeated turns and retire legacy sessions with mismatched permission provenance.
+- Update permission notices, confirmation copy and model instructions to distinguish roles from permissions. Explicit Plan remains restricted.
+- Validate three-provider repeated group turns, permission reduction and browser permission decisions with an isolated server and focused tests.
+- Verify a real AGY Full-access invocation writing through file-edit and shell tools into a temporary sibling directory, then reading both files, with initial/progress/final responses.
+
+## 1.4.27 — 2026-11-02
+
+- Fix AGY headless browser MCP approval denial with per-invocation temporary permissions, restricted to snapshots for discussion, review and Plan turns.
+- Preserve existing deny/ask rules without modifying global settings. Treat a repeated pre-tool acknowledgement as an incomplete turn, not a final answer.
+- Clarify that even short questions need public acknowledgement before tools, followed by observed results or a blocker.
+- Verify actual Claude and AGY CLI invocations on a temporary page: public speech before tools, MCP snapshot reaching the server, and an observed title in the final answer.
+- Verify foreground activation from minimized and covered temporary Chrome windows on Windows.
+
+## 1.4.26 — 2026-11-02
+
+- Activate the native Windows window on shared-screen card clicks, matching the shared Chrome process and tab title and checking the resulting foreground window.
+- Report missing/ambiguous windows or OS activation refusal with a manual-selection hint; run the helper hidden without changing other windows or system settings.
+
+## 1.4.25 — 2026-11-02
+
+- Restore the selected shared-browser Chrome window when minimized before activating its tab; preserve maximized windows.
+
+## 1.4.24 — 2026-11-02
+
+- Place shared-browser open, manual-control and disconnect buttons to the right of the heading on the same line, using 11px text without toggling the section on click.
+- Reorder work-panel sections by dragging headings or pressing Alt+Up/Down, with drop indicators and browser-local order persistence.
+- Preserve section expansion state and keep refresh-button interactions separate from dragging.
+
+## 1.4.23 — 2026-11-02
+
+- Always launch shared browsers in Google Chrome; remove Edge priority and alternative-browser fallbacks.
+- Show a Chrome installation/retry hint on launch failure while retaining separate temporary profiles.
+
+## 1.4.22 — 2026-11-02
+
+- Ask for confirmation only when shared-browser runtime installation or model registration is needed. Set up and open after confirmation; cancel without changes.
+- Open immediately when ready. Enforce confirmation at the server boundary and show errors with a retry button.
+- Cache only pending AGY registrations so removed configuration can be registered again.
+
+## 1.4.21 — 2026-11-02
+
+- Accept empty or missing AGY MCP configuration as uninitialized instead of blocking shared-browser setup.
+- Skip matching registrations, distinguish access and JSON errors, and preserve existing configuration contents.
+- Verify native AGY CLI registration and focused empty/existing/malformed configuration coverage.
+
+## 1.4.20 — 2026-11-02
+
+- Replace custom browser operations with official Playwright MCP tools. Automatically install missing runtime packages on connection and expose preparation/error status.
+- Allow model inspection during manual control while blocking model mutations. Reject stale actions, including actions following a tab-selection change.
+- Display active model/tool duration and per-model last-seen timestamps in the shared-browser panel. Read pages on tool calls, without continuous model feeds.
+- Verify real official MCP navigation, typing/clicking, inspection after user interaction and parallel isolated cookies/storage. Native three-CLI model inference end-to-end verification remains pending.
+
+## 1.4.19 — 2026-11-02
+
+- Add a dedicated room browser and common MCP bridge for Codex/Claude invocation overlays and AGY registration on first connection. Preserve existing browser profiles and CLI configuration entries.
+- Support a shared page with serialized operations and model-private contexts with independent cookies/login. Reject actions using stale snapshots; retain parallel execution across private contexts.
+- Add browser connection, page focus, manual-control and disconnect controls to the work panel. Restrict protected turns to inspection/screenshots and revoke per-turn capabilities on completion or stop.
+- Add Playwright/MCP SDK/Zod runtime dependencies and update setup guidance. Focused automated coverage of transport, isolation, concurrency and permissions; live three-CLI browser verification pending.
+
 ## 1.4.18 — 2026-11-02
 
 - Exclude generated Serena/Python/pytest/mypy/ruff caches from change lists while preserving files, Git settings and Serena configuration entries.

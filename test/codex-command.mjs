@@ -6,7 +6,7 @@ test("fresh Codex calls receive the configured sandbox", () => {
   assert.deepEqual(buildCodexInvocationArgs({
     sandbox: "danger-full-access",
     cwd: "C:\\project",
-  }), ["-c", 'service_tier="default"', "--sandbox", "danger-full-access", "exec", "-C", "C:\\project"]);
+  }), ["-c", 'service_tier="default"', "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "exec", "-C", "C:\\project"]);
 });
 
 test("Codex Fast mode uses the native service tier without changing effort", () => {
@@ -22,7 +22,7 @@ test("resumed Codex calls repeat the configured sandbox", () => {
     sandbox: "danger-full-access",
     sessionRef: "thread-123",
     cwd: "C:\\project",
-  }), ["-c", 'service_tier="default"', "--sandbox", "danger-full-access", "exec", "resume", "thread-123"]);
+  }), ["-c", 'service_tier="default"', "--sandbox", "danger-full-access", "-c", 'approval_policy="never"', "exec", "resume", "thread-123"]);
 });
 
 test("resume keeps disposable input access in the global option section", () => {

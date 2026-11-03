@@ -2,13 +2,13 @@
 
 **Claude Code, Codex and AGY in one local chat room — connect up to three seats and let them hear each other.**
 
-![deps: zero](https://img.shields.io/badge/deps-zero-brightgreen)
+![browser: Playwright MCP](https://img.shields.io/badge/browser-Playwright_MCP-blue)
 ![node: ≥20](https://img.shields.io/badge/node-%E2%89%A520-blue)
 [![license: MIT](https://img.shields.io/badge/license-MIT-informational)](LICENSE)
 
 ## 업데이트 내역
 
-- 최신 버전: **1.4.18**
+- 최신 버전: **1.4.28**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -33,6 +33,32 @@ parley start
 ```
 
 ### 기본 사용법
+
+#### 공유 브라우저
+
+**오른쪽 작업 현황 → 공유 브라우저 → 브라우저 열기**로 별도 창 연결. 다음 모델 호출부터 `parley-browser` 연결의 공식 Playwright MCP `browser_*` 도구 제공.
+
+**공유 화면 카드 클릭**으로 해당 Chrome 탭 표시. 최소화된 창 복원, 최대화 상태 유지. Windows에서 공유 Chrome 프로세스·탭 제목으로 해당 창 식별 후 전면 활성화 및 결과 확인. 차단되거나 창을 구분할 수 없는 경우 직접 선택 안내.
+
+전체 권한 선택 시 Codex·Claude·AGY의 토론·검토·관찰·인계에도 파일·명령·브라우저 실행 권한 유지. 역할에 따른 자동 Plan 전환 제거 및 반복 호출의 세션 유지. Codex 전체 권한은 승인 대기 없이 실행. AGY 공유 브라우저 권한은 호출별 임시 설정으로 전달하며 명시적인 Plan은 조회로 제한. 기존 `deny`·`ask` 규칙 보존, 전역 설정 변경 없음. 도구 사용 전 시작 안내가 완료 결과로 재반환된 경우 실패 처리.
+
+| 요청 | 브라우저 동작 |
+|---|---|
+| “같은 화면을 함께 확인해줘” | 방의 공유 화면·로그인 사용, 화면 조작 순서 관리 |
+| “각자 독립적으로 작업해줘” | 모델별 별도 컨텍스트 사용, 로그인·쿠키 분리 및 병렬 작업 |
+| 직접 조작 | 모델의 새 조작 중지, 화면 확인은 유지. 진행 중인 조작은 종료 가능 |
+| 연결 종료 | 해당 방의 전용 브라우저 종료, 임시 로그인·쿠키 삭제 |
+
+- 필요한 설치·모델 연결 설정이 있을 때만 **브라우저 공유 설정** 확인창 표시. **확인** 후 자동 설정·브라우저 열기, **취소** 시 변경 없음. 준비 완료 환경은 즉시 열기. 실패 시 오류·재시도 버튼 표시
+- Google Chrome 필요. 공유 브라우저는 Chrome으로 실행. 기존 개인 브라우저·프로필 사용 없음. 독립 컨텍스트는 별도 창으로 표시 가능
+- Codex·Claude는 호출별 MCP 설정 연결. AGY는 최초 연결 시 `agy mcp add parley-browser`를 통한 공통 MCP 등록. AGY에 Playwright 별도 설치 불필요. 연결 권한은 현재 방·모델·호출에 한정, 종료 후 폐기
+- AGY의 비어 있는 MCP 설정은 최초 등록 상태로 처리. 기존 연결이 일치하면 재등록 생략, 잘못된 JSON은 원본 유지 및 파일 경로 안내
+- AGY 등록 제거 명령: `agy mcp remove parley-browser`. Parley 외 세션에는 유효한 연결 권한 미제공
+- **대화/읽기 전용 호출:** 화면 확인·스크린샷만 허용. 탐색·클릭·입력은 작업 권한 필요
+- 다른 모델의 조작으로 화면 변경 시 재확인 요구. 같은 서버 데이터 수정까지 격리되는 것은 아니므로 동일 대상 수정은 작업 분담 필요
+- 실제 도구 실행 중 `모델명 · 확인 중 00:03` 또는 `모델명 · 조작 중 00:03` 표시. 종료 후 모델별 마지막 확인·조작 시각 표시. 직접 조작 중에도 모델의 화면 조회 허용
+- 페이지 내용은 요청 시에만 전달. 상시 화면 전송 없음. 브라우저 연결은 서버 재시작 후 다시 열기 필요
+- 검증 범위: 공식 MCP의 실제 브라우저 읽기·입력·클릭, 사용자 조작 후 재조회, 독립 쿠키·저장소 분리 및 병렬 작업 확인. 세 CLI 모델의 실제 추론을 포함한 종단 검증은 미실시
 
 #### 1. 처음 시작하기
 
@@ -152,7 +178,7 @@ parley start
 - 예: `$claude wait` 검색·선택 → `[$claude:wait-what]` 배지 추가. 선택만으로 자동 전송되지 않음
 - 배지는 채팅에서 별도 배경색으로 표시. 전송 시 Claude·AGY는 `/Skill`, Codex는 `$Skill` 형식으로 변환
 - 사용량은 현재 방 모델만 화면 표시 중 5분마다 조회하며 5분간 결과 공유. **새로고침**은 캐시와 관계없이 즉시 재조회
-- 변경사항·하위 에이전트·사용량 섹션을 개별 접기·펼치기 가능. 접힘 상태는 브라우저에 저장. 왼쪽 사용량 메뉴·별도 팝업 제거
+- 공유 브라우저·변경사항·하위 에이전트·사용량 제목을 드래그하여 순서 변경. Alt+↑/↓ 이동 지원. 섹션별 접기·펼치기 및 순서·접힘 상태의 브라우저 저장. 공유 브라우저 제목과 같은 줄 오른쪽에 열기·직접 조작·연결 종료 버튼 배치, 버튼 글자 11px. 왼쪽 사용량 메뉴·별도 팝업 제거
 - ⚡는 실제 Fast 모드 전환이며 추론 강도는 유지. Fast 명령이 없는 AGY에는 버튼 미표시
 - ⚡에 마우스를 올리면 공식 문서 기준 추가 사용량·과금 주의사항 표시
 
@@ -209,6 +235,8 @@ parley start
 
 ### 원본 Parley와의 차이점
 
+- **공유 브라우저 추가:** 사용자 확인 후 공식 Playwright MCP 준비·연결, 방별 새 Chrome 창, 협업 화면 및 독립 로그인·쿠키 격리, 직접 조작 중 화면 조회·모델별 확인 시간 표시, 화면 카드 클릭으로 최소화된 창 복원 및 Windows 창 활성화 결과 확인. AGY 호출별 공유 브라우저 권한과 진행 안내의 완료 답변 오인 방지
+
 | 구분 | 원본 `auspex0/parley` | Parley HY |
 |---|---|---|
 | 방 좌석·역할 | 방당 2좌석, 제공자 기본 이름·아이콘 | 방당 최대 3좌석 추가·제거, 기존 좌석 세션·대화 순서 유지, 제거 확인, 표시 이름·맡은 업무·이모지·색상 설정, `@all` 호출 및 검토 후 제3 모델로 작업 전달 |
@@ -218,7 +246,7 @@ parley start
 | 얼굴 이미지 | 문자·이모지 중심 | 이미지 붙여넣기·파일 선택, 이동·확대 편집 후 기존 아이콘 틀에 맞춘 64×64 얼굴 저장 |
 | 공통 방 메모 | 매 호출에 상시 지시문 반복 | 고정 높이·여러 줄 입력·내부 스크롤, CLI 세션별 최초 1회 전달 및 변경 시 재전달, `/note @호출명 요청`으로 모델 요약 후 자동 저장 |
 | Gemini 계열 연결 | 기존 Gemini CLI 기준 | 현재 Google Antigravity CLI인 `agy` 사용, 한 호출 내 확인·수정·검증 단계별 공개 설명 지침(세션별 변경 시 1회 전달) |
-| 작업 현황 | 별도 패널 없음 | 보관함 오른쪽 아이콘으로 여닫기, 하위 Git 저장소별 변경 파일·자동 생성 캐시 제외·한글 상태·줄 수·변경 묶음 이동·단어 강조 diff·확인된 하위 에이전트·원형 사용량 그래프 및 섹션별 접힘 상태 저장 |
+| 작업 현황 | 별도 패널 없음 | 보관함 오른쪽 아이콘으로 여닫기, 하위 Git 저장소별 변경 파일·자동 생성 캐시 제외·한글 상태·줄 수·변경 묶음 이동·단어 강조 diff·확인된 하위 에이전트·원형 사용량 그래프 및 섹션별 드래그 순서·접힘 상태 저장 |
 | 사용량 자동 조회 | 메뉴 열기·마우스 오버 시 조회 | 화면 표시 중 5분 주기 조회, 서버 캐시·중복 요청 공유 및 수동 새로고침 지원 |
 | 도구 선택 표시 | 일반 문장 안내 | Skill·MCP·Plugin을 짧은 대괄호로 삽입하고 채팅에서 배지 표시 |
 | 화면 언어 | 영어 중심 | 한국어/English 전환, 브라우저별 설정 저장, 한국어 안내·툴팁 존댓말 통일, 권한 승인·저장 및 기존 대화 권한 안내 번역 |
@@ -240,6 +268,7 @@ parley start
 | Fast 사용량 안내 | 별도 문서에서 직접 확인 | ⚡ 툴팁에 공식 문서 기준 Codex 크레딧 배수와 Claude Usage Credits·문맥 재읽기 주의 표시 |
 | 알림 설정 | 간단한 체크박스 설명 | Windows 알림의 발생 조건과 브라우저별 저장 범위를 줄바꿈이 깨지지 않는 구조로 표시 |
 | 전체 권한 안내 | 작업 화면 위에 계속 표시 | 방별 최초 확인 후 `×`로 닫아 영구 숨김 |
+| 전체 권한 실행 | 토론·검토 호출에서 Plan으로 자동 제한 | 선택한 전체 권한을 모든 호출 경로의 파일·명령·브라우저에 유지, 역할 변경만으로 세션 재시작 없음 |
 | 업데이트 확인 | 터미널에서 직접 `git pull` | 새 버전이 있을 때만 헤더에 표시하고 신규 기능 미리보기·선택형 자동 설치 지원 |
 | Codex 작업 권한 | 새 세션의 sandbox 설정에 의존 | 새 호출과 이어지는 세션 호출마다 현재 방의 sandbox 권한을 명시하여 풀 액세스가 읽기 전용으로 돌아가는 문제 방지 |
 | 도구 목록 조회 | CLI 목록 명령에 따른 대기 가능 | 세 제공자 모두 로컬 설정·플러그인 메타데이터에서 조회. 일반 조회·새로고침 시 연결 검사 생략 |
@@ -354,7 +383,7 @@ The command remains `parley`. Do not use `npx parley-room` or `npm install -g pa
 
 The UI opens automatically at a loopback URL, normally `http://127.0.0.1:4141`. Flags: `--port N` (`--port 0` picks any free port), `--root DIR`, `--no-open`, `--version`, `--help`.
 
-There are no runtime dependencies. `npm start` runs directly from the checkout without linking the command globally.
+Run `npm install` after cloning. Browser sharing uses the official Playwright MCP and MCP SDK; `npm start` runs from the checkout without linking the command globally. Google Chrome must be installed locally; shared browsers always launch Chrome.
 
 Two notes at the door:
 
@@ -408,7 +437,7 @@ Each agent has its own **lane**: tag them back-to-back and they genuinely work a
 
 ## Why you can trust it
 
-**A small local application.** One Node entrypoint ([parley.mjs](parley.mjs)), focused [runtime modules](lib/), and plain [HTML](ui/index.html), [CSS](ui/styles.css), and [JavaScript](ui/app.js). Zero runtime dependencies, no database and no build step. Browser-testing tools are development dependencies.
+**A small local application.** One Node entrypoint ([parley.mjs](parley.mjs)), focused [runtime modules](lib/), and plain [HTML](ui/index.html), [CSS](ui/styles.css), and [JavaScript](ui/app.js). Browser sharing uses the official Playwright MCP and MCP SDK, installing missing runtime packages only after setup confirmation. The panel shows actual tool activity and last-seen timestamps; manual control blocks model actions while allowing inspection. No database or build step. Dedicated room browsers use temporary contexts; shared pages serialize actions and reject stale snapshots, while private contexts isolate model cookies and logins. This does not isolate changes to the website's server data.
 
 - Binds **`127.0.0.1` only**, with a per-process token embedded in the served page and origin checks, so no random web page can drive your agents. Like any loopback app, that's not a boundary against another process already running as you.
 - **Conservative by default.** Talk rooms run Claude with its normal print-mode permissions and Codex in the `read-only` sandbox. Work mode loosens that only for the agent you name; Full access for either provider is host-level trust and sits behind a deliberate confirmation.

@@ -66,6 +66,73 @@
       status: child.status === 'running' && !busy.some((run) => run.agent === child.seat && run.runId === child.runId) ? 'observed' : child.status,
     }));
   }
+  function enableSectionOrder(container, t) {
+    const key = 'parley.workSectionOrder';
+    const sections = [...container.children].filter(node => node.matches('.work-section[data-section]'));
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || '[]');
+      if (Array.isArray(saved)) {
+        const ordered = [...new Set(saved)].map(id => sections.find(section => section.dataset.section === id)).filter(Boolean);
+        [...ordered, ...sections.filter(section => !ordered.includes(section))].forEach(section => container.append(section));
+      }
+    } catch {}
+    let dragging = null, target = null, after = false, suppressClick = false;
+    const save = () => {
+      try { localStorage.setItem(key, JSON.stringify([...container.children].filter(node => sections.includes(node)).map(node => node.dataset.section))); } catch {}
+    };
+    const clearTarget = () => {
+      sections.forEach(section => section.classList.remove('drop-before', 'drop-after'));
+      target = null;
+    };
+    const finish = () => {
+      dragging?.classList.remove('section-dragging');
+      dragging = null; clearTarget();
+      setTimeout(() => { suppressClick = false; }, 0);
+    };
+    sections.forEach(section => {
+      const summary = section.querySelector(':scope > summary');
+      let allowDrag = true;
+      summary.draggable = true;
+      summary.dataset.i18nTitle = 'workPanel.reorderHint';
+      summary.title = t('workPanel.reorderHint');
+      summary.addEventListener('pointerdown', event => { allowDrag = !event.target.closest('button'); });
+      summary.addEventListener('dragstart', event => {
+        if (!allowDrag || event.target.closest('button')) { event.preventDefault(); return; }
+        dragging = section; suppressClick = true;
+        section.classList.add('section-dragging');
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', section.dataset.section);
+      });
+      summary.addEventListener('dragend', finish);
+      summary.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } });
+      summary.addEventListener('keydown', event => {
+        if (event.target !== summary || !event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        const visible = [...container.children].filter(node => sections.includes(node) && !node.hidden);
+        const next = visible[visible.indexOf(section) + (event.key === 'ArrowUp' ? -1 : 1)];
+        if (!next) return;
+        container.insertBefore(section, event.key === 'ArrowUp' ? next : next.nextSibling);
+        save(); summary.focus({ preventScroll: true });
+      });
+    });
+    container.addEventListener('dragover', event => {
+      if (!dragging) return;
+      const candidate = event.target.closest('.work-section[data-section]');
+      if (!candidate || candidate.parentElement !== container || candidate === dragging) { clearTarget(); return; }
+      event.preventDefault(); event.dataTransfer.dropEffect = 'move';
+      clearTarget(); target = candidate;
+      const box = target.getBoundingClientRect();
+      after = event.clientY > box.top + box.height / 2;
+      target.classList.add(after ? 'drop-after' : 'drop-before');
+    });
+    container.addEventListener('dragleave', event => { if (!container.contains(event.relatedTarget)) clearTarget(); });
+    container.addEventListener('drop', event => {
+      if (!dragging || !target) return;
+      event.preventDefault();
+      container.insertBefore(dragging, after ? target.nextSibling : target);
+      save(); finish();
+    });
+  }
   function create({ state, api, t, esc, seatName, loadUsage, usageRows, usageAgo, checkedAt, openFile }) {
     const $ = (id) => document.getElementById(id);
     const panel = $('workPanel');
@@ -220,6 +287,7 @@
       renderFiles(); renderAgents(); renderUsage(); refresh();
       if (!document.hidden && state.summary) loadUsage();
     }
+    enableSectionOrder($('workOverview'), t);
     panel.querySelectorAll('[data-section]').forEach((section) => {
       const key = `parley.workSection.${section.dataset.section}`;
       try { const saved = localStorage.getItem(key); if (saved !== null) section.open = saved === 'open'; } catch {}

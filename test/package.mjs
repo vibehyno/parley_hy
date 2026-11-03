@@ -21,7 +21,8 @@ try {
   const unpacked = spawnSync("tar", ["-xzf", manifest.filename], { cwd: temporary, encoding: "utf8", windowsHide: true });
   assert.equal(unpacked.status, 0, unpacked.stderr);
   const cfg = JSON.parse(fs.readFileSync(path.join(temporary, "package", "package.json"), "utf8"));
-  assert.deepEqual(cfg.dependencies || {}, {}, "zero runtime dependencies");
+  for (const dependency of ["@playwright/mcp", "@modelcontextprotocol/sdk"]) assert.ok(cfg.dependencies?.[dependency], `declared browser runtime dependency: ${dependency}`);
+  for (const file of ["lib/shared-browser.mjs", "lib/shared-browser-mcp.mjs", "lib/shared-browser-config.mjs", "lib/browser-window.mjs", "lib/focus-browser-window.ps1", "ui/shared-browser.js"]) assert.ok(paths.has(file), `packed browser module: ${file}`);
   server = spawn(process.execPath, [path.join(temporary, "package", "parley.mjs"), "--port", "0", "--no-open", "--root", path.join(temporary, "rooms")], {
     cwd: temporary, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
   });
@@ -38,7 +39,7 @@ try {
     server.once("error", (error) => { clearTimeout(timer); reject(error); });
   });
   const html = await fetch(base).then((response) => response.text());
-  for (const file of ["styles.css", "i18n.js", "skill-autocomplete.js", "composer-adjustment.js", "app.js"]) {
+  for (const file of ["styles.css", "i18n.js", "skill-autocomplete.js", "composer-adjustment.js", "shared-browser.js", "app.js"]) {
     const ref = new RegExp(`/ui/${file.replace(".", "\\.")}\\?v=[a-f0-9]+`).exec(html)?.[0];
     assert.ok(ref, `versioned ${file} reference`);
     const asset = await fetch(base + ref);

@@ -198,6 +198,17 @@
   <aside id="workPanel" aria-label="Work overview" data-i18n-aria-label="workPanel.title">
     <div class="work-panel-head"><strong data-i18n="workPanel.title">Work overview</strong><button id="workClose" type="button" data-i18n-title="common.close" aria-label="Close" data-i18n-aria-label="common.close">×</button></div>
     <div id="workOverview">
+      <details class="work-section" data-section="browser" open>
+        <summary><span data-i18n="browser.title">Shared browser</span>
+        <span id="browserControls" class="shared-browser-controls">
+          <button id="browserOpen" type="button" data-i18n="browser.open" data-i18n-title="browser.openHelp">Open browser</button>
+          <button id="browserRetry" type="button" hidden data-i18n="browser.retry">Retry</button>
+          <button id="browserManual" type="button" hidden data-i18n-title="browser.manualHelp"></button>
+          <button id="browserDisconnect" type="button" hidden data-i18n="browser.close" data-i18n-title="browser.closeHelp">Disconnect</button>
+        </span></summary>
+        <small id="browserStatus" aria-live="polite"></small>
+        <div id="browserTabs"></div><p id="browserError" role="alert"></p>
+      </details>
       <details class="work-section" data-section="changes" open><summary><span data-i18n="workPanel.changes">Changes</span><button id="workRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh" data-i18n-aria-label="common.refresh">↻</button></summary><div id="workProjects"></div></details>
       <details class="work-section" data-section="agents" id="workAgentSection" hidden open><summary data-i18n="workPanel.agents">Subagents</summary><div id="workAgents"></div></details>
       <details class="work-section" data-section="usage" open><summary><span data-i18n="sidebar.usage">Usage</span><button id="workUsageRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh usage" data-i18n-aria-label="common.refresh">↻</button></summary><small id="workUsageTime"></small><div id="workUsage"></div></details>
@@ -326,6 +337,7 @@
 <script src="/ui/composer-adjustment.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/seat-errors.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/work-panel.js?v=__PARLEY_ASSET_VERSION__"></script>
+<script src="/ui/shared-browser.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
 </body>
 </html>

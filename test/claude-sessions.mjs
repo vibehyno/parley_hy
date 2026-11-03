@@ -34,12 +34,12 @@ try {
   assert.equal(arg(argv, "--resume"), work);
 
   argv = await send("default", "both");
-  assert.equal(arg(argv, "--permission-mode"), "plan");
-  assert(!argv.includes("--resume"), "Never resume the full-access session in Plan");
-  assert(argv.includes("--append-system-prompt"));
+  assert.equal(arg(argv, "--permission-mode"), "bypassPermissions");
+  assert.equal(arg(argv, "--resume"), work, "Full access remains configured during discussions");
+  assert(!argv.includes("--append-system-prompt"));
   const plan = state("default").sessionRef;
-  assert(plan && plan !== work);
-  assert.equal(state("default").permissionScope, "plan");
+  assert.equal(plan, work);
+  assert.equal(state("default").permissionScope, "bypassPermissions");
   argv = await send("default", "both");
   assert.equal(arg(argv, "--resume"), plan);
   assert(!argv.includes("--append-system-prompt"), "No repeated fresh-session history briefing");
@@ -47,8 +47,21 @@ try {
   // Load a copy of saved room data through the startup migration path.
   fs.cpSync(path.join(server.root, "default"), path.join(server.root, "reloaded"), { recursive: true });
   argv = await send("reloaded", "both");
-  assert.equal(arg(argv, "--resume"), plan, "Plan session survives room reload");
-  assert.equal(state("reloaded").permissionScope, "plan");
+  assert.equal(arg(argv, "--resume"), plan, "Full-access session survives room reload");
+  assert.equal(state("reloaded").permissionScope, "bypassPermissions");
+
+  // Old releases saved a Plan session even while room settings said Full access.
+  fs.cpSync(path.join(server.root, "default"), path.join(server.root, "legacy-plan"), { recursive: true });
+  const legacyStateFile=path.join(server.root,"legacy-plan","state.json");
+  const legacyState=JSON.parse(fs.readFileSync(legacyStateFile,"utf8"));
+  legacyState.agents.claude.permissionScope="plan";
+  legacyState.agents.claude.permissionConfigScope="bypassPermissions";
+  fs.writeFileSync(legacyStateFile,JSON.stringify(legacyState));
+  await server.room("legacy-plan");
+  assert.equal(state("legacy-plan").sessionRef,null,"Legacy Plan session is retired on load");
+  argv=await send("legacy-plan","both");
+  assert.equal(arg(argv,"--permission-mode"),"bypassPermissions");
+  assert(!argv.includes("--resume"));
 
   fs.cpSync(path.join(server.root, "default"), path.join(server.root, "offline-change"), { recursive: true });
   const configFile = path.join(server.root, "offline-change", "room.json");
@@ -63,18 +76,18 @@ try {
 
   argv = await send("default", "claude");
   assert.equal(arg(argv, "--permission-mode"), "bypassPermissions");
-  assert(!argv.includes("--resume"));
+  assert.equal(arg(argv, "--resume"), work);
   const nextWork = state("default").sessionRef;
   argv = await send("default", "claude");
   assert.equal(arg(argv, "--resume"), nextWork);
-  assert.notEqual(nextWork, work);
+  assert.equal(nextWork, work);
 
   await send("default", "both");
   const beforeFailure = state("default").sessionRef;
   await server.api("POST", "/api/config", { room: "default", config: { hopBudget: 4 } });
   argv = await send("default", "both", "MISSINGSESSION ARGJSON");
   assert(!argv.includes("--resume"), "Missing native session is recovered fresh");
-  assert.equal(arg(argv, "--permission-mode"), "plan");
+  assert.equal(arg(argv, "--permission-mode"), "bypassPermissions");
   const recovered = state("default").sessionRef;
   assert(recovered);
   assert.notEqual(recovered, beforeFailure);
@@ -117,11 +130,10 @@ try {
   const debateStarts = traces().slice(beforeDebate).filter((e) => e.event === "start" && e.seat === "claude");
   assert(debateStarts.length >= 2, "Exercise automatic turns inside one debate");
   assert(debateStarts.every((e) => e.briefing === ""), "No fresh briefing on automatic debate turns");
-  assert.equal(state("default").sessionRef, newPlan, "Entire debate retains the Plan session");
+  assert.equal(state("default").sessionRef, newPlan, "Entire debate retains the Full-access session");
 
   // A seat without Full access: Plan is only a flag on the same native session,
-  // so alternating discussion and work turns must never reset it. Only a seat
-  // whose bypass would defeat Plan keeps a separate Plan session (above).
+  // so alternating discussion and work turns must never reset it.
   assert.equal((await server.api("POST", "/api/rooms", { name: "ordinary" })).status, 200);
   await server.configure("ordinary", { mode: "work", accounting: "automatic", hopBudget: 0 });
   argv = await send("ordinary", "claude");

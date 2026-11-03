@@ -33,6 +33,16 @@ test("no guessing or rewriting of result text when structured final step is abse
   assert.equal(stream.finalText("authoritative final"), "authoritative final");
 });
 
+test('pre-tool acknowledgement is never recycled as a final answer after a denied tool', () => {
+  const stream = createAgyStream();
+  stream.accept({event:'step_update',step_update:{step_index:1,step_type:'agent_response',text_delta:'지금 화면 확인해볼게.'}});
+  stream.accept({event:'step_update',step_update:{step_index:2,step_type:'tool',tool_name:'call_mcp_tool'}});
+  assert.equal(stream.finalText('지금 화면 확인해볼게.\n'), '');
+  assert.equal(stream.finalText('도구 승인이 거절돼 화면을 확인하지 못했어.'), '도구 승인이 거절돼 화면을 확인하지 못했어.');
+  stream.accept({event:'step_update',step_update:{step_index:3,step_type:'agent_response',text_delta:'화면 제목은 사과야.'}});
+  assert.equal(stream.finalText('지금 화면 확인해볼게.\n화면 제목은 사과야.'), '화면 제목은 사과야.');
+});
+
 test("real AGY tool metadata shows file and command details once without leaking other payloads", () => {
   const activities = [];
   const stream = createAgyStream({ onActivity: label => activities.push(label) });

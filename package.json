@@ -1,6 +1,6 @@
 {
   "name": "parley-room",
-  "version": "1.4.18",
+  "version": "1.4.28",
   "private": false,
   "description": "Parley HY - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
@@ -56,5 +56,9 @@
   ],
   "devDependencies": {
     "@playwright/test": "^1.62.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@playwright/mcp": "0.0.84"
   }
 }

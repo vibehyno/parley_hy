@@ -1073,6 +1073,11 @@
 #workOverview > .work-section { padding:12px 0; border-bottom:1px solid var(--border2); }
 #workOverview > .work-section[hidden] { display:none; }
 #workOverview > .work-section > summary { color:var(--text-dim); font-size:13px; }
+#workOverview > .work-section > summary[draggable] { cursor:grab; }
+#workOverview > .work-section.section-dragging { opacity:.45; }
+#workOverview > .work-section.section-dragging > summary { cursor:grabbing; }
+#workOverview > .work-section.drop-before { box-shadow:inset 0 2px var(--user); }
+#workOverview > .work-section.drop-after { box-shadow:inset 0 -2px var(--user); }
 #workOverview > .work-section > summary > button { float:right; padding:0 6px; border-radius:5px; }
 #workOverview summary small { float:right; color:var(--text-faint); font-weight:400; }
 .work-repository { margin:3px 0 8px 10px; padding-left:10px; border-left:1px solid var(--border); }
@@ -1136,3 +1141,13 @@
 
 body:has(#workPanel:not([hidden])) #main > header { flex-wrap:wrap; row-gap:6px; }
 body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-diff:not([hidden])) #composer { width:calc(100% - 32px); }
+/* Shared browser controls stay inside the work panel at every width. */
+.shared-browser-controls { float: right; display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.shared-browser-controls button { padding: 2px 4px; font-family: inherit; font-size: 11px; line-height: 1.4; white-space: nowrap; }
+.shared-browser-tab { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-width: 0; margin-top: 8px; padding: 9px; text-align: left; color: inherit; background: transparent; border: 1px solid var(--border); border-radius: 8px; }
+.shared-browser-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; opacity: .75; }
+#browserStatus { opacity: .75; }
+.browser-active { color: var(--user); font-weight: 600; }
+.browser-seen { opacity: .8; }
+#browserError:empty { display: none; }
+#browserError { font-size: 12px; overflow-wrap: anywhere; color: #e56a66; }
