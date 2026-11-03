@@ -8,7 +8,7 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.5.0**
+- 최신 버전: **1.5.1**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -23,7 +23,7 @@
 
 ## 빠른 시작 (Windows)
 
-필수 준비: **Node.js 20 이상**과 사용할 CLI 2개 이상 설치 및 로그인. 지원 명령은 `codex`, `claude`, `agy`이며 API 키 대신 각 CLI의 기존 구독 로그인을 사용함.
+필수 준비: **Node.js 20 이상**. `setupMoa.cmd`에서 Codex·Claude·AGY 최신 CLI 설치 후 사용할 계정에 각각 로그인. 지원 명령은 `codex`, `claude`, `agy`이며 API 키 대신 각 CLI의 기존 구독 로그인을 사용함.
 
 ```cmd
 git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git moa
@@ -31,7 +31,7 @@ cd moa
 setupMoa.cmd
 ```
 
-소스 다운로드·압축 해제 후 프로젝트 폴더에서 **CMD**를 열고 `setupMoa.cmd` 실행. 최초 설치 시 전역 `moa` 명령과 Windows 사용자 PATH 자동 등록. PowerShell에서는 `.\setupMoa.cmd` 사용. `npm.cmd run setup`으로도 동일한 설치 가능.
+소스 다운로드·압축 해제 후 프로젝트 폴더에서 **CMD**를 열고 `setupMoa.cmd` 실행. 설치 시 Codex·Claude는 npm `@latest`, AGY는 Google 공식 설치기로 설치·업데이트 후 전역 `moa` 명령과 Windows 사용자 PATH 자동 등록. 설치 실패 시 중단 및 오류 표시. CLI 로그인은 별도 진행. PowerShell에서는 `.\setupMoa.cmd` 사용. `npm.cmd run setup`으로도 동일한 설치 가능.
 
 설치 후 **새 터미널**을 열고 원하는 폴더에서 실행:
 
@@ -325,6 +325,7 @@ moa start
 | 검토 후 마무리 | 검토 동의 시 침묵 또는 반복 전달 | 요청 모델의 사용자 대상 결과 보고 지침 및 보고의 자동 재전달 방지 |
 | 운영 방식 | 범용 다중 에이전트 대화 | Codex 주도 + Claude/AGY 검토 방식 가이드 제공 |
 | 공개 정보 보호 | 원본 기본 동작 | 도구 설명의 명령·URL·Windows/POSIX 로컬 경로 마스킹 강화 |
+| CLI 설치 | 개별 설치 | setupMoa.cmd에서 Codex·Claude npm 최신 버전 및 AGY 공식 설치기 실행, 로그인 별도 |
 | 실행·종료 관리 | 터미널 실행과 Ctrl+C 종료 | 설치 시 전역 명령·Windows 사용자 PATH 등록, start·stop·restart·status로 관리, 중복 실행·작업 중 종료 방지 |
 | 브랜드·문서 | Parley | MOA 이름과 한국어 설치·사용·업데이트 가이드, 용도별 기본 사용법과 접이식 상세 안내 |
 
@@ -418,7 +419,7 @@ Whether it speaks is the model's own judgment — there is no keyword trigger. A
 
 ## Get started (English)
 
-You need **Node.js ≥ 20** and any two supported official CLIs, installed and authenticated: `claude` (Claude Code), `codex` (OpenAI Codex), or `agy` (Google Antigravity). Parley shells out to them under your existing subscription logins.
+You need **Node.js ≥ 20**. Run `setupMoa.cmd` (or `npm run setup`) to install/update all three CLIs: Codex and Claude through npm `@latest`, AGY through its official native installer. Then authenticate the CLIs you use: `claude` (Claude Code), `codex` (OpenAI Codex), or `agy` (Google Antigravity). Parley shells out to them under your existing subscription logins.
 
 MOA is not published as a separate npm package. Install this fork from source so the `moa` command points to this repository:
 
@@ -512,3 +513,5 @@ Each agent has its own **lane**: tag them back-to-back and they genuinely work a
 > Parley is a personal, local tool. Use only accounts and CLI access you're authorized to use, and follow the providers' current terms. Do not share credentials or resell access. A hosted multi-user service is outside its threat model.
 
 MIT.
+
+설치 출처: [Claude Code](https://support.claude.com/en/articles/14552382-your-first-day-in-claude-code), [AGY 공식 설치](https://antigravity.google/docs/getting-started?tab=cli). AGY는 공식 npm 패키지 대신 네이티브 설치기 사용.

@@ -1,6 +1,6 @@
 {
   "name": "moa-room",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": false,
   "description": "MOA - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",

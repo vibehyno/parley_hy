@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.1 — 2026-11-03
+
+- Install/update Codex and Claude via npm latest and AGY via its official native installer during setup.
+- Require Node.js 20+ and stop on installation failures; account login remains manual.
+- Update installation instructions and the upstream comparison.
+
 ## 1.5.0 — 2026-11-03
 
 - Rebrand the product as MOA with the moa command and setupMoa.cmd installer.
