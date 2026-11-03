@@ -91,28 +91,38 @@
     };
     sections.forEach(section => {
       const summary = section.querySelector(':scope > summary');
-      let allowDrag = true;
-      summary.draggable = true;
-      summary.dataset.i18nTitle = 'workPanel.reorderHint';
-      summary.title = t('workPanel.reorderHint');
-      summary.addEventListener('pointerdown', event => { allowDrag = !event.target.closest('button'); });
-      summary.addEventListener('dragstart', event => {
-        if (!allowDrag || event.target.closest('button')) { event.preventDefault(); return; }
+      summary.draggable = false;
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'work-section-handle';
+      handle.textContent = '⠿';
+      handle.draggable = true;
+      handle.dataset.i18nTitle = 'workPanel.reorderHint';
+      handle.dataset.i18nAriaLabel = 'workPanel.reorderHint';
+      handle.title = t('workPanel.reorderHint');
+      handle.setAttribute('aria-label', t('workPanel.reorderHint'));
+      summary.append(handle);
+      handle.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); });
+      handle.addEventListener('dragstart', event => {
+        event.stopPropagation();
         dragging = section; suppressClick = true;
         section.classList.add('section-dragging');
         event.dataTransfer.effectAllowed = 'move';
         event.dataTransfer.setData('text/plain', section.dataset.section);
       });
-      summary.addEventListener('dragend', finish);
-      summary.addEventListener('click', event => { if (suppressClick) { event.preventDefault(); event.stopPropagation(); } });
+      handle.addEventListener('dragend', finish);
+      summary.addEventListener('click', event => {
+        if (event.target.closest('button')) event.preventDefault();
+        if (suppressClick) { event.preventDefault(); event.stopPropagation(); }
+      });
       summary.addEventListener('keydown', event => {
-        if (event.target !== summary || !event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        if (![summary, handle].includes(event.target) || !event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
         event.preventDefault();
         const visible = [...container.children].filter(node => sections.includes(node) && !node.hidden);
         const next = visible[visible.indexOf(section) + (event.key === 'ArrowUp' ? -1 : 1)];
         if (!next) return;
         container.insertBefore(section, event.key === 'ArrowUp' ? next : next.nextSibling);
-        save(); summary.focus({ preventScroll: true });
+        save(); event.target.focus({ preventScroll: true });
       });
     });
     container.addEventListener('dragover', event => {

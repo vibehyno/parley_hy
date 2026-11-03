@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.29 — 2026-11-03
+
+- Separate section toggles, action buttons and dedicated reorder handles in the work panel. Only handles initiate dragging.
+- Enlarge button hit areas and distinguish pointer/grab cursors. Prevent action buttons from toggling sections and retain keyboard reordering.
+
 ## 1.4.28 — 2026-11-02
 
 - Preserve selected Full access for Claude and AGY discussions, reviews and listeners instead of silently forcing Plan. Apply the same policy to files, commands and shared-browser tools.
