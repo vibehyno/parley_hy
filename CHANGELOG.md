@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.41 — 2026-11-03
+
+- Select providers directly from each seat header. Confirm existing-seat replacement and reset execution options while retaining its name, role and persona.
+- Reorder cards with a drag handle or arrow buttons; save the order without resetting retained sessions.
+
 ## 1.4.40 — 2026-11-03
 
 - Limit new, renamed and restored room names to 20 characters while preserving access to existing longer names. Keep sidebar names on one line with ellipsis.

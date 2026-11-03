@@ -2303,7 +2303,7 @@ function applySummary(s) {
   for (const a of s.seats) {
     const pill = $("pill_" + a);
     if (!pill) continue;
-    const ag = s.agents[a];
+    const ag = item.existing ? s.agents[a] : null;
     let seatError = window.ParleySeatErrors.latestSeatError(state.entries, a, s.resolvedErrors, ag.command, state.receipts);
     if (seatErrorDismissals.has(state.room, a, seatError)) seatError = null;
     const errorBox = pill.querySelector(".seat-error");
@@ -4698,6 +4698,23 @@ $("seatCards").addEventListener("input", (e) => {
 });
 $("seatCards").addEventListener("change", (e) => {
   if (e.target.dataset.f === "model") syncAgyEffort(e.target.dataset.seat);
+  const id = e.target.dataset.providerSeat;
+  if (!id) return;
+  const item = settingsSeatDraft?.find(item => item.id === id), provider = e.target.value;
+  if (!item || item.provider === provider || !state.providers[provider]) return;
+  if (item.existing && !confirm(t("settings.changeProviderConfirm"))) { e.target.value=item.provider; return; }
+  captureSeatDraftValues();
+  const wasDefault = $("s_default").value === id;
+  const cfg = newSeatConfig(provider);
+  for (const key of ["displayName", "role", "persona", "avatar", "avatarImage"]) cfg[key] = item.cfg[key];
+  cfg.mentionAlias = item.cfg.mentionAlias === id ? null : item.cfg.mentionAlias;
+  item.id = nextSeatId(provider);
+  item.provider = provider;
+  item.cfg = cfg;
+  item.existing = false;
+  renderSeatCards(settingsContext || state.summary);
+  refreshDefaultSeatOptions(wasDefault ? item.id : undefined);
+
 });
 
 function syncAgyEffort(seat) {
@@ -4804,7 +4821,7 @@ function renderSeatCards(s) {
     existing: true,
   }));
   $("overlay").classList.toggle("three-seats", draft.length > 2);
-  $("seatCards").innerHTML = draft.map((item) => {
+  $("seatCards").innerHTML = draft.map((item, index) => {
     const a = item.id;
     const providerMeta = state.providers[item.provider] || {};
     const p = item.existing ? { ...providerMeta, ...(s.seatInfo?.[a] || {}) } : providerMeta;
@@ -4842,10 +4859,11 @@ function renderSeatCards(s) {
     const shownName = item.cfg.displayName || p.displayName || p.label || titleCaseSeat(a);
     return `<div class="mgroup" data-seat-card="${esc(a)}"><div class="seat-card-head"><h3>` +
       `<span class="seat-face" style="background:${esc(color)}">${avatarPreview}</span>` +
-      `<span class="agc" style="color:${esc(color)}">${esc(shownName)}</span> · ${esc(p.sub || p.label || item.provider)}` +
+      `<span class="agc" style="color:${esc(color)}">${esc(shownName)}</span>` +
+      `<select class="seat-provider-select" data-provider-seat="${esc(a)}" aria-label="${esc(t("settings.addSeatProvider"))}">${Object.entries(state.providers).map(([id, meta]) => `<option value="${esc(id)}" ${id === item.provider ? "selected" : ""}>${esc(meta.sub || meta.label || id)}</option>`).join("")}</select>` +
       `<small>@${esc(item.cfg.mentionAlias || a)} · ${esc(tr("settings.stableMention", "compatible: @{id}", { id: a }))}</small></h3>` +
       (removable ? `<button type="button" class="seat-remove" data-remove-seat="${esc(a)}" title="${esc(tr("settings.removeSeat", "Remove seat"))}" aria-label="${esc(tr("settings.removeSeat", "Remove seat"))}">✕</button>` : "") +
-      `</div>${f}<div class="sess">${sess}</div></div>`;
+      `</div><div class="seat-order"><span draggable="true" data-drag-seat="${esc(a)}" title="${esc(t("settings.dragSeat"))}">⠿</span><button type="button" data-move-seat="${esc(a)}" data-step="-1" ${index === 0 ? "disabled" : ""} aria-label="${esc(t("settings.moveLeft"))}" title="${esc(t("settings.moveLeft"))}">←</button><button type="button" data-move-seat="${esc(a)}" data-step="1" ${index === draft.length - 1 ? "disabled" : ""} aria-label="${esc(t("settings.moveRight"))}" title="${esc(t("settings.moveRight"))}">→</button></div>${f}<div class="sess">${sess}</div></div>`;
   }).join("");
   for (const item of draft) {
     const p = state.providers[item.provider] || {};
@@ -5841,3 +5859,38 @@ const sharedBrowserPanel = window.ParleySharedBrowser.create({ state, api, t, es
 openAvailableRoom(new URLSearchParams(location.search).get("room")).catch((e) => toast(e.message, true));
 checkForUpdate();
 input.focus();
+
+function moveSeatCard(id, targetIndex) {
+  const from = settingsSeatDraft?.findIndex(item => item.id === id);
+  if (from == null || from < 0 || targetIndex < 0 || targetIndex >= settingsSeatDraft.length || from === targetIndex) return;
+  captureSeatDraftValues();
+  const [item] = settingsSeatDraft.splice(from, 1);
+  settingsSeatDraft.splice(targetIndex, 0, item);
+  renderSeatCards(settingsContext || state.summary);
+  refreshDefaultSeatOptions();
+}
+$("seatCards").addEventListener("click", event => {
+  const button = event.target.closest("[data-move-seat]");
+  if (!button) return;
+  const index = settingsSeatDraft.findIndex(item => item.id === button.dataset.moveSeat);
+  moveSeatCard(button.dataset.moveSeat, index + Number(button.dataset.step));
+});
+let draggedSeatId = null;
+$("seatCards").addEventListener("dragstart", event => {
+  const handle = event.target.closest("[data-drag-seat]");
+  if (!handle) return;
+  draggedSeatId = handle.dataset.dragSeat;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", draggedSeatId);
+});
+$("seatCards").addEventListener("dragover", event => {
+  if (draggedSeatId && event.target.closest("[data-seat-card]")) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; }
+});
+$("seatCards").addEventListener("drop", event => {
+  const card = event.target.closest("[data-seat-card]");
+  if (!draggedSeatId || !card) return;
+  event.preventDefault();
+  moveSeatCard(draggedSeatId, settingsSeatDraft.findIndex(item => item.id === card.dataset.seatCard));
+  draggedSeatId = null;
+});
+$("seatCards").addEventListener("dragend", () => { draggedSeatId = null; });

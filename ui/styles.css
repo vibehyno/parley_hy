@@ -1207,3 +1207,11 @@ body.no-room .side-foot > :not(#appSettingsBtn):not(#emptyArchivesBtn) { display
 
 #emptyArchivesBtn { display:none; }
 body.no-room #emptyArchivesBtn { display:block; }
+
+.seat-provider-select { display:block; width:100%; margin-top:8px; font:inherit; }
+.seat-card-head h3 { flex:1; }
+.seat-order { display:flex; justify-content:flex-end; gap:8px; margin-bottom:12px; }
+.seat-order [draggable] { cursor:grab; padding:4px 8px; }
+.seat-order [draggable]:active { cursor:grabbing; }
+.seat-order button { cursor:pointer; padding:4px 8px; }
+.seat-order button:disabled { opacity:.3; cursor:default; }

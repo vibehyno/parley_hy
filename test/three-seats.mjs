@@ -151,3 +151,22 @@ test("three-seat UI uses @all and explains Extra CLI args as options, not prompt
   assert.match(app, /settings\.removeSeatConfirm/);
   assert.match(app, /mode\.sessionResetConfirm/);
 });
+
+test("seat reorder preserves sessions and provider replacement preserves the other seat", async () => {
+ const server=await isolatedServer();
+ try {
+  await server.configure("default",{hopBudget:0});
+  await server.api("POST","/api/message",{room:"default",text:"@codex SAY:ORDER",target:"auto"});
+  const before=await settle(server);
+  const ref=before.room.agents.codex.sessionRef;
+  const saved=await server.api("POST","/api/config",{room:"default",seats:[{id:"codex",provider:"codex"},{id:"claude",provider:"claude"}],config:{}});
+  assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.deepEqual(saved.data.room.seats,["codex","claude"]);
+  assert.equal(saved.data.room.agents.codex.sessionRef,ref);
+  const changed=await server.api("POST","/api/config",{room:"default",seats:[{id:"codex",provider:"codex"},{id:"gemini",provider:"gemini"}],config:{agents:{gemini:{persona:"Keep this role",approvalMode:"plan"}}}});
+  assert.equal(changed.status,200,JSON.stringify(changed.data));
+  assert.equal(changed.data.room.agents.codex.sessionRef,ref);
+  assert.equal(changed.data.room.agents.gemini.linked,false);
+  assert.equal(changed.data.room.cfg.agents.gemini.persona,"Keep this role");
+ }finally{await server.close();}
+});
