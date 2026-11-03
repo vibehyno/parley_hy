@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.32 — 2026-11-03
+
+- Default to the Playwright extension connection for personal Chrome and existing logins; disconnect without closing personal Chrome.
+- Create separate contexts only for explicit cookie/login isolation; retain the dedicated-browser option.
+- Show installation guidance only when the extension is missing; distinguish connection retries from installation. Include install links and a dedicated-browser choice. Fix state polling during connection setup.
+
 ## 1.4.31 — 2026-11-03
 
 - Ask the requesting agent to report review outcomes, verification and remaining work to the user, distinguishing plans from completed work.

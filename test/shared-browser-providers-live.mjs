@@ -10,7 +10,7 @@ import { agyBrowserPermissions } from '../lib/agy-browser-permissions.mjs';
 import { createAgyStream } from '../lib/agy-stream.mjs';
 
 export async function runProviderCheck(commands) {
-  const manager = new SharedBrowser(), room = {};
+  const manager = new SharedBrowser({ defaultMode: 'dedicated' }), room = {};
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'parley-provider-check-'));
   const marker = 'PARLEY_WINDOW_CHECK_1427';
   const calls = [];

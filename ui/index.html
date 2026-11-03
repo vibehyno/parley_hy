@@ -8,6 +8,7 @@
 <!--PARLEY_VERSION-->
 <title>Parley HY</title>
 <link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="none" stroke="%23555c6b" stroke-width="2"/><circle cx="16" cy="7" r="4" fill="%237aa2f7"/><circle cx="8" cy="22" r="4" fill="%23e8845c"/><circle cx="24" cy="22" r="4" fill="%232fd6a8"/></svg>'>
+
 <script src="/ui/theme.js?v=__PARLEY_ASSET_VERSION__"></script>
 <link rel="stylesheet" href="/ui/styles.css?v=__PARLEY_ASSET_VERSION__">
 </head>
@@ -207,7 +208,12 @@
           <button id="browserDisconnect" type="button" hidden data-i18n="browser.close" data-i18n-title="browser.closeHelp">Disconnect</button>
         </span></summary>
         <small id="browserStatus" aria-live="polite"></small>
+        <div class="browser-mode-row"><select id="browserMode" aria-label="Browser connection" data-i18n-aria-label="browser.connectionMode" data-i18n-title="browser.modeHelp">
+          <option value="chrome" data-i18n="browser.modeChrome">My Chrome</option>
+          <option value="dedicated" data-i18n="browser.modeDedicated">Dedicated browser</option>
+        </select><button id="browserHelp" type="button" data-i18n-title="browser.personalTitle" data-i18n-aria-label="browser.personalTitle">?</button></div>
         <div id="browserTabs"></div><p id="browserError" role="alert"></p>
+        <a id="browserExtension" href="https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm" target="_blank" rel="noopener noreferrer" data-i18n="browser.extension" hidden>Install Chrome extension</a>
       </details>
       <details class="work-section" data-section="changes" open><summary><span data-i18n="workPanel.changes">Changes</span><button id="workRefresh" type="button" data-i18n-title="common.refresh" aria-label="Refresh" data-i18n-aria-label="common.refresh">↻</button></summary><div id="workProjects"></div></details>
       <details class="work-section" data-section="agents" id="workAgentSection" hidden open><summary><span data-i18n="workPanel.agents">Subagents</span></summary><div id="workAgents"></div></details>
@@ -332,6 +338,12 @@
 
 <div id="toast"></div>
 
+<dialog id="browserSetupDialog" aria-labelledby="browserSetupHeading">
+  <div class="browser-setup-head"><h2 id="browserSetupHeading" data-i18n="browser.personalTitle">Connect my Chrome</h2><button type="button" id="browserSetupClose" aria-label="Close" data-i18n-aria-label="common.close">×</button></div>
+  <p data-i18n="browser.personalHelp">Install the extension in your regular Chrome, then select a tab to share.</p>
+  <ol><li><a href="https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm" target="_blank" rel="noopener noreferrer" data-i18n="browser.installStep">Install Playwright extension in Chrome</a></li><li data-i18n="browser.connectStep">Connect below, then select a tab in Chrome.</li></ol>
+  <div class="browser-setup-actions"><button id="browserSetupDedicated" type="button" data-i18n="browser.useDedicated">Use dedicated browser</button><button id="browserSetupConnect" type="button" data-i18n="browser.connectAfterInstall">Connect after installing</button></div>
+</dialog>
 <script src="/ui/i18n.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/skill-autocomplete.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/composer-adjustment.js?v=__PARLEY_ASSET_VERSION__"></script>
@@ -339,5 +351,6 @@
 <script src="/ui/work-panel.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/shared-browser.js?v=__PARLEY_ASSET_VERSION__"></script>
 <script src="/ui/app.js?v=__PARLEY_ASSET_VERSION__"></script>
+
 </body>
 </html>

@@ -6,7 +6,8 @@
     function render() {
       $('browserOpen').hidden = !!info.connected;
       $('browserRetry').hidden = !retryOpen;
-      $('browserDisconnect').hidden = !info.connected;
+      $('browserDisconnect').hidden = !info.connected && !info.opening && !changing;
+      $('browserMode').disabled = !!info.connected || changing || !!info.opening;
       $('browserManual').hidden = !info.connected;
       $('browserManual').textContent = t(info.manual ? 'browser.resume' : 'browser.manual');
       $('browserManual').setAttribute('aria-pressed', String(!!info.manual));
@@ -22,21 +23,22 @@
         }).join('');
         return `<button type="button" class="shared-browser-tab" data-scope="${esc(tab.scope)}" title="${esc(t('browser.focus'))}"><b>${esc(label)}</b><span>${esc(tab.url)}</span>${tab.busy ? `<small class="browser-active" role="status">● ${esc(seatName(tab.busy))} · ${esc(t(activity))} <span data-browser-started="${Number(tab.activity?.startedAt) || Date.now()}">${duration}</span></small>` : ''}${seen}</button>`;
       }).join('');
-      for (const button of $('browserControls').querySelectorAll('button')) button.disabled = changing;
+      for (const button of $('browserControls').querySelectorAll('button')) button.disabled = changing && button.id !== 'browserDisconnect';
     }
     async function refresh() {
       if (!state.room || pending) return;
       const room = state.room, version = revision;
       const request = api(`/api/browser?room=${encodeURIComponent(room)}`);
       pending = request;
-      try { const result = await request; if (room === state.room && version === revision) { info = result; render(); } }
+      try { const result = await request; if (room === state.room && version === revision) { info = result; if (info.connected || info.opening) $('browserMode').value = info.mode || 'chrome'; render(); } }
       catch (error) { if (room === state.room && version === revision) $('browserError').textContent = error.message; }
       finally { if (pending === request) pending = null; }
     }
     async function action(name, extra = {}) {
-      if (changing || !state.room) return;
+      if ((changing && name !== 'close') || !state.room) return;
+      if (name === 'open') extra.mode = $('browserMode').value || 'chrome';
       const room = state.room, version = ++revision;
-      changing = true; retryOpen = false; $('browserError').textContent = ''; render();
+      changing = true; retryOpen = false; $('browserExtension').hidden = true; $('browserError').textContent = ''; render();
       try {
         let result;
         try { result = await api('/api/browser', { room, action: name, ...extra }); }
@@ -44,14 +46,18 @@
           if (name !== 'open' || error.code !== 'BROWSER_SETUP_REQUIRED') throw error;
           if (state.room !== room || version !== revision) return;
           if (!global.confirm(`${t('browser.setupTitle')}\n\n${t('browser.setupConfirm')}`)) return;
-          result = await api('/api/browser', { room, action: 'open', setupApproved: true });
+          result = await api('/api/browser', { room, action: 'open', ...extra, setupApproved: true });
         }
         if (state.room === room && version === revision) info = result;
       }
-      catch (error) { if (state.room === room && version === revision) { $('browserError').textContent = error.message; retryOpen = name === 'open'; } }
+      catch (error) { if (state.room === room && version === revision) { $('browserError').textContent = error.message; retryOpen = name === 'open'; const needsExtension = name === 'open' && error.code === 'BROWSER_EXTENSION_REQUIRED'; $('browserExtension').hidden = !needsExtension; if (needsExtension) $('browserSetupDialog').showModal(); } }
       finally { if (version === revision) { changing = false; render(); } }
     }
-    function roomChanged() { currentRoom = state.room; revision++; pending = null; changing = false; retryOpen = false; info = {}; $('browserError').textContent = ''; render(); refresh(); }
+    function roomChanged() { currentRoom = state.room; revision++; pending = null; changing = false; retryOpen = false; info = {}; $('browserMode').value = 'chrome'; $('browserExtension').hidden = true; $('browserError').textContent = ''; render(); refresh(); }
+    $('browserHelp').onclick = () => $('browserSetupDialog').showModal();
+    $('browserSetupClose').onclick = () => $('browserSetupDialog').close();
+    $('browserSetupConnect').onclick = () => { $('browserSetupDialog').close(); $('browserMode').value = 'chrome'; return action('open'); };
+    $('browserSetupDedicated').onclick = () => { $('browserSetupDialog').close(); $('browserMode').value = 'dedicated'; return action('open'); };
     $('browserOpen').onclick = () => action('open');
     $('browserRetry').onclick = () => action('open');
     $('browserDisconnect').onclick = () => action('close');

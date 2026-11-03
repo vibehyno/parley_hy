@@ -1156,3 +1156,19 @@ body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-dif
 .browser-seen { opacity: .8; }
 #browserError:empty { display: none; }
 #browserError { font-size: 12px; overflow-wrap: anywhere; color: #e56a66; }
+
+#browserMode { width:100%; max-width:100%; margin:6px 0; font:inherit; font-size:12px; }
+#browserExtension { font-size:12px; }
+
+#browserSetupDialog { width:min(520px,calc(100vw - 48px)); padding:22px; border:1px solid var(--border); border-radius:14px; background:var(--bg); color:var(--text); font-size:14px; }
+#browserSetupDialog::backdrop { background:#0008; }
+.browser-setup-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.browser-setup-head h2 { margin:0; font-size:18px; }
+#browserSetupDialog p, #browserSetupDialog li { line-height:1.6; }
+#browserSetupDialog li + li { margin-top:10px; }
+.browser-setup-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:20px; }
+#browserSetupDialog button { font:inherit; cursor:pointer; padding:8px 12px; }
+
+.browser-mode-row { display:flex; align-items:center; gap:6px; }
+.browser-mode-row select { min-width:0; }
+#browserHelp { flex-shrink:0; cursor:pointer; padding:4px 8px; }

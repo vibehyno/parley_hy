@@ -6,7 +6,7 @@ const source = fs.readFileSync(new URL('../ui/shared-browser.js', import.meta.ur
 function fixture({confirm = () => true, api}) {
   const nodes = new Map();
   const document = {getElementById(id) {
-    if (!nodes.has(id)) nodes.set(id, {hidden: false, textContent: '', innerHTML: '', setAttribute() {}, querySelectorAll() {return []}});
+    if (!nodes.has(id)) nodes.set(id, {hidden: false, textContent: '', innerHTML: '', setAttribute() {}, showModal() {this.open=true}, close() {this.open=false}, querySelectorAll() {return []}});
     return nodes.get(id);
   }};
   const window = {confirm};
@@ -51,4 +51,26 @@ test('failed setup exposes a retry without retaining approval', async () => {
   assert.equal(nodes.get('browserRetry').hidden, false);
   await nodes.get('browserRetry').onclick();
   assert.equal(calls[2].setupApproved, undefined);
+});
+
+
+test('extension failure offers setup guidance and explicit dedicated fallback preserves mode', async()=>{
+  const calls=[];
+  const {nodes}=fixture({api:async(_,body)=>{calls.push(body);if(body.mode==='chrome')throw Object.assign(Error('extension missing'),{code:'BROWSER_EXTENSION_REQUIRED'});return {connected:true,mode:'dedicated'}}});
+  await nodes.get('browserOpen').onclick();
+  assert.equal(nodes.get('browserSetupDialog').open,true);
+  assert.equal(nodes.get('browserExtension').hidden,false);
+  await nodes.get('browserSetupDedicated').onclick();
+  assert.equal(calls.at(-1).mode,'dedicated');
+  assert.equal(nodes.get('browserSetupDialog').open,false);
+  assert.equal(nodes.get('browserOpen').hidden,true);
+});
+
+
+test('installed extension connection failure offers retry without asking to reinstall',async()=>{
+  const {nodes}=fixture({api:async()=>{throw Object.assign(Error('select a tab'),{code:'BROWSER_CHROME_CONNECT_FAILED'})}});
+  await nodes.get('browserOpen').onclick();
+  assert.notEqual(nodes.get('browserSetupDialog')?.open,true);
+  assert.equal(nodes.get('browserExtension').hidden,true);
+  assert.equal(nodes.get('browserRetry').hidden,false);
 });

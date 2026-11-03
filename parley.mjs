@@ -7993,7 +7993,7 @@ const server = http.createServer(async (req, res) => {
         }
         await sharedBrowser.open(room, async () => {
           for (const seat of seatIds(room)) if (providerIdOf(room, seat) === "gemini") await ensureAgyBrowser(room.cfg.agents[seat].command, body.setupApproved === true);
-        });
+        }, body.mode || "chrome");
       } else if (body.action === "close") await sharedBrowser.close(room);
       else if (body.action === "manual") sharedBrowser.setManual(room, body.manual);
       else if (body.action === "focus") await sharedBrowser.focus(room, body.scope);
@@ -8812,7 +8812,7 @@ const server = http.createServer(async (req, res) => {
 
     json(res, 404, { error: "not found" });
   } catch (e) {
-    if (!res.headersSent) json(res, e.status || 500, { error: e.message, ...(String(e.code || "").startsWith("vscode-") ? { code: e.code } : {}) });
+    if (!res.headersSent) json(res, e.status || 500, { error: e.message, ...(/^(vscode-|BROWSER_)/.test(String(e.code || "")) ? { code: e.code } : {}) });
   }
 });
 

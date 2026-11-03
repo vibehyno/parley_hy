@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { SharedBrowser } from '../lib/shared-browser.mjs';
 
 export async function runBrowserCheck() {
-  const manager = new SharedBrowser(), room = {};
+  const manager = new SharedBrowser({ defaultMode: 'dedicated' }), room = {};
   const html = `<!doctype html><meta charset="utf-8"><title>Parley official MCP check</title><h1>Official MCP test</h1><label>Marker <input id="marker" aria-label="Marker"></label><button id="save">Save marker</button><button id="read">Read marker</button><output id="result"></output><script>function read(){document.querySelector('#result').textContent=(localStorage.getItem('parley-test')||'empty')+' | '+(document.cookie||'empty')};document.querySelector('#save').onclick=()=>{const value=document.querySelector('#marker').value;localStorage.setItem('parley-test',value);document.cookie='parley-test='+encodeURIComponent(value)+'; SameSite=Lax; Path=/';read()};document.querySelector('#read').onclick=read;read()</script>`;
   const site = http.createServer((req,res)=>{res.writeHead(200,{'content-type':'text/html; charset=utf-8'});res.end(html)});
   await new Promise(resolve=>site.listen(0,'127.0.0.1',resolve));

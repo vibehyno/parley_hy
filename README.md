@@ -8,7 +8,7 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.4.31**
+- 최신 버전: **1.4.32**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
@@ -36,9 +36,9 @@ parley start
 
 #### 공유 브라우저
 
-**오른쪽 작업 현황 → 공유 브라우저 → 브라우저 열기**로 별도 창 연결. 다음 모델 호출부터 `parley-browser` 연결의 공식 Playwright MCP `browser_*` 도구 제공.
+**오른쪽 작업 현황 → 공유 브라우저 → 브라우저 열기**로 내 Chrome의 선택 탭 연결. 전용 브라우저 선택 시 별도 창 실행. 다음 모델 호출부터 `parley-browser` 연결의 공식 Playwright MCP `browser_*` 도구 제공.
 
-**공유 화면 카드 클릭**으로 해당 Chrome 탭 표시. 최소화된 창 복원, 최대화 상태 유지. Windows에서 공유 Chrome 프로세스·탭 제목으로 해당 창 식별 후 전면 활성화 및 결과 확인. 차단되거나 창을 구분할 수 없는 경우 직접 선택 안내.
+**공유 화면 카드 클릭**으로 해당 Chrome 탭 선택. 전용 브라우저는 Windows 창 복원·전면 활성화 지원. 내 Chrome 연결은 확장을 통한 탭 선택 사용.
 
 전체 권한 선택 시 Codex·Claude·AGY의 토론·검토·관찰·인계에도 파일·명령·브라우저 실행 권한 유지. 역할에 따른 자동 Plan 전환 제거 및 반복 호출의 세션 유지. Codex 전체 권한은 승인 대기 없이 실행. AGY 공유 브라우저 권한은 호출별 임시 설정으로 전달하며 명시적인 Plan은 조회로 제한. 기존 `deny`·`ask` 규칙 보존, 전역 설정 변경 없음. 도구 사용 전 시작 안내가 완료 결과로 재반환된 경우 실패 처리.
 
@@ -47,10 +47,10 @@ parley start
 | “같은 화면을 함께 확인해줘” | 방의 공유 화면·로그인 사용, 화면 조작 순서 관리 |
 | “각자 독립적으로 작업해줘” | 모델별 별도 컨텍스트 사용, 로그인·쿠키 분리 및 병렬 작업 |
 | 직접 조작 | 모델의 새 조작 중지, 화면 확인은 유지. 진행 중인 조작은 종료 가능 |
-| 연결 종료 | 해당 방의 전용 브라우저 종료, 임시 로그인·쿠키 삭제 |
+| 연결 종료 | 내 Chrome·기존 탭 유지 및 모델 연결 해제. 전용 브라우저는 종료하되 저장된 프로필 유지, 독립 컨텍스트의 임시 로그인·쿠키 삭제 |
 
 - 필요한 설치·모델 연결 설정이 있을 때만 **브라우저 공유 설정** 확인창 표시. **확인** 후 자동 설정·브라우저 열기, **취소** 시 변경 없음. 준비 완료 환경은 즉시 열기. 실패 시 오류·재시도 버튼 표시
-- Google Chrome 필요. 공유 브라우저는 Chrome으로 실행. 기존 개인 브라우저·프로필 사용 없음. 독립 컨텍스트는 별도 창으로 표시 가능
+- Google Chrome 필요. 기본은 Playwright 확장으로 내 Chrome의 선택 탭·기존 로그인 연결. 별도 로그인 환경이 필요한 작업만 독립 컨텍스트 사용
 - Codex·Claude는 호출별 MCP 설정 연결. AGY는 최초 연결 시 `agy mcp add parley-browser`를 통한 공통 MCP 등록. AGY에 Playwright 별도 설치 불필요. 연결 권한은 현재 방·모델·호출에 한정, 종료 후 폐기
 - AGY의 비어 있는 MCP 설정은 최초 등록 상태로 처리. 기존 연결이 일치하면 재등록 생략, 잘못된 JSON은 원본 유지 및 파일 경로 안내
 - AGY 등록 제거 명령: `agy mcp remove parley-browser`. Parley 외 세션에는 유효한 연결 권한 미제공
@@ -235,9 +235,21 @@ parley start
 
 </details>
 
+### 내 Chrome 연결
+
+1. 오른쪽 **공유 브라우저 → 내 Chrome (기본) → 브라우저 열기** 선택
+2. 확장이 있으면 설치 안내 없이 연결. 미설치 시 안내 창의 [Playwright 확장 설치](https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm) 링크 선택. 평소 사용하는 Chrome 프로필에 설치
+3. **설치 후 연결** 선택 → Chrome에서 공유할 탭 선택
+4. 주도 모델과 검토 모델이 같은 로그인·화면 사용. 쿠키·로그인 분리가 필요한 작업만 독립 환경 사용
+
+- **?** 버튼: 설치 링크·연결 순서 다시 확인
+- **연결 종료**: 내 Chrome과 기존 탭 유지, 모델 연결만 해제
+- **전용 브라우저**: 별도 프로필 사용을 원하는 경우 선택. 내 Chrome 로그인 자동 복사 없음
+- 사용자별 본인 PC·Chrome 프로필 연결. 프로필·쿠키·로그인 정보의 Git 저장 없음
+
 ### 원본 Parley와의 차이점
 
-- **공유 브라우저 추가:** 사용자 확인 후 공식 Playwright MCP 준비·연결, 방별 새 Chrome 창, 협업 화면 및 독립 로그인·쿠키 격리, 직접 조작 중 화면 조회·모델별 확인 시간 표시, 화면 카드 클릭으로 최소화된 창 복원 및 Windows 창 활성화 결과 확인. AGY 호출별 공유 브라우저 권한과 진행 안내의 완료 답변 오인 방지
+- **공유 브라우저 추가:** 사용자 확인 후 공식 Playwright MCP 준비·연결, 기본 내 Chrome 연결, 협업 화면 및 요청 시 독립 로그인·쿠키 격리, 직접 조작 중 화면 조회·모델별 확인 시간 표시, 화면 카드 클릭으로 최소화된 창 복원 및 Windows 창 활성화 결과 확인. AGY 호출별 공유 브라우저 권한과 진행 안내의 완료 답변 오인 방지
 
 | 구분 | 원본 `auspex0/parley` | Parley HY |
 |---|---|---|
@@ -272,9 +284,9 @@ parley start
 | 전체 권한 안내 | 작업 화면 위에 계속 표시 | 방별 최초 확인 후 `×`로 닫아 영구 숨김 |
 | 전체 권한 실행 | 토론·검토 호출에서 Plan으로 자동 제한 | 선택한 전체 권한을 모든 호출 경로의 파일·명령·브라우저에 유지, 역할 변경만으로 세션 재시작 없음 |
 | 작업 현황 조작 | 섹션 제목 전체를 드래그 | 제목 클릭으로 접기·펼치기, 별도 손잡이로 순서 이동, 버튼 클릭 영역과 커서 분리 |
-| 공유 브라우저 로그인 | 종료 시 임시 로그인 상태 소실 | 방별 전용 Chrome 프로필 재사용, 평소 Chrome 및 모델별 별도 작업 환경과 분리 |
+| 공유 브라우저 로그인 | 종료 시 임시 로그인 상태 소실 | 기본 내 Chrome 로그인·선택 탭 공유, 필요 시 전용 브라우저 및 독립 로그인 환경 선택 |
 
-공유 브라우저 프로필은 대화 저장 루트의 `.browser-profiles`에 로컬 저장. 최초 로그인 필요, 이후 브라우저 재연결·Parley 재시작 시 재사용. 사이트의 로그인 만료·세션 정책에 따라 재인증 가능. 방 이름 변경 시 프로필 유지, 모델별 별도 작업 브라우저는 임시 환경 유지.
+선택형 전용 브라우저 프로필은 대화 저장 루트의 `.browser-profiles`에 로컬 저장. 최초 로그인 필요, 이후 브라우저 재연결·Parley 재시작 시 재사용. 사이트의 로그인 만료·세션 정책에 따라 재인증 가능. 방 이름 변경 시 프로필 유지, 모델별 별도 작업 브라우저는 임시 환경 유지.
 | 업데이트 확인 | 터미널에서 직접 `git pull` | 새 버전이 있을 때만 헤더에 표시하고 신규 기능 미리보기·선택형 자동 설치 지원 |
 | Codex 작업 권한 | 새 세션의 sandbox 설정에 의존 | 새 호출과 이어지는 세션 호출마다 현재 방의 sandbox 권한을 명시하여 풀 액세스가 읽기 전용으로 돌아가는 문제 방지 |
 | 도구 목록 조회 | CLI 목록 명령에 따른 대기 가능 | 세 제공자 모두 로컬 설정·플러그인 메타데이터에서 조회. 일반 조회·새로고침 시 연결 검사 생략 |
@@ -390,7 +402,7 @@ The command remains `parley`. Do not use `npx parley-room` or `npm install -g pa
 
 The UI opens automatically at a loopback URL, normally `http://127.0.0.1:4141`. Flags: `--port N` (`--port 0` picks any free port), `--root DIR`, `--no-open`, `--version`, `--help`.
 
-Run `npm install` after cloning. Browser sharing uses the official Playwright MCP and MCP SDK; `npm start` runs from the checkout without linking the command globally. Google Chrome must be installed locally; shared browsers always launch Chrome.
+Run `npm install` after cloning. Browser sharing uses the official Playwright MCP and MCP SDK; `npm start` runs from the checkout without linking the command globally. Google Chrome must be installed locally. The default connects to your Chrome through the Playwright extension, reusing its login. Dedicated browsers remain optional.
 
 Two notes at the door:
 

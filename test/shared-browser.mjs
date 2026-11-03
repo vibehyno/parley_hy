@@ -35,7 +35,7 @@ function fixture(persistent = false) {
       return {content:[{type:'text',text:context.page.value}]};
     }, close: async () => {},
   });
-  return { contexts, manager: new SharedBrowser({ launch: async () => { launches++; return persistent ? {browser,sharedContext:await browser.newContext()} : browser; }, connect, prepare: async () => {}, fingerprint: async context => context.page.value, focusWindow: async () => {} }), launches: () => launches };
+  return { contexts, manager: new SharedBrowser({ defaultMode: 'dedicated', launch: async () => { launches++; return persistent ? {browser,sharedContext:await browser.newContext()} : browser; }, connect, prepare: async () => {}, fingerprint: async context => context.page.value, focusWindow: async () => {} }), launches: () => launches };
 }
 
 test('shared tabs use the persistent context; private seats use separate contexts; disconnect closes persistent context gracefully', async () => {
