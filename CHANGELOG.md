@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.0 — 2026-11-03
+
+- Rebrand the product as MOA with the moa command and setupMoa.cmd installer.
+- Use ~/.moa for new installations; verify and copy legacy data only after the old server stops, preserving the source as a backup.
+- Never merge existing roots. Preserve upstream licensing and repository URLs.
+
 ## 1.4.50 — 2026-11-03
 
 - Auto-link plain HTTP(S) chat URLs and open links in a new tab.

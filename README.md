@@ -1,4 +1,4 @@
-# Parley HY
+# MOA
 
 **Claude Code, Codex and AGY in one local chat room — connect up to three seats and let them hear each other.**
 
@@ -8,28 +8,35 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.4.50**
+- 최신 버전: **1.5.0**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 
 한글 방 이름 지원. 새 이름은 20자 제한, 기존 긴 이름 유지 및 방 목록 한 줄 말줄임 표시. 모델 3개 사용 중 추가 시 최대 사용 중 안내. 앱 설정에서 글꼴·글자 크기·언어·다크·라이트 모드 선택 및 브라우저별 저장. 설정창은 상단 ×로 닫기, 내용만 스크롤하며 하단 저장 영역 유지.
+
+## MOA 전환 안내
+
+- 신규 설치: `setupMoa.cmd` 실행 후 `moa start`. 대화·설정 저장 위치는 `~/.moa`.
+- 기존 설치: 실행 중인 서버 종료 후 설치 스크립트 실행. 최초 시작 시 `~/.parley` 대화·설정을 검증 후 복사하며 원본은 백업으로 유지. 이미 `~/.moa`가 있으면 자동 병합·덮어쓰기 없음.
+- 실행 명령은 `moa`만 제공. 기존 서버는 `moa stop`으로 종료 가능.
+- Git 저장소 주소와 원본 MIT 저작권 고지는 유지. MOA는 Parley에서 확장한 프로젝트.
 
 ## 빠른 시작 (Windows)
 
 필수 준비: **Node.js 20 이상**과 사용할 CLI 2개 이상 설치 및 로그인. 지원 명령은 `codex`, `claude`, `agy`이며 API 키 대신 각 CLI의 기존 구독 로그인을 사용함.
 
 ```cmd
-git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git
-cd parley
-setupParley.cmd
+git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git moa
+cd moa
+setupMoa.cmd
 ```
 
-소스 다운로드·압축 해제 후 프로젝트 폴더에서 **CMD**를 열고 `setupParley.cmd` 실행. 최초 설치 시 전역 `parley` 명령과 Windows 사용자 PATH 자동 등록. PowerShell에서는 `.\setupParley.cmd` 사용. `npm.cmd run setup`으로도 동일한 설치 가능.
+소스 다운로드·압축 해제 후 프로젝트 폴더에서 **CMD**를 열고 `setupMoa.cmd` 실행. 최초 설치 시 전역 `moa` 명령과 Windows 사용자 PATH 자동 등록. PowerShell에서는 `.\setupMoa.cmd` 사용. `npm.cmd run setup`으로도 동일한 설치 가능.
 
 설치 후 **새 터미널**을 열고 원하는 폴더에서 실행:
 
 ```powershell
-parley start
+moa start
 ```
 
 ### 기본 사용법
@@ -53,7 +60,7 @@ parley start
 - Google Chrome 필요. 기본은 Playwright 확장으로 내 Chrome의 선택 탭·기존 로그인 연결. 별도 로그인 환경이 필요한 작업만 독립 컨텍스트 사용
 - Codex·Claude는 호출별 MCP 설정 연결. AGY는 최초 연결 시 `agy mcp add parley-browser`를 통한 공통 MCP 등록. AGY에 Playwright 별도 설치 불필요. 연결 권한은 현재 방·모델·호출에 한정, 종료 후 폐기
 - AGY의 비어 있는 MCP 설정은 최초 등록 상태로 처리. 기존 연결이 일치하면 재등록 생략, 잘못된 JSON은 원본 유지 및 파일 경로 안내
-- AGY 등록 제거 명령: `agy mcp remove parley-browser`. Parley 외 세션에는 유효한 연결 권한 미제공
+- AGY 등록 제거 명령: `agy mcp remove parley-browser`. MOA 외 세션에는 유효한 연결 권한 미제공
 - **대화/읽기 전용 호출:** 화면 확인·스크린샷만 허용. 탐색·클릭·입력은 작업 권한 필요
 - 다른 모델의 조작으로 화면 변경 시 재확인 요구. 같은 서버 데이터 수정까지 격리되는 것은 아니므로 동일 대상 수정은 작업 분담 필요
 - 실제 도구 실행 중 `모델명 · 확인 중 00:03` 또는 `모델명 · 조작 중 00:03` 표시. 종료 후 모델별 마지막 확인·조작 시각 표시. 직접 조작 중에도 모델의 화면 조회 허용
@@ -82,7 +89,7 @@ parley start
 - 연결 목록 변경 시 대화 내용·순서 유지, 모델 CLI 세션은 변경된 접근 범위로 새로 시작
 - 왼쪽 **설정 바로 위 연결 → CMD 열기 / VS Code 열기** 선택. 프로젝트가 하나면 바로 실행, 여러 개면 열 폴더 선택 후 실행
 - CMD는 선택한 폴더에서 실행, VS Code는 선택한 폴더를 새 창으로 열기. 새로 추가한 폴더는 `저장` 후 사용하며 열 프로젝트 선택은 방의 작업 경로를 변경하지 않음
-- VS Code 실행 중 `여는 중…` 표시, 공식 CLI의 실행 결과·오류 안내. 저장된 실행 경로가 없거나 파일이 없으면 탐색기에서 Code.exe 선택 후 자동 재시도. 취소 시 실행 중단, 기타 실행 오류는 `실행 파일 선택…`으로 재지정 가능. 선택 경로는 사용자 PC의 `~/.parley/.launchers.json`에 저장
+- VS Code 실행 중 `여는 중…` 표시, 공식 CLI의 실행 결과·오류 안내. 저장된 실행 경로가 없거나 파일이 없으면 탐색기에서 Code.exe 선택 후 자동 재시도. 취소 시 실행 중단, 기타 실행 오류는 `실행 파일 선택…`으로 재지정 가능. 선택 경로는 사용자 PC의 `~/.moa/.launchers.json`에 저장
 - Windows 프로젝트 추가·경로 변경·실행 파일 선택에 주소창·검색창을 갖춘 탐색기형 선택 창 사용. 창 색상은 Windows 테마·버전 설정에 따름
 - 넓어진 연결 프로젝트 창에서 추가·폴더 열기·경로 재선택·연결 삭제 가능. 현재 프로젝트 구분·초록 강조 제거, 실제 경로 누락만 경고. `저장` 전까지 임시 편집 상태이며 실제 프로젝트 폴더는 삭제되지 않음. 설명은 제목·버튼 툴팁으로 확인
 - 왼쪽 메뉴에 마우스를 올리면 용도 툴팁 표시
@@ -194,9 +201,9 @@ parley start
 |---|---|
 | 상단 **🧹 대화 정리** | 대화·방 설정 보관 후 모델 세션 새로 시작, 현재 방 설정 유지 |
 | **보관함 → 날짜 선택 → 미리보기 → 새 방으로 복원** | 메시지 내용·순서를 새 방에 복구, 현재 방과 보관 원본 유지 |
-| 방 삭제 | 방 폴더를 `.parley/.trash`로 이동, 연결된 실제 프로젝트 유지 |
+| 방 삭제 | 방 폴더를 `.moa/.trash`로 이동, 연결된 실제 프로젝트 유지 |
 
-**저장 위치:** 사용자 PC의 `~/.parley`. Git 저장소와 별도이므로 저장소를 다시 클론해도 대화 유지.
+**저장 위치:** 사용자 PC의 `~/.moa`. Git 저장소와 별도이므로 저장소를 다시 클론해도 대화 유지.
 
 <details>
 <summary>복원 범위와 삭제한 방 복구</summary>
@@ -205,7 +212,7 @@ parley start
 - 복원된 모델은 새 CLI 세션 사용. 새 메시지를 보낼 때 최근 복원 대화를 참고하며 옛 작업 자동 재실행 없음
 - 첨부파일은 원본이 남아 있는 경우 복사
 - 프로젝트 파일은 복원 대상이 아니며 새 방의 샌드박스는 빈 상태로 시작
-- 방 삭제 확인창에 `.parley/.trash` 이동 대상 표시. 삭제한 방은 파일 탐색기에서 수동 복구
+- 방 삭제 확인창에 `.moa/.trash` 이동 대상 표시. 삭제한 방은 파일 탐색기에서 수동 복구
 - **삭제한 방의 수동 복구**와 **대화 정리 후 보관함 복원**은 별도 기능
 
 </details>
@@ -216,23 +223,23 @@ parley start
 
 | 명령·메뉴 | 용도 |
 |---|---|
-| `parley start` | 백그라운드 실행 |
-| `parley stop` | 대화·설정 유지 후 종료. 진행·대기 작업이 있으면 종료 거부 |
-| `parley restart` | 서버 재시작 |
-| `parley status` | 실행 여부·주소·작업 상태 확인 |
+| `moa start` | 백그라운드 실행 |
+| `moa stop` | 대화·설정 유지 후 종료. 진행·대기 작업이 있으면 종료 거부 |
+| `moa restart` | 서버 재시작 |
+| `moa status` | 실행 여부·주소·작업 상태 확인 |
 | 상단 **업데이트** | 새 기능 확인 후 `나중에` 또는 `업데이트 설치` 선택 |
 
 <details>
 <summary>실행 옵션·문제 해결</summary>
 
 - 새 버전이 있을 때만 대화/작업 오른쪽에 **업데이트** 표시. 마우스를 올리면 신규 기능 확인 가능
-- CLI 계정 변경 또는 새 CLI 설치 후 `parley restart` 필요
+- CLI 계정 변경 또는 새 CLI 설치 후 `moa restart` 필요
 - CLI 연결 문제: 터미널에서 `codex`·`claude`·`agy`의 실행·로그인 상태 확인
-- PowerShell 실행 정책 오류: `parley.cmd start` 등 `.cmd` 명령 사용
-- 다른 포트로 실행: `parley start --port 4142`. 임의의 빈 포트는 `--port 0` 사용
+- PowerShell 실행 정책 오류: `moa.cmd start` 등 `.cmd` 명령 사용
+- 다른 포트로 실행: `moa start --port 4142`. 임의의 빈 포트는 `--port 0` 사용
 - 다른 대화 저장 폴더 사용: 각 명령에 같은 `--root 경로` 지정
-- 실행 로그: `~/.parley/server.log`
-- 명령 없이 `parley` 실행 시 기존처럼 터미널에서 실행, `Ctrl+C`로 종료
+- 실행 로그: `~/.moa/server.log`
+- 명령 없이 `moa` 실행 시 기존처럼 터미널에서 실행, `Ctrl+C`로 종료
 - 실행 관리 기능 도입 전 서버는 한 번 직접 종료 후 새 버전으로 실행 필요
 
 </details>
@@ -276,7 +283,7 @@ parley start
 
 - **공유 브라우저 추가:** 사용자 확인 후 공식 Playwright MCP 준비·연결, 기본 내 Chrome 연결, 협업 화면 및 요청 시 독립 로그인·쿠키 격리, 직접 조작 중 화면 조회·모델별 확인 시간 표시, 화면 카드 클릭으로 최소화된 창 복원 및 Windows 창 활성화 결과 확인. AGY 호출별 공유 브라우저 권한과 진행 안내의 완료 답변 오인 방지
 
-| 구분 | 원본 `auspex0/parley` | Parley HY |
+| 구분 | 원본 `auspex0/parley` | MOA |
 |---|---|---|
 | 방 좌석·역할 | 방당 2좌석, 제공자 기본 이름·아이콘 | 방당 최대 3좌석 추가·제거, 기존 좌석 세션·대화 순서 유지, 제거 확인, 표시 이름·맡은 업무·이모지·색상 설정, `@all` 호출 및 검토 후 제3 모델로 작업 전달 |
 | 모델 간 요청 전달 | 제공자 고정 호출명 중심 | 사용자 호출명 및 골뱅이 없는 명확한 이름 지정 요청 전달, 인용·코드 예시 제외. 방 모델과 내부 하위 에이전트 구분 지침 적용 |
@@ -319,7 +326,7 @@ parley start
 | 운영 방식 | 범용 다중 에이전트 대화 | Codex 주도 + Claude/AGY 검토 방식 가이드 제공 |
 | 공개 정보 보호 | 원본 기본 동작 | 도구 설명의 명령·URL·Windows/POSIX 로컬 경로 마스킹 강화 |
 | 실행·종료 관리 | 터미널 실행과 Ctrl+C 종료 | 설치 시 전역 명령·Windows 사용자 PATH 등록, start·stop·restart·status로 관리, 중복 실행·작업 중 종료 방지 |
-| 브랜드·문서 | Parley | Parley HY 이름과 한국어 설치·사용·업데이트 가이드, 용도별 기본 사용법과 접이식 상세 안내 |
+| 브랜드·문서 | Parley | MOA 이름과 한국어 설치·사용·업데이트 가이드, 용도별 기본 사용법과 접이식 상세 안내 |
 
 사용량 표시는 각 CLI가 실제 제공한 값만 사용함. 5시간·주간 한도 중 CLI 응답에 포함된 항목만 원형 그래프로 표시함. 따라서 Codex Premium처럼 주간 한도만 제공되면 주간만 보이고, Standard 또는 Claude가 5시간 한도를 함께 제공하면 두 항목을 모두 표시함. 모델별 화면 형식을 맞추기 위해 Claude 전용 요청·세션 통계는 표시하지 않음. 토큰은 현재 방 대화 응답이 실제 보고한 입력·출력·추론·캐시 토큰 합계이며 계정 전체 토큰으로 추정하지 않음. 긴 범위 설명은 각 항목의 `ⓘ` 툴팁으로 확인 가능함.
 
@@ -328,14 +335,14 @@ Fast 경고는 [OpenAI Fast mode 문서](https://developers.openai.com/ja-JP/doc
 다음 핵심 동작은 원본과 동일하게 유지함.
 
 - API 키 없이 `codex`, `claude`, `agy` CLI의 기존 구독 로그인 사용
-- 실행 명령 `parley` 및 기본 주소 `http://127.0.0.1:4141` 유지
-- 방·대화·설정의 기본 저장 위치 `~/.parley` 유지
+- 실행 명령 `moa` 및 기본 주소 `http://127.0.0.1:4141` 유지
+- 방·대화·설정의 기본 저장 위치 `~/.moa` 유지
 - Talk, Work, Pair, Lurk, 자동 발언 제한 등 기존 대화 구조 유지
 - 기존 Parley 방 파일과의 호환성을 위해 AGY의 내부 provider id는 `gemini` 유지
 
 진행 표시에는 CLI가 실제로 제공한 이벤트와 모델이 사용자에게 공개한 짧은 작업 보고만 사용함. 모델의 비공개 내부 추론 원문을 표시하거나, 존재하지 않는 작업 단계를 임의로 만들어 보여주지 않음. 현재 Parley의 일회성 CLI 호출에는 실행 중 새 프롬프트를 주입할 수 없으므로, 작업 중 작성한 추가 지시는 현재 호출 종료 후 같은 방의 다음 지시로 자동 전달됨. 즉시 반영하려면 현재 호출 중지 필요.
 
-Parley HY는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 클론하여 실행해야 함. `npx parley-room` 또는 `npm install -g parley-room` 실행 시 Parley HY가 아닌 원본 npm 버전이 설치됨.
+MOA는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 클론하여 실행해야 함. `npx parley-room` 또는 `npm install -g parley-room` 실행 시 MOA가 아닌 원본 npm 버전이 설치됨.
 
 ### 추천 운영 방식: Codex 주도 + 검토 모델
 
@@ -369,16 +376,16 @@ Parley HY는 별도 npm 패키지로 배포하지 않으므로 이 저장소를 
 직접 업데이트하려면 다음 명령 사용:
 
 ```powershell
-cd parley
+cd moa
 git pull --ff-only
 npm.cmd start
 ```
 
 - 직접 업데이트한 경우 실행 중인 Parley 종료 후 재실행 필요. 화면의 선택형 자동 설치를 사용하면 자동 재시작
-- 방·대화·설정 저장 위치: `~/.parley`
-- 대화 정리 시 보관 위치: `~/.parley/<방 이름>/transcript-<날짜>.md`, `events-<날짜>.jsonl`, `archive-<날짜>.json`(방 설정). 왼쪽 대화 저장 폴더에서 파일 열람, 상단 보관함에서 새 방으로 복원 가능. 예전 CLI 세션과 프로젝트 파일 상태는 복원 대상에서 제외
-- 소스 저장소를 삭제하거나 다시 클론해도 `~/.parley`를 지우지 않으면 기존 대화 유지
-- 삭제한 방의 임시 보관 위치: `~/.parley/.trash`
+- 방·대화·설정 저장 위치: `~/.moa`
+- 대화 정리 시 보관 위치: `~/.moa/<방 이름>/transcript-<날짜>.md`, `events-<날짜>.jsonl`, `archive-<날짜>.json`(방 설정). 왼쪽 대화 저장 폴더에서 파일 열람, 상단 보관함에서 새 방으로 복원 가능. 예전 CLI 세션과 프로젝트 파일 상태는 복원 대상에서 제외
+- 소스 저장소를 삭제하거나 다시 클론해도 `~/.moa`를 지우지 않으면 기존 대화 유지
+- 삭제한 방의 임시 보관 위치: `~/.moa/.trash`
 - Git 저장소에는 대화 내용과 CLI 로그인 정보가 포함되지 않음
 
 > 이 저장소는 [auspex0/parley](https://github.com/auspex0/parley)를 기반으로 한 개인화 버전이며 원본 MIT 라이선스를 유지함.
@@ -413,17 +420,17 @@ Whether it speaks is the model's own judgment — there is no keyword trigger. A
 
 You need **Node.js ≥ 20** and any two supported official CLIs, installed and authenticated: `claude` (Claude Code), `codex` (OpenAI Codex), or `agy` (Google Antigravity). Parley shells out to them under your existing subscription logins.
 
-Parley HY is not published as a separate npm package. Install this fork from source so the `parley` command points to this repository:
+MOA is not published as a separate npm package. Install this fork from source so the `moa` command points to this repository:
 
 ```bash
-git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git
-cd parley
+git clone https://repository.kr/rnd/ai-archive/ai-orchestration/parley.git moa
+cd moa
 npm test     # optional: real server, fake agents — no login, no tokens spent
 npm link
-parley
+moa
 ```
 
-The command remains `parley`. Do not use `npx parley-room` or `npm install -g parley-room` for this fork; those commands install the upstream npm release instead.
+The command remains `moa`. Do not use `npx parley-room` or `npm install -g parley-room` for this fork; those commands install the upstream npm release instead.
 
 The UI opens automatically at a loopback URL, normally `http://127.0.0.1:4141`. Flags: `--port N` (`--port 0` picks any free port), `--root DIR`, `--no-open`, `--version`, `--help`.
 
@@ -444,7 +451,7 @@ Two notes at the door:
 | The page says the runtime protocol doesn't match | Parley was updated under a page that's still open. Reload the tab. |
 | Windows: the folder picker seems to do nothing | It can open behind the browser. Look for **Parley — Choose a project folder** in the taskbar. |
 
-Your rooms, transcripts and settings live in `~/.parley` (override with `--root`). To remove Parley entirely: `npm uninstall -g parley-room`, then delete that folder — it also holds `~/.parley/.trash`, where deleted rooms go.
+Your rooms, transcripts and settings live in `~/.moa` (override with `--root`). To remove Parley entirely: `npm uninstall -g parley-room`, then delete that folder — it also holds `~/.moa/.trash`, where deleted rooms go.
 
 ## How you talk to it
 

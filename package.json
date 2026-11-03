@@ -1,11 +1,11 @@
 {
-  "name": "parley-room",
-  "version": "1.4.50",
+  "name": "moa-room",
+  "version": "1.5.0",
   "private": false,
-  "description": "Parley HY - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
+  "description": "MOA - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",
   "bin": {
-    "parley": "parley.mjs"
+    "moa": "parley.mjs"
   },
   "engines": {
     "node": ">=20"
@@ -45,7 +45,7 @@
     "chat"
   ],
   "files": [
-    "setupParley.cmd",
+    "setupMoa.cmd",
     "parley.mjs",
     "lib/",
     "ui/",
