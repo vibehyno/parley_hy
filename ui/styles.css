@@ -980,7 +980,7 @@
     padding: 7px 10px; outline: none; font-size: 13.5px;
   }
   .fld textarea { min-height: 92px; resize: vertical; line-height: 1.5; }
-  .seat-persona-prompt textarea { height: 98px; min-height: 98px; max-height: 98px; overflow-y: auto; resize: none; }
+  .seat-persona-prompt textarea { height: 180px; min-height: 180px; max-height: 180px; overflow-y: auto; resize: none; }
   #s_roomnote { height: 156px; min-height: 156px; max-height: 156px; overflow-y: auto; resize: none; }
   .fld input:focus, .fld select:focus, .fld textarea:focus { border-color: rgba(122,162,247,.5); }
   .fld .note { font-size: 11px; color: var(--text-faint); margin-top: 3px; }

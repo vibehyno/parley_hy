@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.4.36 — 2026-11-03
+
+- Enlarge the persona editor to 180px with internal scrolling and rename its label to Persona / Work instructions.
+
 ## 1.4.35 — 2026-11-03
 
 - Separate room and app settings. Store font, chat text size, language and theme in this browser; bundle Pretendard, NanumSquareRound and SUIT.
