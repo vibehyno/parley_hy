@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.33 — 2026-11-03
+
+- Clarify Claude's public pre-tool update and final-result contract within one CLI invocation, including concise review requests.
+- Refresh the instruction once in existing Claude sessions without repeating it on every turn; retain direct answers and explicit output-format exceptions.
+- Fix project-notice rendering when token metadata shadowed the translation function.
+
 ## 1.4.32 — 2026-11-03
 
 - Default to the Playwright extension connection for personal Chrome and existing logins; disconnect without closing personal Chrome.

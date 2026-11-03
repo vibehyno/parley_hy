@@ -37,6 +37,7 @@ import { claimService, serviceCommand } from "./lib/service-control.mjs";
 import { projectLaunchSpec, launchProjectTool } from "./lib/project-launch.mjs";
 import { createAgyStream } from "./lib/agy-stream.mjs";
 import { AGY_PROGRESS_CONTRACT } from "./lib/agy-progress.mjs";
+import { CLAUDE_PROGRESS_CONTRACT } from "./lib/claude-progress.mjs";
 import { agyEffortArgs } from "./lib/agy-model-options.mjs";
 import { createPublicSpeech } from "./lib/public-speech.mjs";
 import { initialContext } from "./lib/initial-context.mjs";
@@ -1324,7 +1325,8 @@ function composeStandingContract(agent, room) {
       (persona ? `${persona}\n` : "") +
       `[End room-specific role]`;
   }
-  const providerProgress = providerIdOf(room, agent) === "gemini" ? AGY_PROGRESS_CONTRACT : "";
+  const providerProgress = providerIdOf(room, agent) === "gemini" ? AGY_PROGRESS_CONTRACT
+    : providerIdOf(room, agent) === "claude" ? CLAUDE_PROGRESS_CONTRACT : "";
   if (providerProgress) text += `\n\n${providerProgress}`;
   const identityFingerprint = crypto.createHash("sha256").update(JSON.stringify({
     displayName: displayNameOf(room, agent), role: ownRole,

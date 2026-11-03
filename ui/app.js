@@ -1119,8 +1119,8 @@ function entryEl(e) {
   }
   div.className = "msg " + (e.kind === "user" ? "user" : "agent " + e.author);
   const dur = e.meta && e.meta.durationMs ? ` · ${secs(e.meta.durationMs)}` : "";
-  const t = e.meta && e.meta.tokens;
-  const tok = t && t.out ? ` · <span title="output tokens${t.reasoning ? ` (${t.reasoning} reasoning)` : ""}">${t.out}t${t.reasoning ? ` <span style="opacity:.7">(${t.reasoning}r)</span>` : ""}</span>` : "";
+  const tokens = e.meta && e.meta.tokens;
+  const tok = tokens && tokens.out ? ` · <span title="output tokens${tokens.reasoning ? ` (${tokens.reasoning} reasoning)` : ""}">${tokens.out}t${tokens.reasoning ? ` <span style="opacity:.7">(${tokens.reasoning}r)</span>` : ""}</span>` : "";
   // a pair turn is a review or a fix, never a generic "follow-up"
   const pairTag = e.meta && e.meta.pair && typeof e.meta.pair === "string"
     ? ` <span style="opacity:.6">· 🔁 ${e.meta.pair} r${e.meta.round}</span>` : "";

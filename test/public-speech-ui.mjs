@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 const source = fs.readFileSync(new URL("../ui/app.js", import.meta.url), "utf8");
+test("project notices can translate before token metadata is rendered", () => {
+  const context = vm.createContext({ document: { createElement: () => ({ dataset: {} }) },
+    isToolActivity: () => false, esc: x => x, t: (key, vars) => `${key}:${vars.count}` });
+  vm.runInContext(source.slice(source.indexOf("function entryEl("), source.indexOf("const INITIAL_ENTRY_LIMIT")), context);
+  const notice = context.entryEl({ kind: "system", text: "", meta: { connectedProjects: ["test"] } });
+  assert.equal(notice.innerHTML, "project.updatedNote:1");
+});
 test("speech stays a bubble during work; only completed runs fold with their tool details", () => {
   const node = () => ({ dataset: {}, children: [], appendChild(child) { this.children.push(child); } });
   const state = { summary: { busyInfo: [{ runId: "run-1" }] }, expandedActivity: new Set() };
