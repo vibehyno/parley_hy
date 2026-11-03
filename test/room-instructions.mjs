@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {isolatedServer} from './server-fixture.mjs';
-import {communicationInstructions} from '../lib/room-instructions.mjs';
+import {communicationInstructions,persistentUserInstructions} from '../lib/room-instructions.mjs';
 
 test('communication mode saves without changing permissions and seat memory is isolated with conflict protection', async () => {
   const s = await isolatedServer();
@@ -36,6 +36,51 @@ test('mode preferences describe priority, persona and differing progress behavio
   assert.match(communicationInstructions('conversation'),/persona.*personality/);
   assert.match(communicationInstructions('conversation'),/current user's explicit request first, then the room note/);
   assert.match(communicationInstructions('task'),/without routine opening acknowledgements/);
+});
+
+test('only explicit ongoing user preferences qualify for automatic storage',()=>{
+  assert.deepEqual(persistentUserInstructions('앞으로 결과는 짧게 줘'),['앞으로 결과는 짧게 줘']);
+  for(const text of ['이번만 자세히 해줘','이 파일 수정해','앞으로 이렇게 할까?','> 항상 요약해','항상 API key secret 저장해','/note 앞으로 짧게']) assert.deepEqual(persistentUserInstructions(text),[]);
+});
+
+test('automatic learning preserves room note, scopes memory and asks before overlap; explicit note still works',async()=>{
+  const s=await isolatedServer();
+  const memory=async seat=>(await s.api('GET',`/api/room-instructions?room=default&seat=${seat}`)).data.text;
+  const send=async(text,extra={})=>{
+    const result=await s.api('POST','/api/message',{room:'default',text,target:'auto',...extra});
+    assert.equal(result.status,200,JSON.stringify(result.data));
+    for(let n=0;n<200;n++){
+      const r=await s.room('default');
+      if(!r.room.working&&!r.room.busy.length&&!r.room.queued)return r;
+      await new Promise(r=>setTimeout(r,25));
+    }
+    throw new Error('Fixture timeout');
+  };
+  try{
+    await s.api('POST','/api/config',{room:'default',config:{roomNote:'사람이 작성한 메모'}});
+    await send('@codex 앞으로 답은 짧게 줘');
+    assert.match(await memory('codex'),/짧게/);
+    assert.equal(await memory('claude'),'');
+    let r=await send('@codex 앞으로 답은 자세하게 줘');
+    let proposal=r.entries.filter(e=>e.meta?.instructionProposal).at(-1).meta.instructionProposal;
+    assert.doesNotMatch(await memory('codex'),/자세/);
+    assert.equal((await s.api('POST','/api/room-instructions/resolve',{room:'default',id:proposal.id,action:'append'})).status,200);
+    assert.match(await memory('codex'),/짧게[\s\S]*자세/);
+    r=await send('@codex 앞으로 답은 한 줄로 요약해');
+    proposal=r.entries.filter(e=>e.meta?.instructionProposal).at(-1).meta.instructionProposal;
+    await s.api('POST','/api/room-instructions/resolve',{room:'default',id:proposal.id,action:'cancel'});
+    assert.doesNotMatch(await memory('codex'),/한 줄/);
+    r=await send('@codex 앞으로 답은 두 줄로 요약해');
+    proposal=r.entries.filter(e=>e.meta?.instructionProposal).at(-1).meta.instructionProposal;
+    await s.api('POST','/api/room-instructions/resolve',{room:'default',id:proposal.id,action:'replace'});
+    assert.doesNotMatch(await memory('codex'),/짧게|자세/);
+    assert.match(await memory('codex'),/두 줄/);
+    await send('@all 항상 존댓말로 말해줘');
+    assert.match(await memory('_common'),/존댓말/);
+    assert.equal((await s.room('default')).room.cfg.roomNote,'사람이 작성한 메모');
+    await send('@claude SAY:EXPLICIT_NOTE',{solo:true,hopBudget:0,roomNoteRequest:true});
+    assert.match((await s.room('default')).room.cfg.roomNote,/EXPLICIT_NOTE/);
+  }finally{await s.close();}
 });
 
 test('saved memory and mode changes reach an existing CLI session on its next call', async () => {

@@ -1083,6 +1083,31 @@ function entryEl(e) {
       ? t(e.meta.connectedProjects.length ? "project.updatedNote" : "project.unlinkedNote", { count: e.meta.connectedProjects.length })
       : permissionNotice(e.text));
     const recovery = e.meta && e.meta.error && recoveryForEntry(e);
+    if (e.meta?.instructionProposal) {
+      const proposal = e.meta.instructionProposal;
+      const detail = document.createElement("div");
+      detail.style.whiteSpace = "pre-wrap";
+      detail.textContent = `${t("settings.learnedPrevious")}\n${proposal.previous || "—"}\n${(proposal.related || []).map(record=>`${record.scope}: ${record.text}`).join("\n")}\n\n${t("settings.learnedNew")}\n${proposal.added}`;
+      div.appendChild(detail);
+      const actions = document.createElement("div");
+      actions.dataset.instructionActions = proposal.id;
+      const resolved = state.summary?.instructionDecisions?.[proposal.id];
+      if (resolved) actions.textContent = t(resolved === "archived" ? "settings.learnedArchived" : "settings.learnedHandled");
+      else for (const [action,key] of [["append","settings.learnedAppend"],["replace","settings.learnedReplace"],["cancel","settings.learnedSkip"]]) {
+        if (action === "replace" && !proposal.previous) continue;
+        const button = document.createElement("button");
+        button.textContent = t(key); button.className = "btn";
+        button.onclick = async () => {
+          actions.querySelectorAll("button").forEach(b=>b.disabled=true);
+          try {
+            await api("/api/room-instructions/resolve",{room:state.room,id:proposal.id,action});
+            actions.textContent = t("settings.learnedHandled");
+          } catch(error) {toast(error.message,true); actions.querySelectorAll("button").forEach(b=>b.disabled=false);}
+        };
+        actions.appendChild(button);
+      }
+      div.appendChild(actions);
+    }
     if (recovery) {
       const b = document.createElement("button");
       b.className = "retry"; b.textContent = recovery.kind === "pair-retry" ? "Retry Pair cycle" : "Retry";
@@ -4898,18 +4923,37 @@ $("seatCards").addEventListener("click", async event => {
   if (!button) return;
   const item = settingsSeatDraft?.find(item => item.id === button.dataset.learnedSeat);
   if (!item?.existing || settingsCreating) return toast(t("settings.learnedSaveRoom"));
-  const room = settingsContext.name, seat = item.id;
+  const room = settingsContext.name;
+  let seat = item.id;
   button.disabled = true;
   try {
-    const data = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(seat)}`);
+    let data = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(seat)}`);
     const dialog = document.createElement("dialog");
     dialog.className = "learned-instructions-modal";
     dialog.innerHTML = `<header><h3>${esc(t("settings.learnedInstructions"))} · ${esc(item.cfg.displayName || seat)}</h3><button type="button" data-close aria-label="${esc(t("common.close"))}">×</button></header>` +
+      `<select class="learned-scope" aria-label="${esc(t("settings.learnedScope"))}"><option value="${esc(item.id)}">${esc(item.cfg.displayName || item.id)}</option><option value="_common">${esc(t("settings.learnedCommon"))}</option></select>` +
       `<p class="note">${esc(t("settings.learnedHelp"))}</p><div class="sub">${esc(data.file)}</div>` +
       `<textarea maxlength="16000" spellcheck="false" aria-label="${esc(t("settings.learnedInstructions"))}"></textarea>` +
       `<p class="learned-status" role="status"></p><footer><button type="button" data-close>${esc(t("common.cancel"))}</button><button type="button" class="primary" data-save>${esc(t("common.save"))}</button></footer>`;
     document.body.appendChild(dialog);
     dialog.querySelector("textarea").value = data.text;
+    let scopeRequest = 0;
+    dialog.querySelector(".learned-scope").onchange = async event => {
+      if (dialog.querySelector("textarea").value !== data.text && !confirm(t("settings.learnedDiscard"))) { event.target.value = seat; return; }
+      const selected = event.target.value, request = ++scopeRequest;
+      const save = dialog.querySelector("[data-save]"), textarea = dialog.querySelector("textarea");
+      save.disabled = true; textarea.disabled = true;
+      try {
+        const loaded = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(selected)}`);
+        if (request !== scopeRequest || !dialog.isConnected) return;
+        data = loaded; seat = selected; textarea.value = data.text;
+        dialog.querySelector(".sub").textContent = data.file;
+        dialog.querySelector(".learned-status").textContent = "";
+        save.disabled = false; textarea.disabled = false;
+      } catch (error) {
+        if (request === scopeRequest) dialog.querySelector(".learned-status").textContent = error.message;
+      }
+    };
     const previousFocus = document.activeElement;
     dialog.addEventListener("close", () => { dialog.remove(); previousFocus?.focus(); });
     dialog.querySelectorAll("[data-close]").forEach(el => el.onclick = () => dialog.close());

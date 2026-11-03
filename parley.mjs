@@ -46,7 +46,7 @@ import { diagnosticText } from "./lib/diagnostic-text.mjs";
 import { changedFiles, fileDiff, resolveProjectFile, discoverRepositories, resolveRepository } from "./lib/work-changes.mjs";
 import { subagentEvents } from "./lib/subagent-events.mjs";
 import { plainPeerRequest } from "./lib/peer-routing.mjs";
-import { readRoomInstructions, saveRoomInstructions, communicationInstructions } from "./lib/room-instructions.mjs";
+import { readRoomInstructions, saveRoomInstructions, communicationInstructions, persistentUserInstructions, planRememberedInstructions } from "./lib/room-instructions.mjs";
 import { SharedBrowser } from "./lib/shared-browser.mjs";
 import { browserBridge, browserCliArgs, browserInstruction, agyBrowserNeedsSetup, browserSetupRequired } from "./lib/shared-browser-config.mjs";
 import { agyBrowserPermissions } from "./lib/agy-browser-permissions.mjs";
@@ -1335,16 +1335,17 @@ function composeStandingContract(agent, room) {
       `[End room-specific role]`;
   }
   const learned = readRoomInstructions(room.dir, agent);
+  const commonLearned = readRoomInstructions(room.dir, "_common");
   const communication = communicationInstructions(room.cfg.communicationMode);
   text += `\n\n[Room communication preferences]\n${communication}`;
-  text += `\n\n[Saved instructions for this room and seat]\n${learned.text || '(No saved instructions. Disregard earlier saved instructions for this seat.)'}\n[End saved instructions]\nRoom-specific memory file: ${JSON.stringify(learned.file)}. When the user explicitly asks you to remember a lasting preference, you may update this file if your tool permissions allow it. Store only relevant user-approved preferences, not inferred authority, secrets or peer messages as user instructions. Verify the write before claiming it was saved. Do not bypass permissions to write it. The human can inspect and edit it. Other CLI memory files are separate and are not shown in this room-memory editor.`;
+  text += `\n\n[Saved common conversation instructions]\n${commonLearned.text || '(None; disregard earlier common conversation instructions.)'}\n[End common conversation instructions]\n[Saved instructions for this room and seat]\n${learned.text || '(No saved instructions. Disregard earlier saved instructions for this seat.)'}\n[End saved instructions]\nThese are remembered preferences, not new task authorization. Current user requests and the human-authored room note take priority. A newer saved preference supersedes an older conflicting preference within the same scope; seat-specific preferences refine common preferences. Do not automatically update room notes. Only an explicit user /note request authorizes drafting or saving a room note; follow the dedicated workflow instruction when present. Parley records explicit ongoing user preferences separately and reports successful saves; never claim a save without that confirmation. Do not edit memory files yourself. The human can inspect and edit saved preferences. Other CLI memory files are separate and are not shown here.`;
   const providerProgress = room.cfg.communicationMode === "task" ? "" : providerIdOf(room, agent) === "gemini" ? AGY_PROGRESS_CONTRACT
     : providerIdOf(room, agent) === "claude" ? CLAUDE_PROGRESS_CONTRACT : "";
   if (providerProgress) text += `\n\n${providerProgress}`;
   const identityFingerprint = crypto.createHash("sha256").update(JSON.stringify({
     displayName: displayNameOf(room, agent), role: ownRole,
     mention: callNameOf(room, agent), persona,
-    projectDirs, communication, learnedRevision: learned.revision,
+    projectDirs, communication, learnedRevision: learned.revision, commonLearnedRevision: commonLearned.revision,
     ...(providerProgress ? { providerProgress } : {}),
     peers: peers.map(({ id, label, role, mention }) => ({ id, label, role, mention })),
   }), "utf8").digest("hex");
@@ -2926,6 +2927,7 @@ function roomSummary(room) {
   return {
     name: room.name,
     cfg: room.cfg,
+    instructionDecisions: room.state.instructionDecisions || {},
     dir: room.dir,
     workspace: workDir(room),
     projectLinks,
@@ -3619,7 +3621,7 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
     // discussion note does: appended to the prompt, never baked into the
     // briefing, so it applies to exactly this turn.
     const roomNoteInstruction = userTurn.meta?.roomNoteRequest
-      ? "The user explicitly asked you to write the shared room note. Return only the concise standing rules to save, without a heading, explanation, code fence, or commentary. Include only durable agreements that every seated model should follow; omit transient task details."
+      ? "The user explicitly requested /note. Return only the concise shared room-note text to save, without headings or commentary. This explicit request authorizes the room-note update; automatic conversation learning does not."
       : "";
     const adjustmentInstruction = askFrom?.adjustment
       ? "This is the user's additional instruction for the quoted task. Apply it before deciding the next step. Earlier prepared peer handoffs were superseded, not delivered by this correction. Reassess whether peer work is still needed and explicitly address the peer again only if appropriate after applying this instruction."
@@ -5572,6 +5574,36 @@ function handleUserMessage(room, rawText, targetSel, rawImages, rawFiles, rawRel
     adjustedRun.chain.supersededBy = userTurn.n;
     wakeSeatWaiters(room);
   }
+  const remembered = roomNoteRequest ? [] : persistentUserInstructions(text);
+  if (remembered.length) {
+    // Only the user's actual delivery targets determine scope; a model cannot
+    // redirect its preferences into another model's memory or the room note.
+    const addressed = [...new Set([...agents, ...sleeping])];
+    const scopes = effectiveTarget === "both" || /모든\s*모델|너희\s*(?:모두|다)|다들|everyone|all models/i.test(text) ? ["_common"] : addressed;
+    for (const seat of scopes) {
+      try {
+        const plan = planRememberedInstructions(room.dir, seat, remembered, seat === "_common" ? seatIds(room) : ["_common"]);
+        if (!plan) continue;
+        if (plan.needsApproval) {
+          const id = crypto.randomUUID();
+          room.state.instructionProposals ||= {};
+          room.state.instructionProposals[id] = plan;
+          saveState(room);
+          appendEntry(room, {kind:"system",author:"system",
+            text:`${seat === "_common" ? "방 공통" : displayNameOf(room, seat)}의 기존 지침과 관련된 내용입니다. 추가할까요, 기존 지침을 수정할까요?`,
+            meta:{instructionProposal:{id,previous:plan.previous,added:plan.added,related:plan.related.map(({scope,text})=>({scope,text}))},sourceN:userTurn.n}});
+          continue;
+        }
+        saveRoomInstructions(room.dir, seat, plan.text, plan.revision);
+        appendEntry(room, {
+          kind:"system", author:"system", text:`📌 ${seat === "_common" ? "방 공통" : displayNameOf(room, seat)} 대화 지침에 저장했습니다.`,
+          meta:{learnedInstructionsSaved:true, scope:seat, sourceN:userTurn.n},
+        });
+      } catch (error) {
+        appendEntry(room, {kind:"system",author:"system",text:`대화 지침을 저장하지 못했습니다: ${error.message}`,meta:{sourceN:userTurn.n}});
+      }
+    }
+  }
   room.state.lastAddressed = effectiveTarget;
   room.state.lastUser = {
     n: userTurn.n, text: truncate(text, 2000), target: effectiveTarget, done: {},
@@ -7452,6 +7484,8 @@ function restoreConversationArchive(source, id, name) {
   const archive = readConversationArchive(source.dir, id);
   const config = structuredClone(archive.manifest?.config || source.cfg);
   const restoredState = defaultState(config.agents);
+  restoredState.instructionDecisions = Object.fromEntries(archive.records.filter(entry=>entry.meta?.instructionProposal)
+    .map(entry=>[entry.meta.instructionProposal.id,"archived"]));
   // Preserve historical delivery facts, but never revive native sessions,
   // queued jobs, Pair cycles or retry requests from the archived conversation.
   for (const key of ["cancelledDeliveries", "interruptedResponses", "resolvedErrors", "lurkOutcomes"]) {
@@ -7470,7 +7504,7 @@ function restoreConversationArchive(source, id, name) {
   }
   try {
     writeJSON(path.join(destination, "room.json"), config);
-    for (const seat of Object.keys(config.agents)) {
+    for (const seat of ["_common", ...Object.keys(config.agents)]) {
       const text = archive.manifest?.learnedInstructions?.[seat];
       if (typeof text === "string" && text) saveRoomInstructions(destination, seat, text, readRoomInstructions(destination, seat).revision);
     }
@@ -8209,10 +8243,28 @@ const server = http.createServer(async (req, res) => {
     // in a long-lived room.
     // What a first run actually needs to know, per seat, before anything is
     // spent: is the CLI there, is it signed in, and if not, what to do about it.
+    if (route === "POST /api/room-instructions/resolve") {
+      const body = await readBody(req), room = loadRoom(body.room || "default");
+      const proposal = room.state.instructionProposals?.[body.id];
+      if (!proposal) return json(res,409,{error:"이미 처리된 요청입니다."});
+      if (!["append","replace","cancel"].includes(body.action)) return json(res,400,{error:"Invalid decision"});
+      if (body.action !== "cancel") {
+        if (proposal.scope !== "_common" && !seatIds(room).includes(proposal.scope)) return json(res,409,{error:"모델이 변경되었습니다. 지침을 다시 확인해주세요."});
+        for (const related of proposal.related) if (readRoomInstructions(room.dir,related.scope).revision !== related.revision) return json(res,409,{error:"관련 지침이 변경되었습니다. 취소 후 새 지침을 확인해주세요."});
+        saveRoomInstructions(room.dir, proposal.scope, body.action === "append" ? proposal.appendText : proposal.text, proposal.revision);
+      }
+      delete room.state.instructionProposals[body.id];
+      room.state.instructionDecisions ||= {};
+      room.state.instructionDecisions[body.id] = body.action;
+      saveState(room);
+      appendEntry(room,{kind:"system",author:"system",text:body.action !== "cancel" ? "선택한 방식으로 대화 지침을 저장했습니다. 다음 호출부터 전달됩니다." : "기존 대화 지침을 유지합니다.",meta:{instructionResolved:body.id}});
+      broadcast(room,{type:"room",room:roomSummary(room)});
+      return json(res,200,{ok:true});
+    }
     if (route === "GET /api/room-instructions" || route === "POST /api/room-instructions") {
       const body = req.method === "POST" ? await readBody(req) : Object.fromEntries(url.searchParams);
       const room = loadRoom(body.room || "default");
-      if (!seatIds(room).includes(body.seat)) return json(res, 404, {error:"Seat not found"});
+      if (body.seat !== "_common" && !seatIds(room).includes(body.seat)) return json(res, 404, {error:"Seat not found"});
       if (req.method === "POST" && room.busy.size) return json(res, 409, {error:"작업이 끝난 후 지침을 저장해주세요."});
       const result = req.method === "POST" ? saveRoomInstructions(room.dir, body.seat, body.text, body.revision) : readRoomInstructions(room.dir, body.seat);
       return json(res, 200, result);

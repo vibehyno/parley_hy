@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.4.48 — 2026-11-03
+
+- Save explicit ongoing user preferences in shared or per-seat memory without additional model calls; skip one-off requests and conservative exclusion patterns.
+- Ask before overlapping preferences: append, replace related instructions, or skip. Preserve existing files until a decision and reject stale updates.
+- Add shared-memory scope to the editor and archive restoration.
+- Keep room notes separate from automatic learning; preserve explicit /note workflows.
+
 ## 1.4.47 — 2026-11-03
 
 - Add room-level conversational and task-focused communication preferences while preserving permissions and persona. Current requests and room notes override mode defaults.
