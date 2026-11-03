@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.34 — 2026-11-03
+
+- Reuse settings for room creation and editing, with an editable name at the top. Remove the separate footer rename action.
+- Allow deleting default and the last room; show an empty-state create button and restore an available room without recreating deleted rooms.
+- Bundle Pretendard with its OFL license and improve message/table typography and line spacing.
+
 ## 1.4.33 — 2026-11-03
 
 - Clarify Claude's public pre-tool update and final-result contract within one CLI invocation, including concise review requests.

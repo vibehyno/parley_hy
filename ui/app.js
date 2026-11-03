@@ -124,7 +124,7 @@ async function api(path, body) {
     throw new Error(t("runtime.restartError"));
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { code: data.code });
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { code: data.code, status: res.status });
   return data;
 }
 
@@ -3527,6 +3527,25 @@ async function refreshDoctor(roomName) {
   } catch { /* the room still works; the pills carry what they know */ }
 }
 
+function rememberedRoom() {
+  try { return localStorage.getItem("parley.lastRoom"); } catch { return null; }
+}
+async function openAvailableRoom(preferred) {
+  const listing = await api("/api/rooms");
+  state.providers = listing.providers || state.providers;
+  const names = listing.rooms.map(r => typeof r === "string" ? r : r.name);
+  const target = [preferred, rememberedRoom(), ...names].find(name => names.includes(name));
+  if (target) return loadRoom(target);
+  if (state.es) { state.es.close(); state.es = null; }
+  state.resyncVersion++; state.eventVersion++;
+  state.room = null; state.summary = null; state.entries = []; state.receipts = []; state.queue = [];
+  clearLive(); clearAdjustmentDraft(); clearDraftAttachments(); clearAttachmentUrls();
+  $("chat").replaceChildren(); $("pills").replaceChildren();
+  document.body.classList.add("no-room");
+  history.replaceState(null, "", location.pathname);
+  workPanel.roomChanged(); sharedBrowserPanel.roomChanged();
+  await refreshRooms();
+}
 async function loadRoom(name) {
   $("pills").querySelectorAll(".seat-error.open").forEach(box => window.ParleySeatErrors.setPopoverOpen(box, false));
   closeConnectionMenu(false);
@@ -3535,9 +3554,8 @@ async function loadRoom(name) {
   try {
     data = await api("/api/room?name=" + encodeURIComponent(name));
   } catch (e) {
-    if (name === "default") throw e;
-    toast(`Room "${name}" no longer exists — opening default.`, true);
-    return loadRoom("default");
+    if (e.status !== 404) throw e;
+    return openAvailableRoom();
   }
   if (state.es) {
     const old = state.es;
@@ -3556,6 +3574,8 @@ async function loadRoom(name) {
     state.hopChoice = storedHopChoice(roomName);
   }
   state.room = roomName;
+  document.body.classList.remove("no-room");
+  try { localStorage.setItem("parley.lastRoom", roomName); } catch { /* unavailable storage */ }
   refreshDoctor(roomName);
   history.replaceState(null, "", roomName === "default" ? location.pathname : "?room=" + encodeURIComponent(roomName));
   // Keep an explicit destination if it exists in the destination room. Only a
@@ -3640,7 +3660,7 @@ async function refreshAfterGap() {
 async function refreshRooms() {
   const data = await api("/api/rooms");
   state.providers = data.providers || state.providers;
-  fillSeatPickers();
+
   const list = $("roomList");
   list.innerHTML = "";
   for (const r of data.rooms) {
@@ -3674,8 +3694,7 @@ async function refreshRooms() {
       `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
       `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : (linked ? `📁${projectCount > 1 ? projectCount : ""}` : "")}${mode === "work" ? "🔨" : ""}</span></button>` +
       `<span class="racts"><button type="button" class="ract" data-act="rename" title="${esc(t("settings.rename"))}" aria-label="${esc(t("settings.rename"))} ${esc(name)}">✎</button>` +
-      // the default room is the app's fallback; it can be emptied, not removed
-      (name === "default" ? "" : `<button type="button" class="ract del" data-act="delete" title="${esc(t("settings.delete"))}" aria-label="${esc(t("settings.delete"))} ${esc(name)}">✕</button>`) +
+      `<button type="button" class="ract del" data-act="delete" title="${esc(t("settings.delete"))}" aria-label="${esc(t("settings.delete"))} ${esc(name)}">✕</button>` +
       `</span>`;
     row.onclick = (e) => {
       const act = e.target.closest(".ract");
@@ -3685,35 +3704,6 @@ async function refreshRooms() {
     };
     list.appendChild(row);
   }
-}
-// New-room seat pickers: pre-filled with the default pair, visible so the
-// choice is discoverable, never a required step.
-function fillSeatPickers() {
-  const ids = Object.keys(state.providers);
-  if (!ids.length || $("seat1").options.length) return;
-  for (const [sel, def] of [[$("seat1"), "claude"], [$("seat2"), "codex"]]) {
-    sel.innerHTML = ids.map((p) => `<option value="${esc(p)}">${esc(state.providers[p].label)}</option>`).join("");
-    sel.value = ids.includes(def) ? def : ids[sel === $("seat2") ? 1 : 0] || ids[0];
-    sel.onchange = syncSeatNames;
-  }
-  syncSeatNames();
-}
-// Two seats may run the same provider — what has to differ is their names,
-// because a seat id is its @mention, its config key and the author on every
-// line it writes. The name fields only appear when they are actually needed;
-// picking two different providers keeps the form exactly as it was.
-function syncSeatNames() {
-  const p1 = $("seat1").value, p2 = $("seat2").value;
-  const same = !!p1 && p1 === p2;
-  $("seatNames").style.display = same ? "flex" : "none";
-  $("seatNamesHint").style.display = same ? "block" : "none";
-  if (!same) return;
-  // Prefill rather than demand: "claude" and "claude2" are a fine default, and
-  // anyone who wants "opus"/"sonnet" can just type over them.
-  if (!$("seat1Name").value.trim()) $("seat1Name").value = p1;
-  if (!$("seat2Name").value.trim()) $("seat2Name").value = p2 + "2";
-  $("seat1Name").placeholder = p1;
-  $("seat2Name").placeholder = p2 + "2";
 }
 // Mirrors the server's rule so the message names the problem instead of
 // bouncing back a 400. The server still validates; this is only the wording.
@@ -4545,80 +4535,8 @@ function mentionKeydown(e) {
 }
 
 // ------------------------------------------------------------ rooms sidebar
-$("addRoomBtn").onclick = () => {
-  clearNewRoomProject(); // a fresh form never inherits the last one's folder
-  $("seat1Name").value = ""; $("seat2Name").value = "";
-  syncSeatNames();
-  $("newRoomForm").style.display = "block";
-  $("newRoomInput").focus();
-};
-let newRoomProjectDir = null;
-// The OS dialog isn't modal to this page, so the form can be submitted while it
-// is still open. Each pick is stamped, and anything that ends the form's life
-// moves the stamp on: a result that arrives after that belongs to a form the
-// user already finished with, and must not seed the next room's folder.
-let newRoomPick = 0;
-function clearNewRoomProject() {
-  newRoomPick++;
-  newRoomProjectDir = null;
-  $("newRoomProjVal").textContent = "";
-  $("newRoomProj").style.color = "var(--text-faint)";
-}
-$("newRoomProj").onclick = async () => {
-  const pick = ++newRoomPick;
-  const r = await browseFolder(null, $("newRoomProj"));
-  if (pick !== newRoomPick || !r) return; // superseded while the dialog was open
-  newRoomProjectDir = r;
-  $("newRoomProjVal").textContent = "— " + r.split(/[\\/]/).pop();
-  $("newRoomProj").style.color = "var(--text-dim)";
-};
-$("newRoomForm").onsubmit = async (e) => {
-  e.preventDefault();
-  const name = $("newRoomInput").value.trim();
-  if (!name) return;
-  const providers = [$("seat1").value, $("seat2").value].filter(Boolean);
-  let seats = providers;
-  if (providers.length === 2 && providers[0] === providers[1]) {
-    // Same provider twice is a real room; the names are what distinguish them.
-    const ids = [$("seat1Name").value.trim().toLowerCase() || providers[0],
-      $("seat2Name").value.trim().toLowerCase() || providers[1] + "2"];
-    if (ids[0] === ids[1]) return toast("Give the two seats different names.", true);
-    const issue = ids.map(seatNameIssue).find(Boolean);
-    if (issue) return toast(issue, true);
-    seats = ids.map((id, i) => ({ id, provider: providers[i] }));
-  }
-  const body = { name };
-  if (seats.length === 2) body.seats = seats;
-  if (newRoomProjectDir) body.projectDir = newRoomProjectDir;
-  // Retire this form's pick: a dialog still open belongs to the room being
-  // created now, not to whatever is typed next. The chosen folder itself is
-  // only cleared on success — a rejected name leaves the form up, and the user
-  // shouldn't have to pick their project again to fix a typo.
-  newRoomPick++;
-  const asReview = $("newRoomReviewChk").checked;
-  try {
-    await api("/api/rooms", body);
-    // The flagship workflow used to take four separate actions to assemble:
-    // create, flip to work, turn on the reviewer's ear, then find lurkStyle.
-    // As a preset it is one checkbox — configured after creation so the room
-    // exists to configure, and reported rather than silently half-applied.
-    const reviewerId = typeof seats[1] === "string" ? seats[1] : (seats[1] || {}).id;
-    if (asReview && seats.length === 2 && reviewerId) {
-      try {
-        await api("/api/config", {
-          room: name,
-          config: { mode: "work", agents: { [reviewerId]: { lurk: true, lurkStyle: "balanced" } } },
-        });
-      } catch (err) { toast(`Room created, but the review preset didn't apply: ${err.message}`, true); }
-    }
-    $("newRoomInput").value = "";
-    $("seat1Name").value = ""; $("seat2Name").value = "";
-    $("newRoomReviewChk").checked = false;
-    $("newRoomForm").style.display = "none";
-    clearNewRoomProject();
-    await loadRoom(name);
-  } catch (err) { toast(err.message, true); }
-};
+$("addRoomBtn").onclick = () => openSettings(true);
+$("emptyRoomCreate").onclick = () => openSettings(true);
 // Ask the server to open the OS folder dialog; returns a path or null.
 // The dialog is modal on the desktop but not in this page, so the button that
 // opened it is held down until it closes — otherwise a second click stacks
@@ -4742,7 +4660,7 @@ $("seatCards").addEventListener("click", (e) => {
     const label = seat?.cfg?.displayName || seat?.cfg?.mentionAlias || seat?.id || remove.dataset.removeSeat;
     if (!confirm(tr("settings.removeSeatConfirm", "Remove {seat}? Its settings and linked session in this room will be deleted. The room transcript stays intact.", { seat: label }))) return;
     settingsSeatDraft = settingsSeatDraft.filter((item) => item.id !== remove.dataset.removeSeat);
-    renderSeatCards(state.summary);
+    renderSeatCards(settingsContext || state.summary);
     refreshDefaultSeatOptions();
     return;
   }
@@ -4989,7 +4907,7 @@ function openAvatarCrop(seat, file) {
     const item = avatarDraft(seat);
     if (item) item.cfg.avatarImage = out.toDataURL("image/png");
     close();
-    if (state.summary) renderSeatCards(state.summary);
+    if (settingsContext || state.summary) renderSeatCards(settingsContext || state.summary);
   };
 }
 $("seatCards").addEventListener("click", (e) => {
@@ -5000,7 +4918,7 @@ $("seatCards").addEventListener("click", (e) => {
   captureSeatDraftValues();
   const item = avatarDraft(clear.dataset.avatarClear);
   if (item) item.cfg.avatarImage = null;
-  if (state.summary) renderSeatCards(state.summary);
+  if (settingsContext || state.summary) renderSeatCards(settingsContext || state.summary);
 });
 $("seatCards").addEventListener("paste", (e) => {
   const field = e.target.closest('[data-f="avatar"], [data-avatar-seat]');
@@ -5495,19 +5413,35 @@ function closeSettings() {
   if (settingsOpener && document.contains(settingsOpener)) settingsOpener.focus();
   settingsOpener = null;
   settingsSeatDraft = null;
+  settingsContext = null;
+  settingsCreating = false;
 }
-function openSettings() {
-  const s = state.summary; if (!s) return;
+let settingsContext = null;
+let settingsCreating = false;
+function openSettings(create = false) {
+  settingsCreating = create === true;
+  const initialSeats = ["claude", "codex"].filter(id => state.providers[id]);
+  const s = settingsCreating ? {
+    name: "", dir: "", seats: initialSeats, agents: {}, seatInfo: {},
+    cfg: { mode: "talk", agents: Object.fromEntries(initialSeats.map(id => [id, newSeatConfig(id)])),
+      accounting: "automatic", hopBudget: 25, timeoutMs: 300000, pairRounds: 0 },
+  } : state.summary;
+  if (!s) return;
+  settingsContext = s;
   settingsOpener = document.activeElement;
   settingsSeatDraft = s.seats.map((id) => ({
     id,
     provider: s.seatInfo?.[id]?.provider || s.cfg.agents[id]?.provider || id,
     cfg: { ...(s.cfg.agents[id] || {}), extraArgs: [...(s.cfg.agents[id]?.extraArgs || [])] },
-    existing: true,
+    existing: !settingsCreating,
   }));
+  $("s_roomName").value = s.name;
+  $("settingsTitle").textContent = t(settingsCreating ? "room.create" : "settings.title");
+  $("mSave").textContent = t(settingsCreating ? "room.create" : "common.save");
+  $("mNewConv").hidden = settingsCreating;
   $("roomPath").textContent = s.dir;
   $("s_locale").value = currentLocale();
-  $("mDelete").hidden = s.name === "default"; // the fallback room can't be removed
+  $("mDelete").hidden = settingsCreating;
   $("s_addProvider").innerHTML = Object.entries(state.providers || {}).map(([id, provider]) =>
     `<option value="${esc(id)}">${esc(provider.label || id)}</option>`).join("");
   renderSeatCards(s);
@@ -5528,11 +5462,13 @@ function openSettings() {
     (previousAccounting ? tr("settings.previousAccountingNote", " This room still uses previous accounting. Select Automatic turns and review the allowance to switch; saving other settings alone will not switch it.") : "");
   $("s_pairrounds").value = s.cfg.pairRounds || 0;
   $("overlay").classList.add("open");
+  $("s_roomName").focus();
+  if (settingsCreating) return;
   // Cached CLI metadata, warmed when the room loads. Never overwrite form edits.
   refreshSeatModels(s).then(updated => {
-    if (!updated || !$("overlay").classList.contains("open")) return;
+    if (!updated || !$("overlay").classList.contains("open") || settingsContext !== s || settingsCreating) return;
     captureSeatDraftValues();
-    renderSeatCards(state.summary);
+    renderSeatCards(settingsContext || state.summary);
   }).catch(() => { /* Free-form model input remains available. */ });
 }
 $("s_addSeat").onclick = () => {
@@ -5541,11 +5477,15 @@ $("s_addSeat").onclick = () => {
   const provider = $("s_addProvider").value;
   const id = nextSeatId(provider);
   settingsSeatDraft.push({ id, provider, cfg: newSeatConfig(provider), existing: false });
-  renderSeatCards(state.summary);
+  renderSeatCards(settingsContext || state.summary);
   refreshDefaultSeatOptions();
 };
 function refreshLocalizedUi() {
   applyLocale();
+  if (settingsContext) {
+    $("settingsTitle").textContent = t(settingsCreating ? "room.create" : "settings.title");
+    $("mSave").textContent = t(settingsCreating ? "room.create" : "common.save");
+  }
   document.title = t("app.name");
   renderAdjustmentDraft();
   syncSidebarVisibility();
@@ -5555,7 +5495,7 @@ function refreshLocalizedUi() {
     // provider fields; otherwise a language switch would silently undo them.
     const pending = new Map([...document.querySelectorAll("#seatCards [data-seat][data-f]")]
       .map((el) => [`${el.dataset.seat}:${el.dataset.f}`, el.value]));
-    renderSeatCards(state.summary);
+    renderSeatCards(settingsContext || state.summary);
     for (const el of document.querySelectorAll("#seatCards [data-seat][data-f]")) {
       const key = `${el.dataset.seat}:${el.dataset.f}`;
       if (pending.has(key)) el.value = pending.get(key);
@@ -5575,7 +5515,7 @@ $("s_locale").onchange = () => {
   setLocale($("s_locale").value);
   refreshLocalizedUi();
 };
-$("settingsBtn2").onclick = openSettings;
+$("settingsBtn2").onclick = () => openSettings();
 $("workBannerClose").onclick = dismissAccessBanner;
 $("updateBtn").onclick = openUpdate;
 $("updateClose").onclick = closeUpdate;
@@ -5592,7 +5532,11 @@ document.addEventListener("keydown", (e) => {
   // Settings are dismissed explicitly through their close button.
 });
 $("mSave").onclick = async () => {
-  const s = state.summary; if (!s) return;
+  const s = settingsContext; if (!s || $("mSave").disabled) return;
+  const desiredName = $("s_roomName").value.trim().normalize("NFC");
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}\p{M}_ -]{0,39}$/u.test(desiredName) || /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])$/i.test(desiredName)) {
+    toast(t("room.invalidName"), true); $("s_roomName").focus(); return;
+  }
   captureSeatDraftValues();
   const draft = settingsSeatDraft || [];
   const reservedMentions = new Set(["both", "all", "user", "system", "none", ...draft.map((item) => item.id.toLowerCase())]);
@@ -5662,8 +5606,22 @@ $("mSave").onclick = async () => {
     setNotifyEnabled(false);
   }
   try {
+    $("mSave").disabled = true;
     const seats = draft.map(({ id, provider }) => ({ id, provider }));
-    const saved = await api("/api/config", { room: state.room, seats, config });
+    const wasCreating = settingsCreating;
+    if (wasCreating) {
+      await api("/api/rooms", { name: desiredName, seats });
+      // If saving options fails, retry this room instead of creating a duplicate.
+      settingsCreating = false;
+      s.name = desiredName;
+    }
+    const saved = await api("/api/config", { room: s.name, seats, config });
+    if (s.name !== desiredName) {
+      await api("/api/room/rename", { room: s.name, to: desiredName });
+    }
+    if (wasCreating || s.name !== desiredName || state.room !== desiredName) {
+      closeSettings(); await loadRoom(desiredName); toast(t("settings.saved")); return;
+    }
     if (saved?.room) { state.summary = saved.room; applySummary(saved.room); }
     closeSettings();
     // The panel above already shows the new permission, but a CLI process that
@@ -5675,6 +5633,7 @@ $("mSave").onclick = async () => {
       ? t("notice.savedRunning", { who: late.map(seatLabel).join(", ") })
       : t("settings.saved"));
   } catch (e) { toast(e.message, true); }
+  finally { $("mSave").disabled = false; }
 };
 let archiveView = { generation: 0, room: null, id: null, restoring: false };
 function closeArchives() {
@@ -5782,26 +5741,12 @@ async function newConversation() {
 // you hover in the sidebar — so both flows fetch the target's own details
 // before asking you to confirm.
 async function renameFlow(name) {
-  let info;
-  try { info = await api("/api/room?name=" + encodeURIComponent(name)); }
-  catch (e) { return toast(e.message, true); }
-  const to = prompt(`Rename "${name}" to:`, name);
-  if (to === null) return;
-  const t = to.trim();
-  if (!t || t === name) return;
-  const warn = info.room.cfg.projectDir
-    ? "" // linked rooms keep their working directory, so sessions survive
-    : `\n\nNote: the workspace folder moves with the room, so each agent starts a fresh session (the conversation is replayed to them from the transcript).`;
-  if (warn && !confirm(`Rename "${name}" → "${t}"?${warn}`)) return;
   try {
-    const r = await api("/api/room/rename", { room: name, to: t });
-    closeSettings();
-    // Follow the successful response too: the SSE notification may have been
-    // missed while disconnected. The shared helper is idempotent if it arrived.
-    followRoomRename(name, r.name);
-    toast(`Renamed to "${r.name}".`);
-    await refreshRooms();
-  } catch (e) { toast(e.message, true); }
+    if (state.room !== name) await loadRoom(name);
+    openSettings();
+    $("s_roomName").focus();
+    $("s_roomName").select();
+  } catch (error) { toast(error.message, true); }
 }
 async function deleteFlow(name) {
   let info;
@@ -5818,13 +5763,12 @@ async function deleteFlow(name) {
     toast(t("room.deleted", { name }));
     if (state.room === name) {
       if (state.es) { state.es.close(); state.es = null; }
-      await loadRoom(r.rooms.length ? (r.rooms[0].name || r.rooms[0]) : "default");
+      await openAvailableRoom();
     } else {
       await refreshRooms();
     }
   } catch (e) { toast(e.message, true); }
 }
-$("mRename").onclick = () => renameFlow(state.room);
 $("mDelete").onclick = () => deleteFlow(state.room);
 $("mDelete").hidden = false;
 $("newConvBtn").onclick = newConversation;
@@ -5842,6 +5786,6 @@ const workPanel = window.ParleyWorkPanel.create({
 
 // ------------------------------------------------------------ boot
 const sharedBrowserPanel = window.ParleySharedBrowser.create({ state, api, t, esc, seatName });
-loadRoom(state.room).catch((e) => toast(e.message, true));
+openAvailableRoom(new URLSearchParams(location.search).get("room")).catch((e) => toast(e.message, true));
 checkForUpdate();
 input.focus();

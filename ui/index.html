@@ -21,33 +21,6 @@
       <div><b>Parley HY</b><span id="tagline">you · claude · codex</span></div>
     </div>
     <div class="side-label"><span data-i18n="sidebar.rooms">Rooms</span> <button id="addRoomBtn" title="New room" data-i18n-title="sidebar.newRoom">+</button></div>
-    <form id="newRoomForm">
-      <input id="newRoomInput" placeholder="room name…" data-i18n-placeholder="room.namePlaceholder" maxlength="40" spellcheck="false">
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <select id="seat1" title="Seat 1 provider" data-i18n-title="room.seat1Provider" style="flex:1"></select>
-        <select id="seat2" title="Seat 2 provider" data-i18n-title="room.seat2Provider" style="flex:1"></select>
-      </div>
-      <div id="seatNames" style="display:none;gap:6px;margin-top:6px">
-        <input id="seat1Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 1 name" data-i18n-aria-label="room.seat1Name">
-        <input id="seat2Name" maxlength="20" spellcheck="false" style="flex:1" aria-label="Seat 2 name" data-i18n-aria-label="room.seat2Name">
-      </div>
-      <div id="seatNamesHint" class="hint" data-i18n="room.sameProviderHint" style="display:none;margin-top:4px">
-        Two seats on the same provider need different names — these become their @mentions.
-      </div>
-      <button type="button" id="newRoomProj" class="ract"
-        style="display:block;width:100%;text-align:left;margin-top:6px;padding:4px 2px;font-size:11.5px;color:var(--text-faint)"
-        title="Point this room at an existing project folder" data-i18n-title="room.linkProjectTitle"><span data-picker-label data-i18n="room.linkProject">📁 Link a project folder…</span> <span id="newRoomProjVal"></span></button>
-      <label id="newRoomReview" style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:11.5px;color:var(--text-faint);cursor:pointer">
-        <input type="checkbox" id="newRoomReviewChk" style="margin-top:2px">
-        <span data-i18n="room.pairReview">Pair review room — seat 1 codes, seat 2 lurks and reviews every change</span>
-      </label>
-      <!-- A real submit button, not decoration. Without one the form relied on
-           implicit submission, which the HTML spec only performs when there is
-           exactly one text field — so adding the seat-name inputs silently
-           stopped Enter from creating anything at all. -->
-      <button type="submit" id="newRoomCreate" class="btn primary"
-        style="width:100%;margin-top:8px;padding:6px 10px;font-size:12px" data-i18n="room.create">Create room</button>
-    </form>
     <nav id="roomList"></nav>
     <div class="side-foot">
       <button id="openWs" type="button" data-side-tip="Manage the projects connected to this room" data-i18n-side-tip="sidebar.openWorkspaceTip"><span class="ico">📁</span> <span id="openWsLabel" data-i18n="sidebar.openWorkspace">Open workspace</span></button>
@@ -107,6 +80,7 @@
     <div id="workBanner"><span id="workBannerContent">🔨 <span data-i18n="work.banner">Work room — agents can write files in the shared workspace and run commands. Their actions show as inline activity lines.</span></span><button id="workBannerClose" type="button" aria-label="Close" data-i18n-aria-label="common.close" title="Close" data-i18n-title="common.close">×</button></div>
 
     <div id="chatWrap">
+      <button id="emptyRoomCreate" type="button" class="btn"><span aria-hidden="true">＋</span><span data-i18n="room.addNew">Add a new room</span></button>
       <div id="chat" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
       <div id="empty" style="display:none">
         <div class="big">🃏</div>
@@ -263,6 +237,7 @@
       <button class="hbtn" id="mClose" type="button" data-i18n-title="common.close" data-i18n-aria-label="common.close">×</button>
     </div>
     <div class="settings-body">
+    <div class="fld"><label for="s_roomName" data-i18n="room.nameLabel">Room name</label><input id="s_roomName" maxlength="40" spellcheck="false" data-i18n-placeholder="room.namePlaceholder"></div>
     <div class="sub" id="roomPath"></div>
     <div class="mgrid" id="seatCards"></div>
     <div class="seat-manager" id="seatManager">
@@ -297,7 +272,6 @@
     </div>
     <div class="mrow settings-footer">
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn" id="mRename" data-i18n="settings.rename">Rename…</button>
         <button class="btn danger" id="mNewConv" data-i18n="settings.archive">🧹 Clean chat</button>
         <button class="btn danger" id="mDelete" data-i18n="settings.delete">Delete room</button>
       </div>

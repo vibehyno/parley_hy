@@ -7343,12 +7343,7 @@ function closeRoom(room) {
   rooms.delete(room.name); // evict the cache, or a later state flush rebuilds the folder
 }
 
-function deleteRoom(room) {
-  // `default` is the room the app falls back to and re-creates on boot, so
-  // deleting it only produces an empty ghost. Refuse rather than half-work.
-  if (room.name === "default") {
-    throw Object.assign(new Error("the default room can't be deleted — archive its conversation with New conversation instead"), { status: 400 });
-  }
+async function deleteRoom(room) {
   // Both of these move the room's folder, which is a live working directory for
   // any process the room might still launch — so they wait for the whole
   // exchange, not just for a seat that happens to be running right now.
@@ -7363,8 +7358,16 @@ function deleteRoom(room) {
   let dest = path.join(trash, `${room.name}-${stamp}`);
   for (let n = 2; fs.existsSync(dest); n++) dest = path.join(trash, `${room.name}-${stamp}-${n}`);
   handleStop(room);
+  // Windows can briefly retain handles after writing the room state.
+  // Keep the live room intact if moving it ultimately fails.
+  for (let attempt = 0; ; attempt++) {
+    try { await fs.promises.rename(room.dir, dest); break; }
+    catch (error) {
+      if (!IS_WIN || !["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 5) throw error;
+      await new Promise(resolve => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
   closeRoom(room);
-  fs.renameSync(room.dir, dest); // same volume: atomic, and keeps the workspace intact
   return dest;
 }
 
@@ -7830,7 +7833,6 @@ function listRooms() {
   const names = fs.readdirSync(ROOT, { withFileTypes: true })
     .filter((d) => d.isDirectory() && validRoomName(d.name))
     .map((d) => d.name);
-  if (!names.includes("default")) names.unshift("default");
   return names.sort((a, b) => (a === "default" ? -1 : b === "default" ? 1 : a.localeCompare(b)));
 }
 
@@ -8043,7 +8045,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "GET /api/work-changes" || route === "GET /api/work-diff") {
-      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const room = loadRoom(url.searchParams.get("room") || "default");
       const projects = normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir);
       if (route === "GET /api/work-changes") {
         const results = [];
@@ -8068,12 +8070,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (route === "GET /api/usage") {
-      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const room = loadRoom(url.searchParams.get("room") || "default");
       return json(res, 200, await roomUsageSnapshot(room, url.searchParams.get("refresh") === "1"));
     }
 
     if (route === "GET /api/tools") {
-      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const room = loadRoom(url.searchParams.get("room") || "default");
       const provider = String(url.searchParams.get("provider") || "").toLowerCase();
       const catalog = await providerToolCatalog(room, provider, {
         refresh: url.searchParams.get("refresh") === "1",
@@ -8100,6 +8102,7 @@ const server = http.createServer(async (req, res) => {
         // change freely in Settings.
         picked = validatedSeatSpecs(seats);
       }
+      if (rooms.has(roomName) || fs.existsSync(path.join(ROOT, roomName))) return json(res, 409, { error: "A room with that name already exists." });
       const created = loadRoom(roomName, picked, true);
       if (linked) {
         created.cfg.projectDir = linked;
@@ -8142,7 +8145,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "POST /api/room/delete") {
       const { room: name } = await readBody(req);
       const room = loadRoom(name || "default");
-      const trashed = deleteRoom(room);
+      const trashed = await deleteRoom(room);
       await sharedBrowser.close(room);
       return json(res, 200, { ok: true, trash: trashed, rooms: roomsWithModes() });
     }
@@ -8156,7 +8159,7 @@ const server = http.createServer(async (req, res) => {
 
     if (route === "GET /api/room") {
       const wanted = url.searchParams.get("name") || "default";
-      const room = loadRoom(wanted, undefined, wanted === "default");
+      const room = loadRoom(wanted);
       const snapshot = { room: roomSummary(room), entries: room.entries, receipts: room.receipts };
       // Deliberate room activation resumes a persisted catch-up. Merely listing
       // rooms must never launch agents in every room on disk.
@@ -8171,7 +8174,7 @@ const server = http.createServer(async (req, res) => {
     // What a first run actually needs to know, per seat, before anything is
     // spent: is the CLI there, is it signed in, and if not, what to do about it.
     if (route === "GET /api/doctor") {
-      const room = loadRoom(url.searchParams.get("room") || "default", undefined, true);
+      const room = loadRoom(url.searchParams.get("room") || "default");
       return json(res, 200, {
         node: process.version,
         parley: packageVersion(),
@@ -8186,7 +8189,7 @@ const server = http.createServer(async (req, res) => {
 
     if (route === "GET /api/room/summary") {
       const wanted = url.searchParams.get("name") || "default";
-      const room = loadRoom(wanted, undefined, wanted === "default");
+      const room = loadRoom(wanted);
       return json(res, 200, { room: roomSummary(room) });
     }
 
@@ -8868,7 +8871,12 @@ function listen(attempt = 0) {
   });
   server.listen(port, "127.0.0.1", () => {
     const u = `http://127.0.0.1:${server.address().port}`;
-    loadRoom("default", undefined, true); // bootstrap: always somewhere to land
+    // Bootstrap only once; deleting the last room must survive a restart.
+    const initialized = path.join(ROOT, ".rooms-initialized");
+    if (!fs.existsSync(initialized)) {
+      if (!listRooms().length) loadRoom("default", undefined, true);
+      fs.writeFileSync(initialized, "1\n");
+    }
     service.ready(server.address().port);
     console.log(`\n  Parley HY ${packageVersion()} is running\n\n  UI:     ${u}\n  Rooms:  ${ROOT}\n\n  Ctrl+C to quit.\n`);
     if (!NO_OPEN) openBrowser(u);

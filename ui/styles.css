@@ -1,3 +1,10 @@
+  @font-face {
+    font-family: "Pretendard";
+    src: url("/ui/fonts/PretendardVariable.woff2?v=__PARLEY_ASSET_VERSION__") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+  }
   :root {
     color-scheme: dark;
     --bg: #0b0e14;
@@ -62,7 +69,7 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    font: 15px/1.55 "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, sans-serif;
+    font: 15px/1.6 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
     color: var(--text);
     background:
       radial-gradient(1200px 700px at 85% -10%, rgba(47,214,168,.055), transparent 60%),
@@ -119,6 +126,13 @@
   .room-item .ract.del:hover { color: var(--danger); }
   .room-item.active .dot { background: var(--codex); }
   #newRoomForm { display: none; padding: 4px 12px 8px; }
+  #emptyRoomCreate { display: none; }
+  body.no-room #emptyRoomCreate { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: auto; padding: 24px 36px; font-size: 17px; }
+  #emptyRoomCreate > span:first-child { font-size: 40px; line-height: 1; }
+  body.no-room #chatWrap { display: flex; }
+  body.no-room #chat, body.no-room #composerWrap, body.no-room #workPanel,
+  body.no-room #main > header, body.no-room #workBanner, body.no-room #setupBanner,
+  body.no-room .side-foot { display: none !important; }
   #newRoomForm input {
     width: 100%; background: var(--panel); border: 1px solid var(--border2); border-radius: 8px;
     padding: 6px 10px; color: var(--text); outline: none; font-size: 14px;
@@ -292,7 +306,7 @@
   .msg.claude .avatar { background: var(--claude); }
   .msg.codex .avatar { background: var(--codex); }
   .bubble {
-    padding: 11px 15px; border-radius: var(--radius); font-size: 14.8px;
+    padding: 11px 15px; border-radius: var(--radius); font-size: 15px; line-height: 1.75;
     background: var(--panel); border: 1px solid var(--border);
     /* `anywhere`, not `break-word`: only `anywhere` shrinks min-content width, so a
        pasted token with no break opportunity (DKIM key, base64) can't push the bubble
@@ -343,7 +357,7 @@
   :root[data-theme="light"] .skill-chip > span { color: #365a92; }
   .skill-chip > span { color: #91a8ff; font-size: .9em; font-weight: 700; }
   .md-table-wrap { max-width: 100%; margin: 10px 0; overflow-x: auto; border: 1px solid var(--border2); border-radius: 9px; }
-  .bubble table { width: 100%; border-collapse: collapse; font-size: .92em; }
+  .bubble table { width: 100%; border-collapse: collapse; font-size: .96em; line-height: 1.7; }
   .bubble th, .bubble td { min-width: 120px; max-width: 420px; overflow-wrap: anywhere; padding: 8px 10px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
   .bubble th { background: rgba(255,255,255,.055); color: var(--text); font-weight: 650; }
   .bubble tbody tr:nth-child(even) { background: rgba(255,255,255,.025); }
