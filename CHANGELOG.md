@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.42 — 2026-11-03
+
+- Fix an undefined item reference in model status rendering that interrupted room-list loading; stored rooms and transcripts remain unchanged.
+- Keep replaced-provider cards from showing the previous session state.
+
 ## 1.4.41 — 2026-11-03
 
 - Select providers directly from each seat header. Confirm existing-seat replacement and reset execution options while retaining its name, role and persona.

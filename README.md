@@ -8,7 +8,7 @@
 
 ## 업데이트 내역
 
-- 최신 버전: **1.4.41**
+- 최신 버전: **1.4.42**
 - 한글 변경 이력: [CHANGELOG.ko.md](./CHANGELOG.ko.md)
 - 영문 변경 이력: [CHANGELOG.md](./CHANGELOG.md)
 

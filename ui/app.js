@@ -2303,7 +2303,7 @@ function applySummary(s) {
   for (const a of s.seats) {
     const pill = $("pill_" + a);
     if (!pill) continue;
-    const ag = item.existing ? s.agents[a] : null;
+    const ag = s.agents[a];
     let seatError = window.ParleySeatErrors.latestSeatError(state.entries, a, s.resolvedErrors, ag.command, state.receipts);
     if (seatErrorDismissals.has(state.room, a, seatError)) seatError = null;
     const errorBox = pill.querySelector(".seat-error");
@@ -4825,7 +4825,7 @@ function renderSeatCards(s) {
     const a = item.id;
     const providerMeta = state.providers[item.provider] || {};
     const p = item.existing ? { ...providerMeta, ...(s.seatInfo?.[a] || {}) } : providerMeta;
-    const ag = s.agents[a];
+    const ag = item.existing ? s.agents[a] : null;
     const color = item.cfg.color || p.color || "#7aa2f7";
     const removable = draft.length > 2;
     const avatarImage = String(item.cfg.avatarImage || "");
