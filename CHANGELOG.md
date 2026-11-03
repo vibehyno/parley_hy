@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.4 — 2026-11-03
+
+- Place Cancel on the right of the archive deletion dialog and preserve its default focus.
+
 ## 1.5.3 — 2026-11-03
 
 - Show a permanent-deletion warning dialog before deleting an archive.

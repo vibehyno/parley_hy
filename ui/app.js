@@ -5938,8 +5938,8 @@ function confirmArchiveDeletion() {
     dialog.setAttribute("aria-describedby", "archiveDeleteWarning");
     dialog.innerHTML = `<h3 id="archiveDeleteHeading">${esc(t("archive.deleteTitle"))}</h3>` +
       `<p id="archiveDeleteWarning">${esc(t("archive.deleteConfirm"))}</p>` +
-      `<div class="archive-delete-actions"><button type="button" class="btn" data-cancel autofocus>${esc(t("common.cancel"))}</button>` +
-      `<button type="button" class="btn danger" data-delete>${esc(t("archive.deleteForever"))}</button></div>`;
+      `<div class="archive-delete-actions"><button type="button" class="btn danger" data-delete>${esc(t("archive.deleteForever"))}</button>` +
+      `<button type="button" class="btn" data-cancel autofocus>${esc(t("common.cancel"))}</button></div>`;
     document.body.appendChild(dialog);
     dialog.querySelector("[data-cancel]").onclick = () => dialog.close("cancel");
     dialog.querySelector("[data-delete]").onclick = () => dialog.close("delete");
