@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.4.37 — 2026-11-03
+
+- Keep room settings at a maximum width of 1320px regardless of seat count. A single seat fills the grid; two seats share two columns, with responsive layouts retained.
+
 ## 1.4.36 — 2026-11-03
 
 - Enlarge the persona editor to 180px with internal scrolling and rename its label to Persona / Work instructions.
