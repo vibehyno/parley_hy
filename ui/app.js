@@ -2193,6 +2193,7 @@ function configArgValue(args, option) {
 }
 function effectiveSeatPermission(a, cfg, roomMode) {
   if ("permissionMode" in cfg) {
+    if (cfg.permissionMode === "bypassPermissions") return "bypassPermissions";
     const override = configArgValue(cfg.extraArgs || [], "--permission-mode");
     if (override !== null) return override || "invalid override";
     const configured = cfg.permissionMode || "auto";
@@ -2200,7 +2201,7 @@ function effectiveSeatPermission(a, cfg, roomMode) {
   }
   if ("sandbox" in cfg) {
     const configured = cfg.sandbox || "read-only";
-    return roomMode === "work" && configured === "read-only" ? "workspace-write" : configured;
+    return !state.summary?.cfg.explicitPermissions && roomMode === "work" && configured === "read-only" ? "workspace-write" : configured;
   }
   if ("approvalMode" in cfg) {
     const configured = cfg.approvalMode || "auto";
@@ -2401,6 +2402,7 @@ function applySummary(s) {
     }
   }
   const mode = s.cfg.mode || "talk";
+  $("permissionSelect").value = currentPermissionPreset(s);
   document.querySelectorAll(".mbtn").forEach((b) => b.classList.toggle("active", b.dataset.m === mode));
   const access = s.seats.map((a) => ({
     agent: a,
@@ -2410,14 +2412,15 @@ function applySummary(s) {
     `${agent}: ${permissionLabel(permission)}`).join(" · ");
   const full = access.filter(({ mode: permission }) => isFullAccess(permission)).map(({ agent }) => agent);
   const talkOverride = mode === "talk" && access.some(({ mode: permission }) => !isConservative(permission));
-  const showAccessBanner = (mode === "work" || talkOverride) && !accessBannerDismissed(s.name);
+  const hasWriteAccess = access.some(({ mode: permission }) => !isConservative(permission));
+  const showAccessBanner = hasWriteAccess && !accessBannerDismissed(s.name);
   $("workBanner").style.display = showAccessBanner ? "flex" : "none";
   if (full.length) {
     const scope = s.cfg.projectDir || t("banner.roomWorkspace");
     $("workBannerContent").innerHTML = `⚠ <b>${esc(t("banner.fullAccessTitle"))}</b> — ${esc(t("banner.fullAccessBody", {
       agents: full.join(" + "), scope, permissions: how,
     }))}`;
-  } else if (mode === "work") {
+  } else if (mode === "work" || s.cfg.explicitPermissions) {
     const scope = s.cfg.projectDir || t("banner.sharedWorkspace");
     $("workBannerContent").innerHTML = `🔨 <b>${esc(t("banner.workTitle"))}</b> — ${esc(t("banner.workBody", { scope, permissions: how }))}`;
   } else if (talkOverride) {
@@ -2784,22 +2787,35 @@ $("pills").addEventListener("click", async (e) => {
       : t("seat.lurkDisabledToast", { seat: seatLabel(a) }));
   } catch (err) { toast(err.message, true); }
 });
-document.querySelectorAll(".mbtn").forEach((b) => {
-  b.onclick = async () => {
-    const mode = b.dataset.m;
-    if (!state.summary || (state.summary.cfg.mode || "talk") === mode) return;
-    const pd = state.summary.cfg.projectDir;
-    if (mode === "work" && pd &&
-        !confirm(`⚠ ${tr("mode.projectWarning", "This room is linked to a real project:\n{path}\n\nWork mode may let configured agents edit files there and run commands. Continue?", { path: pd })}`)) return;
-    const anyLinked = state.summary.seats.some((a) => state.summary.agents[a].linked);
-    if (!(mode === "work" && pd) && anyLinked &&
-        !confirm(tr("mode.sessionResetConfirm", "Switch to {mode} mode? Affected models start fresh sessions so the permission change applies. The room transcript stays intact.", {
-          mode: tr(`mode.${mode}`, mode).replace(/^[^\p{L}\p{N}]+/u, ""),
-        }))) return;
-    try { await api("/api/config", { room: state.room, config: { mode } }); refreshRooms(); }
-    catch (e) { toast(e.message, true); }
-  };
-});
+function currentPermissionPreset(s) {
+  const permissions = s.seats.map(id => effectiveSeatPermission(id, s.cfg.agents[id], s.cfg.mode));
+  if (permissions.every(isFullAccess)) return "full";
+  if (permissions.every(p => ["plan", "read-only"].includes(p))) return "read";
+  if (permissions.every(p => ["acceptEdits", "accept-edits", "workspace-write"].includes(p))) return "write";
+  return "custom";
+}
+$("permissionSelect").onchange = async () => {
+  const s = state.summary, select = $("permissionSelect"), choice = select.value;
+  if (!s) return;
+  if (choice === "custom") { select.value = currentPermissionPreset(s); openSettings(); return; }
+  if (!confirm(t(choice === "full" ? "access.confirmFull" : "access.confirm"))) { select.value = currentPermissionPreset(s); return; }
+  select.disabled = true;
+  try {
+    const agents = {};
+    for (const id of s.seats) {
+      const cfg = s.cfg.agents[id], provider = s.seatInfo?.[id]?.provider || cfg.provider || id;
+      if ((cfg.extraArgs || []).some(arg => /^(--permission-mode|--sandbox|--approval-mode|--dangerously|--yolo|--full-auto)/.test(arg))) throw new Error(t("access.extraArgs"));
+      if (provider === "codex") agents[id] = { sandbox: { read:"read-only", write:"workspace-write", full:"danger-full-access" }[choice] };
+      else if (provider === "claude") agents[id] = { permissionMode: { read:"plan", write:"acceptEdits", full:"bypassPermissions" }[choice] };
+      else if (provider === "gemini") agents[id] = { approvalMode: { read:"plan", write:"accept-edits", full:"full" }[choice] };
+      else throw new Error(t("access.unsupported"));
+    }
+    const saved = await api("/api/config", {room:s.name, config:{mode:"work", explicitPermissions:true, agents}});
+    if (state.room === s.name && saved?.room) { state.summary=saved.room; applySummary(saved.room); }
+    toast(t(saved?.runningInvocations?.length ? "access.nextCall" : "settings.saved"));
+  } catch (error) { toast(error.message,true); }
+  finally { select.disabled=false; if (state.summary) select.value=currentPermissionPreset(state.summary); }
+};
 // Two different questions, and only one of them is about the button's blast
 // radius. `working` — any chain mid-flight, including the gaps between its
 // turns — decides whether Stop is offered at all, so the button doesn't blink
@@ -3692,7 +3708,7 @@ async function refreshRooms() {
     row.innerHTML =
       `<button type="button" class="ropen"><span class="dot"></span>` +
       `<span style="flex:1;overflow:hidden;text-overflow:ellipsis;text-align:left">${esc(name)}</span>` +
-      `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : (linked ? `📁${projectCount > 1 ? projectCount : ""}` : "")}${mode === "work" ? "🔨" : ""}</span></button>` +
+      `<span class="rmeta">${seatTag}${projectMismatch ? "⚠" : ""}</span></button>` +
       `<span class="racts"><button type="button" class="ract" data-act="rename" title="${esc(t("settings.rename"))}" aria-label="${esc(t("settings.rename"))} ${esc(name)}">✎</button>` +
       `<button type="button" class="ract del" data-act="delete" title="${esc(t("settings.delete"))}" aria-label="${esc(t("settings.delete"))} ${esc(name)}">✕</button>` +
       `</span>`;
@@ -4119,7 +4135,7 @@ async function handleSlash(text) {
       "<b>/note [text]</b> — save shared standing rules; empty clears · <b>/note @agent [request]</b> asks that model to write and save them<br>" +
       "<b>/sleep @agent [reason]</b> — stop launching that seat (rate limited?); <b>/wake @agent</b> brings it back<br>" +
       "<b>/summarize [@agent]</b> — ask for a recap of the room<br>" +
-      "<b>👂</b> on a pill = lurk · <b>😴</b> = sleep/wake that seat · <b>💬/🔨</b> = talk/work mode · dots under messages = who heard what");
+      "<b>👂</b> on a pill = lurk · <b>😴</b> = sleep/wake that seat · <b>Permissions</b> = model access · dots under messages = who heard what");
     return true;
   }
   localSystemNote(`Unknown command <b>${esc(cmd)}</b> — try <b>/help</b>`);
@@ -4745,8 +4761,8 @@ function newSeatConfig(provider) {
     fastMode: false,
     extraArgs: [], lurk: false, lurkStyle: "balanced", lurkPrompt: null,
     ...(provider === "codex" ? { sandbox: "read-only" } : {}),
-    ...(provider === "claude" ? { permissionMode: "auto" } : {}),
-    ...(provider === "gemini" ? { approvalMode: "auto" } : {}),
+    ...(provider === "claude" ? { permissionMode: "plan" } : {}),
+    ...(provider === "gemini" ? { approvalMode: "plan" } : {}),
     displayName: null, role: null, mentionAlias: null, persona: null, avatar: null, avatarImage: null, color: null,
   };
 }
@@ -5435,6 +5451,12 @@ function openSettings(create = false) {
     cfg: { ...(s.cfg.agents[id] || {}), extraArgs: [...(s.cfg.agents[id]?.extraArgs || [])] },
     existing: !settingsCreating,
   }));
+  // Preserve the old effective sandbox when opening legacy Work rooms.
+  if (!s.cfg.explicitPermissions && s.cfg.mode === "work") {
+    for (const item of settingsSeatDraft) {
+      if (item.provider === "codex" && item.cfg.sandbox === "read-only") item.cfg.sandbox = "workspace-write";
+    }
+  }
   $("s_roomName").value = s.name;
   $("settingsTitle").textContent = t(settingsCreating ? "room.create" : "settings.title");
   $("mSave").textContent = t(settingsCreating ? "room.create" : "common.save");
@@ -5516,6 +5538,8 @@ $("s_locale").onchange = () => {
   refreshLocalizedUi();
 };
 $("settingsBtn2").onclick = () => openSettings();
+$("appSettingsBtn").onclick = () => { $("s_locale").value=currentLocale(); $("appSettingsOverlay").classList.add("open"); $("s_font").focus(); };
+$("appSettingsClose").onclick = () => { $("appSettingsOverlay").classList.remove("open"); $("appSettingsBtn").focus(); };
 $("workBannerClose").onclick = dismissAccessBanner;
 $("updateBtn").onclick = openUpdate;
 $("updateClose").onclick = closeUpdate;
@@ -5587,6 +5611,7 @@ $("mSave").onclick = async () => {
     if (!accepted) return;
   }
   const config = {
+    explicitPermissions: true,
     defaultAgent: $("s_default").value,
     timeoutMs: Math.max(10, Number($("s_timeout").value) || 300) * 1000,
     hopBudget: roomHopBudget,

@@ -2,6 +2,14 @@
 
 Notable changes per repository version.
 
+## 1.4.35 — 2026-11-03
+
+- Separate room and app settings. Store font, chat text size, language and theme in this browser; bundle Pretendard, NanumSquareRound and SUIT.
+- Keep normal body weight and strengthen code blocks only.
+- Replace Talk/Work controls with explicit read-only, project-edit, full-access and custom permissions synchronized with seat settings.
+- Respect explicit Codex read-only settings without a Work-mode upgrade; reconnect sessions only when native permissions change and retain running-call permissions.
+- Remove folder and hammer decorations from room rows.
+
 ## 1.4.34 — 2026-11-03
 
 - Reuse settings for room creation and editing, with an editable name at the top. Remove the separate footer rename action.

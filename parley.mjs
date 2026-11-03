@@ -851,6 +851,10 @@ function cliArgValue(args, option) {
 // `auto` is Parley's legacy name for "follow the room", not Claude Code's
 // newer classifier-backed Auto mode. The explicit Full access selection wins
 // over legacy Extra CLI permission arguments.
+function effectiveCodexSandbox(config, seat) {
+  const value = config.agents[seat].sandbox || "read-only";
+  return !config.explicitPermissions && config.mode === "work" && value === "read-only" ? "workspace-write" : value;
+}
 function effectiveClaudePermissionMode(cfg, roomMode) {
   if (cfg.permissionMode === "bypassPermissions") return "bypassPermissions";
   const override = cliArgValue(cfg.extraArgs || [], "--permission-mode");
@@ -871,9 +875,10 @@ function fullAccessEnabled(room, agent) {
 
 function browserTurnReadOnly(room, agent, { discussion, readOnly } = {}) {
   if (fullAccessEnabled(room, agent)) return false;
-  if (room.cfg.mode !== "work" || discussion || readOnly) return true;
+  if ((!room.cfg.explicitPermissions && room.cfg.mode !== "work") || discussion || readOnly) return true;
   const cfg = room.cfg.agents[agent];
   const provider = providerIdOf(room, agent);
+  if (provider === "codex") return cfg.sandbox === "read-only" && !!room.cfg.explicitPermissions;
   if (provider === "claude") return effectiveClaudePermissionMode(cfg, room.cfg.mode) === "plan";
   if (provider === "gemini") return effectiveAgyApprovalMode(cfg, room.cfg.mode) === "plan";
   return false;
@@ -1775,8 +1780,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
   const tmp = path.join(os.tmpdir(), `parley-codex-${crypto.randomUUID()}.txt`);
 
   // Work rooms upgrade the default read-only sandbox; explicit settings win.
-  const sandbox = room.cfg.mode === "work" && (cfg.sandbox || "read-only") === "read-only"
-    ? "workspace-write" : (cfg.sandbox || "read-only");
+  const sandbox = effectiveCodexSandbox(room.cfg, seat);
 
   // Sandbox and --add-dir are global Codex options. Repeat the sandbox on
   // every invocation: a resumed CLI process does not inherit the flag used by
@@ -8473,7 +8477,7 @@ const server = http.createServer(async (req, res) => {
       // Whether a Talk/Work flip alone invalidates a seat's session is the
       // provider's call, not something to infer from having a sandbox.
       const modeSensitiveSeats = seatIds(room).filter((id) => capsOf(room, id).resetOnRoomModeChange);
-      const prevSandboxes = Object.fromEntries(sandboxSeats.map((id) => [id, room.cfg.agents[id].sandbox || "read-only"]));
+      const prevSandboxes = Object.fromEntries(sandboxSeats.map((id) => [id, effectiveCodexSandbox(room.cfg, id)]));
       // Validate into a candidate first — a rejected patch must leave the
       // live room untouched.
       const configPatch = { ...(config || {}) };
@@ -8565,11 +8569,13 @@ const server = http.createServer(async (req, res) => {
       // session. The same rule covers gaps inside an active pair cycle.
       const modeResetSeats = new Set();
       if (prevMode !== next.mode) {
-        for (const id of modeSensitiveSeats) modeResetSeats.add(id);
+        for (const id of modeSensitiveSeats) {
+          if (next.agents[id] && prevSandboxes[id] !== effectiveCodexSandbox(next, id)) modeResetSeats.add(id);
+        }
         for (const id of scopeChangedSeats) modeResetSeats.add(id);
       }
       const sandboxChangedSeats = new Set(sandboxSeats.filter((id) =>
-        next.agents[id] && prevSandboxes[id] !== (next.agents[id].sandbox || "read-only")));
+        next.agents[id] && prevSandboxes[id] !== effectiveCodexSandbox(next, id)));
       const resetRequiredSeats = new Set();
       if (projectChanged) {
         for (const id of seatIds(room)) resetRequiredSeats.add(id);
@@ -8709,7 +8715,9 @@ const server = http.createServer(async (req, res) => {
         const fresh = modeResetSeats.size ? ` (${[...modeResetSeats].join(", ")}: fresh session so the permission change applies)` : "";
         appendEntry(room, {
           kind: "system", author: "system",
-          text: room.cfg.mode === "work"
+          text: room.cfg.explicitPermissions
+            ? "모델별 권한 설정을 적용했습니다. 실행 중인 호출은 기존 권한을 유지합니다."
+            : room.cfg.mode === "work"
             ? `🔨 Switched to work mode — agents may now write files in the workspace and run commands${fresh}.`
             : `💬 Switched to talk mode — conservative room defaults apply; explicit seat permission overrides, if configured, remain active${fresh}.`,
         });

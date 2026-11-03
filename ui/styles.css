@@ -1,3 +1,9 @@
+@font-face { font-family: "SUIT"; src: url("/ui/fonts/SUIT-Variable.woff2?v=__PARLEY_ASSET_VERSION__") format("woff2"); font-weight:100 900; font-display:swap; }
+@font-face { font-family: "NanumSquareRound"; src: url("/ui/fonts/NanumSquareRoundR.woff?v=__PARLEY_ASSET_VERSION__") format("woff"); font-weight:400 500; font-display:swap; }
+@font-face { font-family: "NanumSquareRound"; src: url("/ui/fonts/NanumSquareRoundB.woff?v=__PARLEY_ASSET_VERSION__") format("woff"); font-weight:600 900; font-display:swap; }
+:root { --app-font: "Pretendard"; --chat-size:15px; }
+:root[data-font="nanum"] { --app-font: "NanumSquareRound"; }
+:root[data-font="suit"] { --app-font: "SUIT"; }
   @font-face {
     font-family: "Pretendard";
     src: url("/ui/fonts/PretendardVariable.woff2?v=__PARLEY_ASSET_VERSION__") format("woff2");
@@ -69,7 +75,7 @@
   html, body { height: 100%; }
   body {
     margin: 0;
-    font: 15px/1.6 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    font: 400 15px/1.6 var(--app-font), "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
     color: var(--text);
     background:
       radial-gradient(1200px 700px at 85% -10%, rgba(47,214,168,.055), transparent 60%),
@@ -306,7 +312,7 @@
   .msg.claude .avatar { background: var(--claude); }
   .msg.codex .avatar { background: var(--codex); }
   .bubble {
-    padding: 11px 15px; border-radius: var(--radius); font-size: 15px; line-height: 1.75;
+    padding: 11px 15px; border-radius: var(--radius); font-size: var(--chat-size); line-height: 1.75;
     background: var(--panel); border: 1px solid var(--border);
     /* `anywhere`, not `break-word`: only `anywhere` shrinks min-content width, so a
        pasted token with no break opportunity (DKIM key, base64) can't push the bubble
@@ -1186,3 +1192,14 @@ body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-dif
 .browser-mode-row { display:flex; align-items:center; gap:6px; }
 .browser-mode-row select { min-width:0; }
 #browserHelp { flex-shrink:0; cursor:pointer; padding:4px 8px; }
+
+#appSettingsOverlay { position:fixed; inset:0; background:rgba(5,7,10,.65); backdrop-filter:blur(3px); display:none; align-items:center; justify-content:center; z-index:60; }
+#appSettingsOverlay.open { display:flex; }
+.app-settings-modal { width:min(540px,calc(100vw - 32px)); }
+.app-settings-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+.app-settings-head h2 { margin:0; }
+#fontPreview { padding:16px; border:1px solid var(--border2); border-radius:12px; font-size:var(--chat-size); line-height:1.7; }
+#permissionSelect { max-width:180px; padding:6px 10px; border:1px solid var(--border2); background:var(--panel); color:var(--text); border-radius:9px; font:inherit; font-size:13px; }
+.codeblock code { font-weight:600; }
+body.no-room .side-foot { display:flex !important; }
+body.no-room .side-foot > :not(#appSettingsBtn) { display:none !important; }
