@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.4.30 — 2026-11-03
+
+- Reuse a persistent dedicated Chrome profile per room for shared tabs across reconnects and server restarts, separate from regular Chrome.
+- Preserve profile identity across room renames and keep private model contexts temporary. Validate profile paths, context selection and graceful closure.
+- Document local profile storage and website-controlled login expiration.
+
 ## 1.4.29 — 2026-11-03
 
 - Separate section toggles, action buttons and dedicated reorder handles in the work panel. Only handles initiate dragging.

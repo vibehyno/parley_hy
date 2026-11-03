@@ -10,7 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
 const version = result => JSON.parse(result.content.at(-1).text.slice(7)).version;
-function fixture() {
+function fixture(persistent = false) {
   const contexts = [];
   let launches = 0;
   const browser = new EventEmitter();
@@ -35,8 +35,22 @@ function fixture() {
       return {content:[{type:'text',text:context.page.value}]};
     }, close: async () => {},
   });
-  return { contexts, manager: new SharedBrowser({ launch: async () => { launches++; return browser; }, connect, prepare: async () => {}, fingerprint: async context => context.page.value, focusWindow: async () => {} }), launches: () => launches };
+  return { contexts, manager: new SharedBrowser({ launch: async () => { launches++; return persistent ? {browser,sharedContext:await browser.newContext()} : browser; }, connect, prepare: async () => {}, fingerprint: async context => context.page.value, focusWindow: async () => {} }), launches: () => launches };
 }
+
+test('shared tabs use the persistent context; private seats use separate contexts; disconnect closes persistent context gracefully', async () => {
+  const {manager,contexts}=fixture(true),room={};
+  await manager.open(room);
+  assert.equal(contexts.length,1);
+  assert.equal(manager.sessions.get(room).groups.get('shared').context,contexts[0]);
+  const token=manager.grant(room,'codex');
+  await manager.call(token,{name:'browser_snapshot',scope:'private'});
+  assert.equal(contexts.length,2);
+  assert.notEqual(manager.sessions.get(room).groups.get('private:codex').context,contexts[0]);
+  let closed=false;contexts[0].close=async()=>{closed=true};
+  await manager.close(room);
+  assert.equal(closed,true);
+});
 const read = (manager, token, scope = 'shared') => manager.call(token, { name: 'browser_snapshot', scope });
 
 test('focus restores only the selected minimized window before bringing its tab forward', async () => {
