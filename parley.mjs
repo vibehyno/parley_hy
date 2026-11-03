@@ -2851,7 +2851,7 @@ function noteChainFailure(room, label, err) {
 const cliVersionCache = new Map();
 function installedCliVersion(command) {
   const cached = cliVersionCache.get(command);
-  if (cached && Date.now() - cached.at < 300000) return cached.promise;
+  if (cached && Date.now() - cached.at < 24 * 60 * 60 * 1000) return cached.promise;
   const promise = captureCommand(resolveCommand(command), ["--version"], { timeoutMs: 5000 }).then(result => {
     const text = result.stdout.replace(/\x1b\[[0-9;]*m/g, "").trim();
     const version = result.code === 0 ? text.match(/(?:^|[^\w.])v?(\d+\.\d+(?:\.\d+)?(?:[-+][\w.-]+)?)(?=$|[^\w.])/)?.[1] : null;

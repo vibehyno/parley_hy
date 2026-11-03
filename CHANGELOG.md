@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.4.45 — 2026-11-03
+
+- Distinguish outdated servers and request errors from CLI version detection failures.
+- Cache CLI version checks for 24 hours.
+
 ## 1.4.44 — 2026-11-03
 
 - Restyle provider selectors with consistent height, spacing, rounded borders and theme colors.

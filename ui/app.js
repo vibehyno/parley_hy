@@ -4821,7 +4821,7 @@ function updateCliVersionLabels() {
   for (const el of document.querySelectorAll("[data-cli-version-seat]")) {
     const item = settingsSeatDraft?.find(item => item.id === el.dataset.cliVersionSeat);
     const record = cliVersions[item?.cfg.command];
-    el.textContent = record?.version ? "CLI v" + record.version : t(record ? "settings.cliVersionUnknown" : "settings.cliVersionLoading");
+    el.textContent = record?.version ? "CLI v" + record.version : t(record?.errorKey || (record ? "settings.cliVersionUnknown" : "settings.cliVersionLoading"));
   }
 }
 function renderSeatCards(s) {
@@ -5497,8 +5497,10 @@ function openSettings(create = false) {
   api("/api/cli-versions" + (s.name ? "?room=" + encodeURIComponent(s.name) : "")).then(data => {
     cliVersions = { ...cliVersions, ...data.versions };
     if (settingsContext === s) updateCliVersionLabels();
-  }).catch(() => {
-    for (const item of settingsSeatDraft || []) cliVersions[item.cfg.command] ||= {version:null};
+  }).catch(error => {
+    if (settingsContext !== s) return;
+    const errorKey = error.status === 404 || runtimeMismatch ? "settings.cliVersionRestart" : "settings.cliVersionRequestFailed";
+    for (const item of settingsSeatDraft || []) cliVersions[item.cfg.command] = {version:null, errorKey};
     updateCliVersionLabels();
   });
   $("s_addProvider").innerHTML = Object.entries(state.providers || {}).map(([id, provider]) =>
