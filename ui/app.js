@@ -4257,8 +4257,8 @@ async function handleSlash(text) {
     try {
       await api("/api/config", { room: state.room, config: { roomNote: rest || null } });
       toast(rest
-        ? tr("note.saved", "Room note saved. Each current CLI session receives it once, and again after a change or new session.")
-        : tr("note.cleared", "Room note cleared."));
+        ? tr("note.saved", "Chat room prompt saved. Each current CLI session receives it once, and again after a change or new session.")
+        : tr("note.cleared", "Chat room prompt cleared."));
     } catch (e) { toast(e.message, true); }
     return true;
   }
@@ -5774,7 +5774,7 @@ $("mImportSettings").onclick = async () => {
     <p data-status></p>
     <p class="note" title="${esc(t("settings.importHelp"))}">${esc(t("settings.importShort"))}</p>
     <fieldset class="settings-import-options"><legend>${esc(t("settings.importExclude"))}</legend>
-      ${["models","persona","note","instructions","images","projects"].map(key=>`<label title="${esc(t("settings.exclude."+key+"Help"))}"><input type="checkbox" data-exclude="${key}"><span>${esc(t("settings.exclude."+key))}</span></label>`).join("")}
+      ${["roles","models","note","instructions","projects"].map(key=>`<label title="${esc(t("settings.exclude."+key+"Help"))}"><input type="checkbox" data-exclude="${key}"><span>${esc(t("settings.exclude."+key))}</span></label>`).join("")}
     </fieldset>
     <footer><button class="btn primary" data-apply disabled>${esc(t("settings.import"))}</button><button class="btn" data-close>${esc(t("common.cancel"))}</button></footer>`;
   document.body.append(dialog);
@@ -5808,11 +5808,13 @@ $("mImportSettings").onclick = async () => {
       captureSeatDraftValues();
       settingsSeatDraft=source.seats.map(id=>{
         const provider=source.seatInfo?.[id]?.provider || source.cfg.agents[id].provider || id;
-        const cfg=excluded.has("models")
-          ? {...newSeatConfig(provider), persona:source.cfg.agents[id].persona, avatar:source.cfg.agents[id].avatar, avatarImage:source.cfg.agents[id].avatarImage}
-          : structuredClone(source.cfg.agents[id]);
-        if(excluded.has("persona")) cfg.persona=null;
-        if(excluded.has("images")) { cfg.avatar=null; cfg.avatarImage=null; }
+        const original=source.cfg.agents[id];
+        const defaults=newSeatConfig(provider);
+        const cfg=excluded.has("models") ? {...defaults} : structuredClone(original);
+        // Identity/persona and execution options are independent import groups.
+        for(const field of ["displayName","role","mentionAlias","persona","avatar","avatarImage","color"]) {
+          cfg[field]=excluded.has("roles") ? defaults[field] : original[field] ?? defaults[field];
+        }
         return {id,provider,cfg,existing:!settingsCreating && context.seats.includes(id)};
       });
       settingsImport={memories,projects:excluded.has("projects") ? {projectDir:null,projectDirs:[]} : {projectDir:source.cfg.projectDir || null,projectDirs:[...(source.cfg.projectDirs || [])]}};

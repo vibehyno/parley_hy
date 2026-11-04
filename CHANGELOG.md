@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.19 — 2026-11-04
+
+- Separate role/identity exclusions from model execution settings. Rename room note to chat room prompt in the UI and clarify learned-instruction help. Validate four exclusion combinations.
+
 ## 1.5.18 — 2026-11-04
 
 - Keep personas and avatars when excluding model settings unless their own exclusions are checked. Clarify that unchecked categories are copied unchanged.
