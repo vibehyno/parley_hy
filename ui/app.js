@@ -971,6 +971,8 @@ function refreshHeard(fromN, upToN) {
 }
 
 function policySourceLabel(source) {
+  if (currentLocale() === "ko") return ({ message: "메시지별 설정", room: "메시지를 보낼 때의 방 설정", solo: "단독 응답 설정",
+    "catch-up": "밀린 대화 전달 규칙", structural: "연결된 응답 전달 규칙" })[source] || "기록 없음";
   return ({ message: "your message override", room: "the room setting at acceptance", solo: "your Solo override",
     "catch-up": "coalesced catch-up rules", structural: "included delivery rules" })[source] || "a source not recorded in this history";
 }
@@ -1007,18 +1009,27 @@ const DELIVERY_LABEL = {
 };
 function whyRunHTML(e) {
   const meta = e.meta || {};
+  const ko = currentLocale() === "ko";
   if (e.kind === "user") {
     const policy = meta.relay;
     if (!policy || meta.pair) return "";
-    const text = policy.solo ? "Solo: one selected responder, no automatic peer response."
+    const text = ko ? (policy.solo ? "선택한 모델 한 개만 응답하며 다른 모델은 자동으로 응답하지 않습니다."
+      : policy.accounting === "automatic" ? `자동 발언 ${policy.hopBudget < 0 ? `안전 한도 ${policy.safetyLimit}` : policy.hopBudget}회. 추가 자동 호출마다 1회 사용하며 처음 요청한 응답은 제외합니다.`
+      : `추가 대화 ${policy.hopBudget < 0 ? "제한 없음" : `${policy.hopBudget}회`} (이전 계산 방식). 함께 요청된 응답과 답변 반환은 횟수에서 제외합니다.`)
+      : policy.solo ? "Solo: one selected responder, no automatic peer response."
       : policy.accounting === "automatic" ? `${hopBudgetLabel(policy.hopBudget)} automatic turns${policy.hopBudget < 0 ? `; safety max ${policy.safetyLimit}` : ""}. Every additional automatic invocation counts; initial requested responses do not.`
       : `${hopBudgetLabel(policy.hopBudget)} extra exchanges (legacy accounting). Included sibling delivery and answer returns do not consume the allowance.`;
-    return `<details class="why-run"><summary>Message policy</summary><p>${esc(text)} ${esc(policySourceLabel(policy.source))}. This accepted policy stays with this message.</p></details>`;
+    return `<details class="why-run"><summary>${ko ? "메시지 적용 규칙" : "Message policy"}</summary><p>${esc(text)} ${esc(policySourceLabel(policy.source))}. ${ko ? "전송 당시 규칙이 이 메시지에 유지됩니다." : "This accepted policy stays with this message."}</p></details>`;
   }
   if (meta.relayCap) {
     const cap = meta.relayCap;
     const unit = cap.accounting === "automatic" ? "automatic turns" : "continuations";
     const blocked = (cap.dropped || []).map((edge) => `${seatLabel(edge.target)} receiving #${edge.n}`).join(", ");
+    if (ko) return `<details class="why-run"><summary>Why did this run?</summary><p>${esc(
+      `횟수 제한으로 모델을 실행하지 않았습니다. 전달되지 않은 메시지: ${(cap.dropped || []).map(edge => `${seatLabel(edge.target)} ← #${edge.n}`).join(", ") || "기록 없음"}. ` +
+      `적용 규칙: ${policySourceLabel(cap.source)}. 사용자 메시지 #${cap.rootN}의 ${cap.accounting === "automatic" ? "자동 발언" : "후속 응답"} ${cap.used}/${cap.limit}회 사용. ` +
+      "이 알림 자체는 횟수를 사용하지 않으며, 모델이 동의했거나 메시지를 전달받았다는 뜻이 아닙니다."
+    )}</p></details>`;
     return `<details class="why-run"><summary>Why did this run?</summary><p>${esc(
       `No provider was launched. Blocked: ${blocked}. Policy: ${policySourceLabel(cap.source)}; ` +
       `${cap.used}/${cap.limit} ${unit} used for your message #${cap.rootN}. ` +
@@ -1052,7 +1063,22 @@ function whyRunHTML(e) {
     r.agent === meta.agent && r.from < sourceN && r.upTo >= sourceN &&
     Number.isSafeInteger(r.recordedAfterN) && r.recordedAfterN >= e.n) : null;
   const outcome = meta.outcome || (meta.error ? "failed" : meta.stopped ? "stopped" : meta.relayCap ? "capped" : "replied");
-  const detail = [
+  const reasonsKo = { root: "사용자 메시지에 대한 첫 응답", start: "사용자 메시지에 대한 첫 응답", explicit: "다른 모델의 직접 호출",
+    continuation: "답변 후 이어서 진행", sibling: "함께 요청된 응답 전달", lurk: "대화 참여 설정", listening: "대화 참여 설정",
+    "lurk-return": "참여 모델의 답변 전달", "answer-return": "답변 전달", closure: "답변 전달", "catching-up": "밀린 대화 확인",
+    "catch-up": "밀린 대화 확인", "lurk-catchup": "밀린 대화 확인", review: "페어 검토", fix: "페어 수정", attention: "다른 모델의 메시지 전달",
+    hop: "다른 모델의 후속 요청", retry: "세션 자동 재시도", automatic: "자동 응답" };
+  const detail = ko ? [
+    `호출 계기: ${source ? `${source.kind === "user" ? "사용자 메시지" : seatLabel(source.author)} #${source.n}` : sourceN == null ? "기록 없음" : `메시지 #${sourceN}`} · ${reasonsKo[kind] || "상세 사유 기록 없음"}.`,
+    received.length ? `함께 참고한 메시지: ${received.join(", ")}. 철회된 메시지는 내용 없이 표시될 수 있습니다.` : "",
+    `적용 규칙: ${meta.pair ? "페어 검토" : policySourceLabel(sourcePolicy)}.`,
+    launch ? `${automatic ? "자동 발언" : "후속 응답"} ${launch.index}/${launch.limit ?? "?"}회 사용. 실패·중지·응답 생략에도 사용 횟수는 복구되지 않습니다.`
+      : delivery.counted === false || kind === "root" || meta.pair || meta.catchUp || meta.lurk ? `${automatic ? "자동 발언" : "후속 응답"} 횟수를 사용하지 않았습니다.` : "사용 횟수 기록이 없습니다.",
+    `상태: ${({ text: "응답 완료", replied: "응답 완료", running: "진행 중", failed: "실패", stopped: "중지됨", capped: "횟수 제한으로 실행되지 않음", empty: "빈 응답", pass: "응답 생략" })[outcome] || "상세 상태 기록 없음"}.`,
+    meta.catchUp ? `밀린 대화 참고: ${(meta.catchUp.rootNs || []).map(n => `#${n}`).join(", ") || "메시지 번호 기록 없음"}.`
+      : rootN != null && rootN !== sourceN ? `최초 요청: 사용자 메시지 #${rootN}.` : "",
+    later ? `이 메시지는 이후 ${Number.isSafeInteger(later.outputEntryN) ? `답변 #${later.outputEntryN}의` : "성공한 전달의"} 참고 내용에 포함됐습니다.` : "",
+  ].filter(Boolean).join(" ") : [
     `Triggered by: ${trigger}. Reason: ${(DELIVERY_LABEL[kind] || kind || "not recorded").replace(automatic ? /^included / : /$^/, "")}.`,
     received.length ? `Also covered as context: ${received.join(", ")}. Withdrawn messages may be placeholders.` : "",
     `Policy: ${meta.pair ? "Pair rounds" : policySourceLabel(sourcePolicy)}. ${allowance}`,
@@ -1063,9 +1089,9 @@ function whyRunHTML(e) {
       : "The message was included in a later successful delivery; no reply link was recorded.") : "",
   ].filter(Boolean).join(" ");
   const link = later?.outputEntryN && entryByN(later.outputEntryN)
-    ? ` <button class="quote-ref" data-jump-n="${later.outputEntryN}">Go to reply #${later.outputEntryN}</button>` : "";
+    ? ` <button class="quote-ref" data-jump-n="${later.outputEntryN}">${ko ? "답변으로 이동" : "Go to reply"} #${later.outputEntryN}</button>` : "";
   return `<details class="why-run"><summary>Why did this run?</summary><p>${esc(detail)}${link}</p></details>` +
-    (meta.technicalError ? `<details><summary>Technical details</summary><pre>${esc(meta.technicalError)}</pre></details>` : "");
+    (meta.technicalError ? `<details><summary>${ko ? "오류 원문" : "Technical details"}</summary><pre>${esc(meta.technicalError)}</pre></details>` : "");
 }
 function recoveryForEntry(e) {
   const recovery = e.meta && e.meta.recovery;
@@ -1925,17 +1951,19 @@ function renderLiveProgress(live) {
   row.className = "live-work-status";
   const caret = document.createElement("span"); caret.className = "caret"; caret.setAttribute("aria-hidden", "true");
   const label = document.createElement("span"); label.className = "live-work-status-label";
+  const icon = document.createElement("span"); icon.className = "live-work-icon"; icon.setAttribute("aria-hidden", "true");
   row.setAttribute("aria-label", text);
   label.setAttribute("aria-hidden", "true");
-  row.append(label, caret); target.append(row);
+  row.append(icon, label, caret); target.append(row);
   const chars = Array.from(text);
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) { label.textContent = text; return; }
   let count = 0;
+  const step = Math.max(1, Math.ceil(chars.length / 36));
   const tick = () => {
     if (!row.isConnected || live.text) return;
-    count = Math.min(chars.length, count + Math.max(1, Math.ceil(chars.length / 18)));
+    count = Math.min(chars.length, count + step);
     label.textContent = chars.slice(0, count).join("");
-    if (count < chars.length) live.workTypingTimer = setTimeout(tick, 18);
+    if (count < chars.length) live.workTypingTimer = setTimeout(tick, 26);
   };
   tick();
 }

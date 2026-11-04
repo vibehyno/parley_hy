@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.10 — 2026-11-04
+
+- Add a subtle animated diamond to live work status, retain the blinking end cursor and make typing perceptible while respecting reduced motion.
+- Localize run provenance details into Korean while retaining the Why did this run? heading. Prevent expanded details from changing message width.
+
 ## 1.5.9 — 2026-11-04
 
 - Show compact tool-event work status with a short typing effect and trailing cursor. Replace with the latest task and prioritize response text; distinguish confirmed completion/failure from observed calls and suppress sensitive or ambiguous argument details.
