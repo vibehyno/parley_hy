@@ -25,6 +25,6 @@ test("the live bubble renders real progress with a Korean honest fallback", () =
   assert.match(app, /live-progress-slot/);
   assert.match(app, /progress\.preparing/);
   assert.match(css, /\.live-progress-list/);
-  assert.match(i18n, /"progress\.preparing": "CLI에 요청 전달 완료/);
+  assert.match(i18n, /"progress\.preparing": "CLI에 요청 전달됨/);
   assert.match(i18n, /"progress\.reasoning": "요청을 검토하고 다음 단계를 판단하는 중"/);
 });

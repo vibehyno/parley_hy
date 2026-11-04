@@ -105,7 +105,7 @@
     const limits = () => {
       const other = document.getElementById(side === 'left' ? 'workPanel' : 'sidebar');
       const min = side === 'left' ? 200 : 260;
-      return { min, max: Math.max(min, Math.min(side === 'left' ? 480 : 1200, innerWidth - other.getBoundingClientRect().width - 360)) };
+      return { min, max: Math.max(min, Math.min(side === 'left' ? 480 : 1200, innerWidth - other.getBoundingClientRect().width - 520)) };
     };
     const update = width => {
       const {min, max} = limits();
@@ -250,19 +250,57 @@
     $('workHunkPrev').onclick = () => goToHunk(hunkIndex - 1);
     $('workHunkNext').onclick = () => goToHunk(hunkIndex + 1);
     let projects = [], selection = null, revision = 0, pending = null, lastCheck = 0, currentRoom = null;
-    let visible = innerWidth > 1100;
-    try { const saved = localStorage.getItem('parley.workPanel'); if (saved !== null) visible = saved === 'open'; } catch {}
-    function setVisible(value) {
+    const compact = matchMedia('(max-width:1100px)');
+    let desktopVisible = true;
+    try { const saved = localStorage.getItem('parley.workPanel'); if (saved !== null) desktopVisible = saved === 'open'; } catch {}
+    let visible = !compact.matches && desktopVisible;
+    const scrim = document.createElement('div');
+    scrim.className = 'work-panel-scrim'; scrim.hidden = true;
+    panel.before(scrim);
+    const title = panel.querySelector('.work-panel-head strong');
+    title.id = 'workPanelTitle';
+    let previousInert = null;
+    function setVisible(value, persist = true) {
+      const wasVisible = visible && !panel.hidden;
       visible = value; panel.hidden = !value;
       const toggle = $('workPanelToggle');
-      const hadFocus = document.activeElement === toggle;
+      const hadFocus = !!previousInert || panel.contains(document.activeElement) || document.activeElement === toggle;
+      const modal = compact.matches && value;
       toggle.setAttribute('aria-expanded', String(value));
       if (value) panel.querySelector('.work-panel-head').prepend(toggle);
       else $('archivesBtn').after(toggle);
-      if (hadFocus) toggle.focus({ preventScroll: true });
-      try { localStorage.setItem('parley.workPanel', value ? 'open' : 'closed'); } catch {}
-      if (value) refresh();
+      scrim.hidden = !modal;
+      if (modal) {
+        panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true');
+        panel.setAttribute('aria-labelledby', title.id);
+        previousInert ||= [$('main'), $('sidebar')].map(el => [el, el.inert]);
+        for (const [el] of previousInert) el.inert = true;
+        $('workClose').focus({ preventScroll: true });
+      } else {
+        panel.removeAttribute('role'); panel.removeAttribute('aria-modal'); panel.removeAttribute('aria-labelledby');
+        if (previousInert) { for (const [el, inert] of previousInert) el.inert = inert; previousInert = null;
+          $('sidebar').inert = compact.matches ? !document.body.classList.contains('nav-open') : document.body.classList.contains('sidebar-collapsed');
+        }
+        if (hadFocus) toggle.focus({ preventScroll: true });
+      }
+      if (!compact.matches && persist) {
+        desktopVisible = value;
+        try { localStorage.setItem('parley.workPanel', value ? 'open' : 'closed'); } catch {}
+      }
+      if (value && !wasVisible) refresh();
     }
+    scrim.onclick = () => setVisible(false);
+    panel.addEventListener('keydown', event => {
+      if (!compact.matches || !visible) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setVisible(false); return; }
+      if (event.key !== 'Tab') return;
+      const focusable = [...panel.querySelectorAll('button:not([disabled]),a[href],input,select,textarea,summary,[tabindex="0"]')]
+        .filter(el => el.getClientRects().length && !el.closest('[hidden]'));
+      const first = focusable[0], last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    });
+    compact.addEventListener('change', () => setVisible(compact.matches ? false : desktopVisible, false));
     const empty = (key) => `<p class="work-empty">${esc(t(key))}</p>`;
     function renderFiles() {
       const list = $('workProjects');

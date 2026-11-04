@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.9 — 2026-11-04
+
+- Show compact tool-event work status with a short typing effect and trailing cursor. Replace with the latest task and prioritize response text; distinguish confirmed completion/failure from observed calls and suppress sensitive or ambiguous argument details.
+- Prioritize chat below 1100px with collapsed sidebars, a 420px work dialog, and a bottom sheet below 600px. Add Escape/backdrop dismissal, focus restoration and keyboard containment; reserve more chat space on desktop.
+
 ## 1.5.8 — 2026-11-04
 
 - Remove the blue panel resize highlight and add a centered dotted grip, retaining the resize cursor and keyboard focus indicator.

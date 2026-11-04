@@ -1890,24 +1890,54 @@ function ensureLive(agent, startedAt, label) {
 }
 
 function progressText(progress) {
-  // Command details live in the expandable activity log, not the status line.
-  if (progress?.kind === "activity") return t("progress.activity");
+  if (progress?.work) {
+    const { action, detail, phase } = progress.work;
+    const ko = currentLocale() === "ko";
+    const names = ko ? { search:"검색", read:"파일 읽기", edit:"파일 수정", test:"테스트", command:"명령 실행", browser:"브라우저 작업", tool:"도구 작업" }
+      : { search:"Search", read:"Read file", edit:"Edit file", test:"Test", command:"Command", browser:"Browser tool", tool:"Tool" };
+    const status = ko ? { running:"중…", observed:"호출됨", completed:"완료", failed:"실패" }
+      : { running:"running…", observed:"invoked", completed:"completed", failed:"failed" };
+    return `${detail ? `${detail} · ` : ""}${names[action] || names.tool} ${status[phase] || status.observed}`;
+  }
+  if (progress?.kind === "activity") return currentLocale() === "ko" ? "작업 이벤트 수신" : "Work event received";
   if (progress && progress.text) return String(progress.text);
   return t(`progress.${progress?.kind || "preparing"}`);
 }
 
+function cancelWorkTyping(live) {
+  clearTimeout(live.workTypingTimer);
+  live.workTypingTimer = null;
+}
 function renderLiveProgress(live) {
   if (!live) return;
-  const streaming = live.mode === "stream";
   const slot = live.el.querySelector(".live-progress-slot");
-  const target = streaming ? slot : live.el.querySelector(".bubble");
-  const rows = live.progress.length ? live.progress : (streaming ? [] : [{ kind: "preparing" }]);
-  if (slot) slot.hidden = !streaming || !rows.length;
-  if (!rows.length) return;
-  target.innerHTML = `<div class="live-progress-list">${rows.map((progress, index) =>
-    `<div class="live-progress-row${index === rows.length - 1 ? " current" : ""}">` +
-      `<span class="progress-mark">${progress.kind === "activity" ? "•" : progress.kind === "writing" ? "✎" : progress.kind === "reasoning" ? "◇" : "·"}</span>` +
-      `<span>${esc(progressText(progress))}</span></div>`).join("")}</div>`;
+  if (slot) { slot.hidden = true; slot.replaceChildren(); }
+  // Real public speech always wins; status must never replace an answer.
+  if (live.text) { cancelWorkTyping(live); live.workStatusText = null; return; }
+  const target = live.el.querySelector(".bubble");
+  const latest = live.progress.at(-1) || { kind: "preparing" };
+  const text = progressText(latest);
+  if (live.workStatusText === text && target.querySelector(".live-work-status")) return;
+  cancelWorkTyping(live);
+  live.workStatusText = text;
+  target.replaceChildren();
+  const row = document.createElement("div");
+  row.className = "live-work-status";
+  const caret = document.createElement("span"); caret.className = "caret"; caret.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span"); label.className = "live-work-status-label";
+  row.setAttribute("aria-label", text);
+  label.setAttribute("aria-hidden", "true");
+  row.append(label, caret); target.append(row);
+  const chars = Array.from(text);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) { label.textContent = text; return; }
+  let count = 0;
+  const tick = () => {
+    if (!row.isConnected || live.text) return;
+    count = Math.min(chars.length, count + Math.max(1, Math.ceil(chars.length / 18)));
+    label.textContent = chars.slice(0, count).join("");
+    if (count < chars.length) live.workTypingTimer = setTimeout(tick, 18);
+  };
+  tick();
 }
 
 function liveProgress(agent, msg) {
@@ -1917,7 +1947,7 @@ function liveProgress(agent, msg) {
   const progress = msg.progress || { kind: "preparing" };
   const text = progressText(progress);
   const last = live.progress[live.progress.length - 1];
-  if (last && progressText(last) === text) return;
+  if (last && progressText(last) === text && last.work?.id === progress.work?.id) return;
   live.progress.push(progress);
   if (live.progress.length > 4) live.progress.shift();
   renderLiveProgress(live);
@@ -1925,7 +1955,7 @@ function liveProgress(agent, msg) {
 }
 function removeLive(agent) {
   const l = state.live[agent];
-  if (l) { liveObserver.unobserve(l.el); l.el.remove(); delete state.live[agent]; }
+  if (l) { cancelWorkTyping(l); liveObserver.unobserve(l.el); l.el.remove(); delete state.live[agent]; }
   delete state.liveVisible[agent];
   if (state.streamTimer[agent]) { clearTimeout(state.streamTimer[agent]); delete state.streamTimer[agent]; }
   renderBusyStrip();
@@ -2107,6 +2137,9 @@ function liveStream(agent, msg) {
       cur.el.querySelector(".live-label").innerHTML = `${esc(t("live.replying"))} <span class="elapsed">${elapsedLabel(cur)}</span>`;
       renderLiveProgress(cur);
     }
+    if (!cur.text) { renderLiveProgress(cur); scrollBottom(); return; }
+    cancelWorkTyping(cur);
+    cur.workStatusText = null;
     cur.el.querySelector(".bubble").innerHTML = renderMD(cur.text) + '<span class="caret"></span>';
     scrollBottom();
   }, flushDelay);
@@ -2717,7 +2750,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeAskMe
 // Narrow screens use the existing overlay. Desktop keeps the same button, but
 // collapses the sidebar in the layout and remembers that preference.
 const desktopNav = typeof window.matchMedia === "function"
-  ? window.matchMedia("(min-width: 761px)")
+  ? window.matchMedia("(min-width: 1101px)")
   : { matches: true, addEventListener() {} };
 const SIDEBAR_COLLAPSED_KEY = "parley.sidebarCollapsed";
 const sidebar = $("sidebar");

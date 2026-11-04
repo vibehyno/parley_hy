@@ -1065,7 +1065,7 @@
     #chat, #composer { width: calc(100% - 32px); }
   }
   #navScrim { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.45); }
-  @media (max-width: 760px) {
+  @media (max-width: 1100px) {
     /* The sidebar slides over the chat rather than disappearing: without it
        rooms, the workspace, the transcript and settings were all unreachable,
        and the only way back to another room was editing ?room= by hand. */
@@ -1102,9 +1102,9 @@
   .settings-footer { border-top:1px solid var(--border); gap:12px; flex-wrap:wrap; }
 
 /* Right-hand work overview and read-only source comparison. */
-#workPanel { position:relative; width:min(var(--work-width, 310px), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 360px))); flex:0 0 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg2); border-left:1px solid var(--border2); }
+#workPanel { position:relative; width:min(var(--work-width, 310px), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 520px))); flex:0 0 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg2); border-left:1px solid var(--border2); }
 #workPanel[hidden], #workDiff[hidden], #workOverview[hidden] { display:none; }
-#workPanel.with-diff { width:min(var(--diff-width, min(56vw,1000px)), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 360px))); }
+#workPanel.with-diff { width:min(var(--diff-width, min(56vw,1000px)), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 520px))); }
 .work-panel-head, .work-section-head, .work-diff-head { display:flex; align-items:center; gap:10px; }
 .work-panel-head { min-height:54px; padding:0 16px; border-bottom:1px solid var(--border); }
 #workPanelToggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:32px; padding:6px; }
@@ -1179,7 +1179,15 @@
 .diff-hunk.current { box-shadow:inset 3px 0 var(--user); }
 .diff-hunk { padding:8px 12px; color:var(--text-dim); background:var(--panel2); white-space:pre-wrap; overflow-wrap:anywhere; }
 @media (max-width:1100px) {
-  #workPanel, #workPanel.with-diff { position:fixed; right:0; top:var(--main-header-height,54px); bottom:0; z-index:45; width:min(92vw,850px); box-shadow:-15px 0 40px #0003; }
+  #workPanel, #workPanel.with-diff { position:fixed; right:12px; top:12px; bottom:12px; z-index:45; width:min(420px, calc(100vw - 24px)); border:1px solid var(--border2); border-radius:16px; box-shadow:0 16px 60px #0005; overflow:hidden; }
+  #workPanel.with-diff { width:min(800px, calc(100vw - 24px)); }
+  .work-panel-head { flex-shrink:0; }
+  .work-panel-scrim:not([hidden]) { display:block; position:fixed; inset:0; z-index:44; background:#0006; }
+}
+@media (max-width:600px) {
+  #workPanel, #workPanel.with-diff { top:auto; left:8px; right:8px; bottom:8px; width:auto; height: min(78dvh, 720px); max-height:calc(100dvh - 24px); border-radius:18px; }
+  .work-panel-head { min-height:52px; }
+
 }
 @media (max-width:700px) {
   .diff-row { display:block; }
@@ -1262,3 +1270,9 @@ body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }
 .work-folder { margin-left:8px; padding-left:10px; border-left:1px solid var(--border); min-width:0; }
 .work-folder > summary { cursor:pointer; padding:7px 3px; font-size:12px; overflow-wrap:anywhere; }
 @media (max-width:1100px) { .panel-resizer { display:none; } }
+
+/* The latest verified work event replaces the empty streaming caret. */
+.live-work-status { display:flex; align-items:center; gap:4px; min-height:22px; color:var(--text-dim); font-size:12px; line-height:1.6; }
+.live-work-status .caret { flex-shrink:0; margin:0; }
+.live-work-status-label { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+@media (prefers-reduced-motion: reduce) { .live-work-status .caret { animation:none; } }

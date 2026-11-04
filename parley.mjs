@@ -31,6 +31,7 @@ import { readLocalToolInventory } from "./lib/local-tool-inventory.mjs";
 import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
+import { workStatus } from "./lib/work-status.mjs";
 import { codexTurnUsage } from "./lib/codex-usage.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive, conversationArchiveSources, deleteConversationArchive } from "./lib/conversation-archives.mjs";
@@ -1717,6 +1718,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
   let sessionRef = sess || null, acc = "", resultText = null, assistantText = null, isError = false, usage = null;
   const speech = createPublicSpeech({ onStream, onActivity });
   const seenTools = new Set();
+  const runningTools = new Map();
   const knownSubagents = new Set();
   const onLine = (line) => {
     if (!line.startsWith("{")) return;
@@ -1741,8 +1743,18 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
           if (!obj.parent_tool_use_id) { speech.archive(); acc = ""; }
           seenTools.add(c.id);
           const label = claudeToolLabel(c.name, c.input || {});
-          if (onProgress) onProgress({ kind: "activity", text: label });
+          const work = workStatus(c.name, c.input || {}, "observed", c.id);
+          runningTools.set(c.id, work);
+          if (onProgress) onProgress({ kind: "activity", text: label, work });
           if (onActivity) onActivity(label);
+        }
+      }
+    } else if (obj.type === "user" && Array.isArray(obj.message?.content)) {
+      for (const c of obj.message.content) {
+        const work = runningTools.get(c.tool_use_id);
+        if (c.type === "tool_result" && work) {
+          onProgress?.({ kind: "activity", work: { ...work, phase: c.is_error ? "failed" : "completed" } });
+          runningTools.delete(c.tool_use_id);
         }
       }
     } else if (obj.type === "result") {
@@ -1836,12 +1848,17 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     else if (obj.thread_id && (!threadRef || threadRef === "--last")) threadRef = obj.thread_id;
     else if (obj.msg && obj.msg.type === "session_configured" && obj.msg.session_id) threadRef = obj.msg.session_id;
     const item = obj.item;
+    if (item && ["item.started", "item.completed"].includes(obj.type) &&
+        ["file_change", "command_execution", "mcp_tool_call", "web_search"].includes(item.type)) {
+      const phase = obj.type === "item.completed" ? (item.status === "failed" || item.exit_code ? "failed" : "completed") : "running";
+      const name = item.type === "web_search" ? "search" : item.type === "mcp_tool_call" ? item.tool || item.name : item.type;
+      const input = item.type === "command_execution" ? { command: shellCommandLabel(item.command) } : item.type === "file_change" ? { path: item.changes?.[0]?.path } : item.arguments || { query: item.query };
+      onProgress?.({ kind: "activity", work: workStatus(name, input, phase, item.id) });
+    }
     if (item && obj.type === "item.started" && ["mcp_tool_call", "web_search"].includes(item.type)) speech.archive();
     if (item && obj.type === "item.started" && onProgress) {
       if (item.type === "reasoning") onProgress({ kind: "reasoning" });
       else if (item.type === "agent_message" || item.item_type === "assistant_message") onProgress({ kind: "writing" });
-      else if (item.type === "mcp_tool_call") onProgress({ kind: "activity", text: `🔌 ${truncate(item.server || item.tool || item.name || "MCP", 70)}` });
-      else if (item.type === "web_search") onProgress({ kind: "activity", text: `🌐 ${truncate(item.query || "Web search", 70)}` });
       else if (item.type === "todo_list") onProgress({ kind: "planning" });
     }
     if (item && (item.type === "agent_message" || item.item_type === "assistant_message")) {
@@ -1858,14 +1875,12 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
         speech.archive();
         seenItems.add(startedKey);
         const label = codexItemLabel(item);
-        if (onProgress) onProgress({ kind: "activity", text: label });
         onActivity(label);
       } else if (obj.type === "item.completed") {
         if (!seenItems.has(startedKey)) {
           speech.archive();
           seenItems.add(startedKey);
           const label = codexItemLabel(item);
-          if (onProgress) onProgress({ kind: "activity", text: label });
           onActivity(label);
         }
         if (item.type === "command_execution" && item.exit_code) {
