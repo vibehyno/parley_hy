@@ -1008,19 +1008,9 @@ const DELIVERY_LABEL = {
   retry: "automatic session retry", automatic: "automatic response",
 };
 function whyRunHTML(e) {
+  if (e.kind === "user") return "";
   const meta = e.meta || {};
   const ko = currentLocale() === "ko";
-  if (e.kind === "user") {
-    const policy = meta.relay;
-    if (!policy || meta.pair) return "";
-    const text = ko ? (policy.solo ? "선택한 모델 한 개만 응답하며 다른 모델은 자동으로 응답하지 않습니다."
-      : policy.accounting === "automatic" ? `자동 발언 ${policy.hopBudget < 0 ? `안전 한도 ${policy.safetyLimit}` : policy.hopBudget}회. 추가 자동 호출마다 1회 사용하며 처음 요청한 응답은 제외합니다.`
-      : `추가 대화 ${policy.hopBudget < 0 ? "제한 없음" : `${policy.hopBudget}회`} (이전 계산 방식). 함께 요청된 응답과 답변 반환은 횟수에서 제외합니다.`)
-      : policy.solo ? "Solo: one selected responder, no automatic peer response."
-      : policy.accounting === "automatic" ? `${hopBudgetLabel(policy.hopBudget)} automatic turns${policy.hopBudget < 0 ? `; safety max ${policy.safetyLimit}` : ""}. Every additional automatic invocation counts; initial requested responses do not.`
-      : `${hopBudgetLabel(policy.hopBudget)} extra exchanges (legacy accounting). Included sibling delivery and answer returns do not consume the allowance.`;
-    return `<details class="why-run"><summary>${ko ? "메시지 적용 규칙" : "Message policy"}</summary><p>${esc(text)} ${esc(policySourceLabel(policy.source))}. ${ko ? "전송 당시 규칙이 이 메시지에 유지됩니다." : "This accepted policy stays with this message."}</p></details>`;
-  }
   if (meta.relayCap) {
     const cap = meta.relayCap;
     const unit = cap.accounting === "automatic" ? "automatic turns" : "continuations";
@@ -2782,6 +2772,12 @@ const desktopNav = typeof window.matchMedia === "function"
   : { matches: true, addEventListener() {} };
 const SIDEBAR_COLLAPSED_KEY = "parley.sidebarCollapsed";
 const sidebar = $("sidebar");
+const navClose = document.createElement("button");
+navClose.id = "navClose"; navClose.type = "button"; navClose.textContent = "×";
+navClose.dataset.i18nAriaLabel = "nav.hideRooms";
+navClose.setAttribute("aria-label", tr("nav.hideRooms", "Hide rooms"));
+sidebar.querySelector(".logo").append(navClose);
+navClose.onclick = () => setNavOpen(false);
 function syncSidebarVisibility() {
   const visible = desktopNav.matches
     ? !document.body.classList.contains("sidebar-collapsed")
@@ -2800,10 +2796,26 @@ function setSidebarCollapsed(collapsed, persist = true) {
   syncSidebarVisibility();
 }
 function setNavOpen(open) {
+  const wasOpen = document.body.classList.contains("nav-open");
   document.body.classList.toggle("nav-open", open);
   $("navScrim").hidden = !open;
   syncSidebarVisibility();
+  if (open && !desktopNav.matches) {
+    sidebar.setAttribute("role", "dialog"); sidebar.setAttribute("aria-modal", "true");
+    sidebar.setAttribute("aria-label", tr("nav.showRooms", "Show rooms"));
+    $("main").inert = true; navClose.focus({preventScroll:true});
+  } else {
+    sidebar.removeAttribute("role"); sidebar.removeAttribute("aria-modal"); sidebar.removeAttribute("aria-label");
+    if (wasOpen) { $("main").inert = false; $("navToggle").focus({preventScroll:true}); }
+  }
 }
+sidebar.addEventListener("keydown", event => {
+  if (desktopNav.matches || !document.body.classList.contains("nav-open") || event.key !== "Tab") return;
+  const items = [...sidebar.querySelectorAll('button:not([disabled]),a[href],input,select,textarea,[tabindex="0"]')].filter(el => el.getClientRects().length && !el.closest('[hidden]'));
+  const first=items[0], last=items.at(-1);
+  if (event.shiftKey && document.activeElement===first) { event.preventDefault(); last?.focus(); }
+  else if (!event.shiftKey && document.activeElement===last) { event.preventDefault(); first?.focus(); }
+});
 try { setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1", false); }
 catch { setSidebarCollapsed(false, false); }
 setNavOpen(false);

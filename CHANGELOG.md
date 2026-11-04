@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.12 — 2026-11-04
+
+- Remove user-message policy disclosure while preserving agent run details and containing their width.
+- Unify compact sidebar and work-panel dimensions, backdrop and dismissal. Add a sidebar close button and modal focus handling.
+- Fix an undefined color variable that prevented resize-grip dots from rendering. Verify dragging and matching panel sizes in the browser.
+
 ## 1.5.11 — 2026-11-04
 
 - Restrict panel resizing to the centered grip and inset the desktop chat scrollbar by 12px to avoid accidental resizing. Section reordering remains limited to its dedicated title handle.

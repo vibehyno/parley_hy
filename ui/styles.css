@@ -97,7 +97,7 @@
     background: var(--bg2); border-right: 1px solid var(--border);
     transition: width .18s ease, border-color .18s ease;
   }
-  @media (min-width: 761px) {
+  @media (min-width: 1101px) {
     body.sidebar-collapsed #sidebar { width: 0; overflow: hidden; border-right-color: transparent; }
   }
   .logo { display: flex; align-items: center; gap: 10px; padding: 18px 18px 14px; }
@@ -408,7 +408,7 @@
   .sysmsg .retry:hover { text-decoration: underline; }
   .sysmsg .recovery-state { margin-left: 8px; font-size: 11px; }
   .sysmsg.resolved { border-color: var(--border); color: var(--text-dim); }
-  .why-run { font-size: 11px; color: var(--text-dim); margin-top: 5px; max-width: 100%; contain: inline-size; overflow-wrap: anywhere; }
+  .why-run { font-size: 11px; color: var(--text-dim); margin-top: 5px; max-width: 100%; align-self:stretch; contain: inline-size; overflow-wrap: anywhere; }
   .why-run summary { cursor: pointer; }
   .why-run p { margin: 5px 0; line-height: 1.5; }
 
@@ -1064,17 +1064,19 @@
   @media (max-width: 1000px) {
     #chat, #composer { width: calc(100% - 32px); }
   }
-  #navScrim { display: none; position: fixed; inset: 0; z-index: 55; background: rgba(0,0,0,.45); }
+  #navClose { display:none; margin-left:auto; flex-shrink:0; width:32px; height:32px; font-size:20px; }
+  #navScrim { display: none; position: fixed; inset: 0; z-index: 44; background: #0006; }
   @media (max-width: 1100px) {
     /* The sidebar slides over the chat rather than disappearing: without it
        rooms, the workspace, the transcript and settings were all unreachable,
        and the only way back to another room was editing ?room= by hand. */
     #sidebar {
-      position: fixed; inset: 0 auto 0 0; z-index: 60; width: min(280px, 86vw);
-      transform: translateX(-102%); transition: transform .18s ease;
-      box-shadow: 0 0 40px rgba(0,0,0,.5);
+      position: fixed; inset: 12px auto 12px 12px; z-index: 45; width: min(420px, calc(100vw - 24px));
+      visibility:hidden; transform: translateX(-12px); transition: transform .18s ease;
+      border:1px solid var(--border2); border-radius:16px; overflow:hidden; box-shadow:0 16px 60px #0005;
     }
-    body.nav-open #sidebar { transform: none; }
+    body.nav-open #sidebar { transform: none; visibility:visible; }
+    #navClose { display:block; }
     body.nav-open #navScrim { display: block; }
     header { flex-wrap: wrap; row-gap: 6px; }
     .msg { max-width: 92%; }
@@ -1185,7 +1187,7 @@
   .work-panel-scrim:not([hidden]) { display:block; position:fixed; inset:0; z-index:44; background:#0006; }
 }
 @media (max-width:600px) {
-  #workPanel, #workPanel.with-diff { top:auto; left:8px; right:8px; bottom:8px; width:auto; height: min(78dvh, 720px); max-height:calc(100dvh - 24px); border-radius:18px; }
+  #sidebar, #workPanel, #workPanel.with-diff { top:auto; left:8px; right:8px; bottom:8px; width:auto; height: min(78dvh, 720px); max-height:calc(100dvh - 24px); border-radius:18px; }
   .work-panel-head { min-height:52px; }
 
 }
@@ -1261,9 +1263,9 @@ body.no-room #emptyArchivesBtn { display:block; }
 .panel-resizer { position:absolute; top:50%; transform:translateY(-50%); width:12px; height:40px; z-index:10; cursor:col-resize; touch-action:none; }
 #sidebar > .panel-resizer { right:-6px; }
 #workPanel > .panel-resizer { left:-6px; }
-.panel-resizer::after { content:""; position:absolute; top:50%; left:50%; width:6px; height:14px; transform:translate(-50%, -50%); background:radial-gradient(circle, var(--muted) 1px, transparent 1.2px) 0 0 / 3px 4px; pointer-events:none; }
+.panel-resizer::after { content:""; position:absolute; top:50%; left:50%; width:6px; height:16px; transform:translate(-50%, -50%); background:radial-gradient(circle, var(--text-dim) 1px, transparent 1.2px) 0 0 / 3px 4px; pointer-events:none; }
 .panel-resizer:focus-visible { outline:none; }
-.panel-resizer:focus-visible::after { outline:1px solid var(--muted); outline-offset:3px; border-radius:2px; }
+.panel-resizer:focus-visible::after { outline:1px solid var(--text-dim); outline-offset:3px; border-radius:2px; }
 .resizing-panels, .resizing-panels * { cursor:col-resize !important; user-select:none !important; }
 .resizing-panels #sidebar { transition:none; }
 body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }
