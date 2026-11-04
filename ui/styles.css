@@ -93,7 +93,7 @@
 
   /* ---------- sidebar ---------- */
   #sidebar {
-    width: 250px; flex-shrink: 0; display: flex; flex-direction: column;
+    width: min(var(--sidebar-width, 250px), 30vw); position:relative; flex-shrink: 0; display: flex; flex-direction: column;
     background: var(--bg2); border-right: 1px solid var(--border);
     transition: width .18s ease, border-color .18s ease;
   }
@@ -187,20 +187,20 @@
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 
   header {
-    display: flex; align-items: center; gap: 14px; padding: 12px 20px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 12px 20px;
     border-bottom: 1px solid var(--border); background: var(--bg2); backdrop-filter: blur(8px);
   }
   #roomTitle { font-weight: 600; font-size: 15.5px; }
   #connDot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); transition: background .3s; }
   #connDot.on { background: var(--codex); box-shadow: 0 0 6px rgba(47,214,168,.7); }
-  .pills { display: flex; gap: 8px; margin-left: auto; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; max-width:100%; min-width:0; }
   .pill {
     display: flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
     border: 1px solid var(--border2); font-size: 12.5px; color: var(--text-dim); background: var(--panel);
   }
   .pill .st { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
   .pill { flex-shrink: 0; }
-  .pill > b { white-space: nowrap; }
+  .pill > b { white-space: nowrap; overflow:hidden; text-overflow:ellipsis; max-width:12ch; }
   .seat-error { position: relative; }
   .seat-error[hidden] { display: none; }
   .seat-error-button { color: var(--danger); padding: 2px 4px; cursor: pointer; }
@@ -877,7 +877,7 @@
   .project-head, .project-bottom { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
   .project-head { align-items: center; margin-bottom: 20px; }
   .project-head h2 { margin: 0; }
-  .project-bottom { align-items: center; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
+  .project-bottom { flex-wrap:wrap; align-items: center; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--border); }
   .project-actions { display: flex; gap: 7px; }
   .project-links { display: grid; gap: 12px; }
   #connectionBtn { width: 100%; }
@@ -892,7 +892,7 @@
     border: 1px solid var(--border); border-radius: 12px; background: var(--panel); min-width: 0;
   }
   .project-link-icon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 10px; background: var(--bg2); font-size: 20px; }
-  .project-link-copy { flex: 1; min-width: 0; }
+  .project-link-copy { flex: 1; min-width: 0; max-width:100%; }
   .project-link-copy b, .project-link-copy span, .project-link-copy em { display: block; }
   .project-link-copy b { font-size: 15px; line-height: 1.5; }
   .project-link-copy span { margin-top: 4px; color: var(--text-faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1102,9 +1102,9 @@
   .settings-footer { border-top:1px solid var(--border); gap:12px; flex-wrap:wrap; }
 
 /* Right-hand work overview and read-only source comparison. */
-#workPanel { width:310px; flex:0 0 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg2); border-left:1px solid var(--border2); }
+#workPanel { position:relative; width:min(var(--work-width, 310px), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 360px))); flex:0 0 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg2); border-left:1px solid var(--border2); }
 #workPanel[hidden], #workDiff[hidden], #workOverview[hidden] { display:none; }
-#workPanel.with-diff { width:min(56vw,1000px); }
+#workPanel.with-diff { width:min(var(--diff-width, min(56vw,1000px)), max(260px, calc(100vw - var(--visible-sidebar-width,250px) - 360px))); }
 .work-panel-head, .work-section-head, .work-diff-head { display:flex; align-items:center; gap:10px; }
 .work-panel-head { min-height:54px; padding:0 16px; border-bottom:1px solid var(--border); }
 #workPanelToggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:32px; padding:6px; }
@@ -1179,7 +1179,7 @@
 .diff-hunk.current { box-shadow:inset 3px 0 var(--user); }
 .diff-hunk { padding:8px 12px; color:var(--text-dim); background:var(--panel2); white-space:pre-wrap; overflow-wrap:anywhere; }
 @media (max-width:1100px) {
-  #workPanel, #workPanel.with-diff { position:fixed; right:0; top:54px; bottom:0; z-index:90; width:min(92vw,850px); box-shadow:-15px 0 40px #0003; }
+  #workPanel, #workPanel.with-diff { position:fixed; right:0; top:var(--main-header-height,54px); bottom:0; z-index:45; width:min(92vw,850px); box-shadow:-15px 0 40px #0003; }
 }
 @media (max-width:700px) {
   .diff-row { display:block; }
@@ -1248,3 +1248,15 @@ body.no-room #emptyArchivesBtn { display:block; }
 .archive-delete-dialog h3 { margin:0 0 12px; font-size:18px; }
 .archive-delete-dialog p { margin:0 0 24px; line-height:1.7; }
 .archive-delete-actions { display:flex; justify-content:flex-end; gap:10px; }
+
+/* Dedicated resize edges; content and section buttons remain ordinary click targets. */
+.panel-resizer { position:absolute; top:0; bottom:0; width:9px; z-index:10; cursor:col-resize; touch-action:none; }
+#sidebar > .panel-resizer { right:-5px; }
+#workPanel > .panel-resizer { left:-5px; }
+.panel-resizer:hover, .panel-resizer:focus-visible { background:color-mix(in srgb, var(--user) 35%, transparent); outline:none; }
+.resizing-panels, .resizing-panels * { cursor:col-resize !important; user-select:none !important; }
+.resizing-panels #sidebar { transition:none; }
+body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }
+.work-folder { margin-left:8px; padding-left:10px; border-left:1px solid var(--border); min-width:0; }
+.work-folder > summary { cursor:pointer; padding:7px 3px; font-size:12px; overflow-wrap:anywhere; }
+@media (max-width:1100px) { .panel-resizer { display:none; } }

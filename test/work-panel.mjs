@@ -199,3 +199,18 @@ test('nested repository discovery respects depth, excludes dependencies, refresh
     assert.equal((await server.api('POST', '/api/open', { room: 'default', what: 'project', path: parent, repository: 'services/api', application: 'default', file: '../web/same.txt' })).status, 403);
   } finally { await server.close(); }
 });
+
+
+test('folder tree retains original diff indexes and nested duplicate filenames', () => {
+  const files = [{path:'src/card.js'}, {path:'docs/card.js'}, {path:'README.md'}, {path:'src/deep/card.js'}, {path:'__proto__/safe.js'}, {path:'한글/안내.md'}];
+  const tree = window.ParleyWorkPanel.fileTree(files);
+  assert.equal(tree.files[0].name, 'README.md');
+  assert.equal(tree.files[0].index, 2);
+  assert.equal(tree.folders.get('src').files[0].index, 0);
+  assert.equal(tree.folders.get('docs').files[0].index, 1);
+  assert.equal(tree.folders.get('src').folders.get('deep').path, 'src/deep');
+  assert.equal(tree.folders.get('src').folders.get('deep').files[0].index, 3);
+  assert.equal(tree.folders.get('__proto__').files[0].index, 4);
+  assert.equal(tree.folders.get('한글').files[0].name, '안내.md');
+  assert.equal(window.ParleyWorkPanel.fileTree([]).folders.size, 0);
+});

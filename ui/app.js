@@ -5212,6 +5212,7 @@ function insertToolPrompt(seat, kind, name) {
   autosize(); updateRouteHint(); mentionCheck();
 }
 function openTools() {
+  setNavOpen(false);
   if (!state.summary) return;
   toolsOpener = document.activeElement;
   toolsProvider = TOOL_PROVIDERS.find((provider) => toolSeat(provider)) || "codex";
@@ -5567,6 +5568,7 @@ function closeProjectManager() {
   projectOpener = null;
 }
 function openProjectManager() {
+  setNavOpen(false);
   const s = state.summary; if (!s) return;
   projectOpener = document.activeElement;
   retireProjectPick();
@@ -5613,6 +5615,7 @@ function closeSettings() {
 let settingsContext = null;
 let settingsCreating = false;
 function openSettings(create = false) {
+  setNavOpen(false);
   settingsCreating = create === true;
   const initialSeats = ["claude", "codex"].filter(id => state.providers[id]);
   const s = settingsCreating ? {
@@ -5727,7 +5730,7 @@ $("s_locale").onchange = () => {
   refreshLocalizedUi();
 };
 $("settingsBtn2").onclick = () => openSettings();
-$("appSettingsBtn").onclick = () => { $("s_locale").value=currentLocale(); $("appSettingsOverlay").classList.add("open"); $("s_font").focus(); };
+$("appSettingsBtn").onclick = () => { setNavOpen(false); $("s_locale").value=currentLocale(); $("appSettingsOverlay").classList.add("open"); $("s_font").focus(); };
 $("appSettingsClose").onclick = () => { $("appSettingsOverlay").classList.remove("open"); $("appSettingsBtn").focus(); };
 $("workBannerClose").onclick = dismissAccessBanner;
 $("updateBtn").onclick = openUpdate;
@@ -5893,6 +5896,7 @@ async function selectArchive(id, source, room) {
   }
 }
 async function openArchives() {
+  setNavOpen(false);
   if (archiveView.restoring) return;
   const generation = ++archiveView.generation;
   archiveView.room = state.room;

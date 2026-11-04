@@ -66,6 +66,85 @@
       status: child.status === 'running' && !busy.some((run) => run.agent === child.seat && run.runId === child.runId) ? 'observed' : child.status,
     }));
   }
+  function fileTree(files) {
+    const root = { folders: new Map(), files: [] };
+    files.forEach((file, index) => {
+      const parts = file.path.split('/');
+      const name = parts.pop();
+      let node = root, path = '';
+      for (const part of parts) {
+        path += (path ? '/' : '') + part;
+        if (!node.folders.has(part)) node.folders.set(part, { name: part, path, folders: new Map(), files: [] });
+        node = node.folders.get(part);
+      }
+      node.files.push({ file, index, name });
+    });
+    return root;
+  }
+  function enablePanelResize(panel, side, t) {
+    const handle = document.createElement('div');
+    handle.className = 'panel-resizer';
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-controls', panel.id);
+    handle.dataset.i18nTitle = 'workPanel.resizeHint';
+    handle.dataset.i18nAriaLabel = 'workPanel.resizeHint';
+    handle.title = t('workPanel.resizeHint');
+    handle.setAttribute('aria-label', handle.title);
+    panel.append(handle);
+    const mode = () => side === 'left' ? 'sidebar' : panel.classList.contains('with-diff') ? 'diff' : 'work';
+    const variable = key => '--' + key + '-width';
+    for (const key of side === 'left' ? ['sidebar'] : ['work', 'diff']) {
+      try {
+        const width = Number(localStorage.getItem('moyeo.panelWidth.' + key));
+        if (Number.isFinite(width) && width >= 200 && width <= 1400) panel.style.setProperty(variable(key), width + 'px');
+      } catch {}
+    }
+    let drag = null;
+    const limits = () => {
+      const other = document.getElementById(side === 'left' ? 'workPanel' : 'sidebar');
+      const min = side === 'left' ? 200 : 260;
+      return { min, max: Math.max(min, Math.min(side === 'left' ? 480 : 1200, innerWidth - other.getBoundingClientRect().width - 360)) };
+    };
+    const update = width => {
+      const {min, max} = limits();
+      const value = Math.round(Math.max(min, Math.min(max, width)));
+      panel.style.setProperty(variable(mode()), value + 'px');
+      handle.setAttribute('aria-valuemin', min);
+      handle.setAttribute('aria-valuemax', max);
+      handle.setAttribute('aria-valuenow', value);
+    };
+    const save = () => { try { localStorage.setItem('moyeo.panelWidth.' + mode(), String(parseFloat(panel.style.getPropertyValue(variable(mode()))))); } catch {} };
+    const finish = () => { if (!drag) return; drag = null; document.body.classList.remove('resizing-panels'); save(); };
+    handle.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || innerWidth <= 1100) return;
+      event.preventDefault();
+      drag = { x: event.clientX, width: panel.getBoundingClientRect().width };
+      handle.setPointerCapture(event.pointerId);
+      document.body.classList.add('resizing-panels');
+    });
+    handle.addEventListener('pointermove', event => { if (drag) update(drag.width + (event.clientX - drag.x) * (side === 'left' ? 1 : -1)); });
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+    handle.addEventListener('lostpointercapture', finish);
+    handle.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home'].includes(event.key)) return;
+      event.preventDefault();
+      if (event.key === 'Home') reset();
+      else { update(panel.getBoundingClientRect().width + (event.key === 'ArrowRight' ? 20 : -20) * (side === 'left' ? 1 : -1)); save(); }
+    });
+    function reset() {
+      panel.style.removeProperty(variable(mode()));
+      try { localStorage.removeItem('moyeo.panelWidth.' + mode()); } catch {}
+    }
+    handle.addEventListener('dblclick', reset);
+    new ResizeObserver(() => {
+      const width = Math.round(panel.getBoundingClientRect().width);
+      handle.setAttribute('aria-valuenow', width);
+      if (side === 'left') document.documentElement.style.setProperty('--visible-sidebar-width', width + 'px');
+    }).observe(panel);
+  }
   function enableSectionOrder(container, t) {
     const key = 'parley.workSectionOrder';
     const sections = [...container.children].filter(node => node.matches('.work-section[data-section]'));
@@ -146,6 +225,9 @@
   function create({ state, api, t, esc, seatName, loadUsage, usageRows, usageAgo, checkedAt, openFile }) {
     const $ = (id) => document.getElementById(id);
     const panel = $('workPanel');
+    enablePanelResize($('sidebar'), 'left', t);
+    enablePanelResize(panel, 'right', t);
+    new ResizeObserver(() => document.documentElement.style.setProperty('--main-header-height', document.querySelector('#main > header').getBoundingClientRect().height + 'px')).observe(document.querySelector('#main > header'));
     let hunkIndex = 0;
     function syncHunkNavigation() {
       const hunks = [...$('workDiffCode').querySelectorAll('.diff-hunk')];
@@ -195,13 +277,17 @@
         const parent = items[0].project;
         const total = items.reduce((sum, { project }) => sum + project.files.length, 0);
         const contents = items.map(({ project, index }) => {
-          const files = !project.available ? empty(project.reason === 'not-git' ? 'workPanel.notGit' : 'workPanel.readFailed') : project.files.map((file, fileIndex) =>
-            `<button class="work-file" data-project="${index}" data-file="${fileIndex}" title="${esc(file.path)}"><span>${esc(file.path)}</span><small>${esc(t('workPanel.file.' + fileStatusKey(file.status)))}</small><span class="work-counts" title="${esc(t(Number.isFinite(file.added) ? 'workPanel.lineCounts' : 'workPanel.unknownCounts'))}">${Number.isFinite(file.added) ? `<i>+${file.added}</i> <b>−${file.removed}</b>` : '—'}</span></button>`).join('') || empty('workPanel.clean');
           const key = `${id}:${project.repository || ''}`;
+          const renderTree = (node) => [...node.folders.values()].sort((a, b) => a.name.localeCompare(b.name)).map(folder => {
+            const folderKey = `folder:${key}:${folder.path}`;
+            return `<details class="work-folder" data-key="${esc(folderKey)}" ${open(folderKey, true)}><summary title="${esc(folder.path)}">${esc(folder.name)}</summary>${renderTree(folder)}</details>`;
+          }).join('') + node.files.map(({file, index: fileIndex, name}) =>
+            `<button class="work-file" data-project="${index}" data-file="${fileIndex}" title="${esc(file.path)}"><span>${esc(name)}</span><small>${esc(t('workPanel.file.' + fileStatusKey(file.status)))}</small><span class="work-counts" title="${esc(t(Number.isFinite(file.added) ? 'workPanel.lineCounts' : 'workPanel.unknownCounts'))}">${Number.isFinite(file.added) ? `<i>+${file.added}</i> <b>−${file.removed}</b>` : '—'}</span></button>`).join('');
+          const files = !project.available ? empty(project.reason === 'not-git' ? 'workPanel.notGit' : 'workPanel.readFailed') : renderTree(fileTree(project.files)) || empty('workPanel.clean');
           const body = files + (project.truncated ? empty('workPanel.truncated') : '');
-          return project.repository ? `<details class="work-repository" data-key="${esc(key)}" ${open(key, items.length === 1)}><summary title="${esc(project.repository)}">${esc(project.repository)}<small>${project.files.length}</small></summary>${body}</details>` : body;
+          return project.repository ? `<details class="work-repository" data-key="${esc(key)}" ${open(key, true)}><summary title="${esc(project.repository)}">${esc(project.repository)}<small>${project.files.length}</small></summary>${body}</details>` : body;
         }).join('');
-        return `<details class="work-project" data-key="project:${id}" ${open(`project:${id}`, groups.size === 1)}><summary title="${esc(parent.path)}">${esc(parent.name)}<small>${total}</small></summary>${contents}${parent.discoveryTruncated ? empty('workPanel.discoveryTruncated') : ''}</details>`;
+        return `<details class="work-project" data-key="project:${id}" ${open(`project:${id}`, true)}><summary title="${esc(parent.path)}">${esc(parent.name)}<small>${total}</small></summary>${contents}${parent.discoveryTruncated ? empty('workPanel.discoveryTruncated') : ''}</details>`;
       }).join('') || empty('workPanel.noProjects');
       list.querySelectorAll('[data-file]').forEach((button) => button.onclick = () => {
         const project = projects[Number(button.dataset.project)];
@@ -313,5 +399,5 @@
     document.addEventListener('visibilitychange', () => { if (!document.hidden && state.summary) { loadUsage(); refresh(); } });
     return { roomChanged, renderUsage };
   }
-  global.ParleyWorkPanel = { create, diffRows, agentsFromEntries, fileStatusKey, inlineParts };
+  global.ParleyWorkPanel = { create, diffRows, agentsFromEntries, fileStatusKey, inlineParts, fileTree };
 })(window);

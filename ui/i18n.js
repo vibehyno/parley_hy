@@ -69,6 +69,7 @@
 
       "workPanel.diffTruncated": "Showing the first 4,000 rows. Open the file for the full content.",
       "workPanel.title": "Work overview",
+      "workPanel.resizeHint": "Drag to resize · double-click to reset · arrow keys to adjust",
       "workPanel.reorderHint": "Drag this handle or use Alt+↑/↓ to reorder",
       "workPanel.scope": "All changes since the last commit",
       "workPanel.emptyScope": "All files · no commits yet",
@@ -629,6 +630,7 @@
 
       "workPanel.diffTruncated": "처음 4,000줄만 표시합니다. 전체 내용은 파일을 열어 확인해 주세요.",
       "workPanel.title": "작업 현황",
+      "workPanel.resizeHint": "드래그로 너비 조절 · 두 번 클릭하면 기본 너비 · 방향키로 조절",
       "workPanel.reorderHint": "이 손잡이를 드래그하거나 Alt+↑/↓로 순서를 변경합니다.",
       "workPanel.scope": "마지막 커밋 이후 전체 변경",
       "workPanel.emptyScope": "전체 파일 · 아직 커밋 없음",

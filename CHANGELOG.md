@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.6 — 2026-11-04
+
+- Resize sidebar and work panel using dedicated edges, with saved widths and double-click reset; store diff width separately.
+- Group changed files into expanded folder trees while preserving collapsed folders during refresh.
+- Fix narrow-screen header overflow, overlay panel positioning and navigation covering dialogs.
+
 ## 1.5.5 — 2026-11-03
 
 - Count Codex usage per invocation instead of repeating cumulative thread totals; omit unknown resumed baselines.
