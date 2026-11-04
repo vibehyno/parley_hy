@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import {isolatedServer} from './server-fixture.mjs';
-import {communicationInstructions,persistentUserInstructions} from '../lib/room-instructions.mjs';
+import {communicationInstructions,communicationTurnReminder,persistentUserInstructions} from '../lib/room-instructions.mjs';
 
 test('communication mode saves without changing permissions and seat memory is isolated with conflict protection', async () => {
   const s = await isolatedServer();
@@ -98,6 +98,12 @@ test('saved memory and mode changes reach an existing CLI session on its next ca
     await send();
     const stateFile=path.join(s.root,'default','state.json');
     const original=JSON.parse(fs.readFileSync(stateFile)).agents.codex.sessionRef;
+    const trace=()=>fs.readFileSync(path.join(s.root,'default','workspace','.fake-cli-prompts.jsonl'),'utf8').trim().split('\n').map(s=>JSON.parse(s)).filter(e=>e.event==='start');
+    assert.doesNotMatch(trace().at(-1).prompt,/Conversation reminder/);
+    await send();
+    assert.match(trace().at(-1).prompt,/Conversation reminder/);
+    assert.equal(trace().length,2);
+    assert.equal(JSON.parse(fs.readFileSync(stateFile)).agents.codex.sessionRef,original);
     const first=(await s.api('GET','/api/room-instructions?room=default&seat=codex')).data;
     await s.api('POST','/api/room-instructions',{room:'default',seat:'codex',revision:first.revision,text:'UNIQUE_SAVED_PREFERENCE'});
     await s.api('POST','/api/config',{room:'default',config:{communicationMode:'task',roomNote:'Final result only three lines'}});
@@ -106,7 +112,17 @@ test('saved memory and mode changes reach an existing CLI session on its next ca
     const latest=events.at(-1).prompt + events.at(-1).briefing;
     assert.match(latest,/UNIQUE_SAVED_PREFERENCE/);
     assert.match(latest,/Task-focused mode/);
+    assert.doesNotMatch(events.at(-1).prompt,/Conversation reminder/);
     assert.match(latest,/Final result only three lines/);
     assert.equal(JSON.parse(fs.readFileSync(stateFile)).agents.codex.sessionRef,original);
   } finally {await s.close();}
+});
+
+test('conversation reminder only accompanies resumed conversational calls', () => {
+  assert.equal(communicationTurnReminder('conversation', false), '');
+  assert.equal(communicationTurnReminder('task', true), '');
+  const reminder = communicationTurnReminder('conversation', true);
+  assert.match(reminder, /before tools/);
+  assert.match(reminder, /same invocation/);
+  assert.match(reminder, /explicit silence\/output-only requests/);
 });

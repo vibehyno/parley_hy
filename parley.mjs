@@ -49,7 +49,7 @@ import { diagnosticText } from "./lib/diagnostic-text.mjs";
 import { changedFiles, fileDiff, resolveProjectFile, discoverRepositories, resolveRepository } from "./lib/work-changes.mjs";
 import { subagentEvents } from "./lib/subagent-events.mjs";
 import { plainPeerRequest } from "./lib/peer-routing.mjs";
-import { readRoomInstructions, saveRoomInstructions, communicationInstructions, persistentUserInstructions, planRememberedInstructions } from "./lib/room-instructions.mjs";
+import { readRoomInstructions, saveRoomInstructions, communicationInstructions, communicationTurnReminder, persistentUserInstructions, planRememberedInstructions } from "./lib/room-instructions.mjs";
 import { SharedBrowser } from "./lib/shared-browser.mjs";
 import { browserBridge, browserCliArgs, browserInstruction, agyBrowserNeedsSetup, browserSetupRequired } from "./lib/shared-browser-config.mjs";
 import { agyBrowserPermissions } from "./lib/agy-browser-permissions.mjs";
@@ -2091,6 +2091,8 @@ function briefedAdapter(send) {
           opts = { ...opts, browserConnection: connection, prompt: opts.prompt + browserInstruction(connection) };
         }
       }
+      const reminder = communicationTurnReminder(room.cfg.communicationMode, !!room.state.agents[opts.seat]?.sessionRef);
+      if (reminder) opts = { ...opts, prompt: `${opts.prompt}\n\n${reminder}` };
       return await send(room, opts);
     } finally { if (token) sharedBrowser.revoke(token); }
   };

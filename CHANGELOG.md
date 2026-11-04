@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.14 — 2026-11-04
+
+- Add a short conversational reminder to resumed CLI calls: natural opening before tools, meaningful updates, then a final result. Respect persona, room preferences and explicit output-only requests.
+- Keep fresh-session instructions and task-focused mode unchanged. No extra greeting calls or automatic retries; only a small input reminder on resumed conversational turns.
+- Verify opening/tool/final ordering in six live calls (fresh and resumed for each provider), nine focused automated tests, and session continuity. Provider compliance remains model-dependent.
+
 ## 1.5.13 — 2026-11-04
 
 - Add subtle mint and blue end gradients to the native chat scrollbar with hover emphasis.
