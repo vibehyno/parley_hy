@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.20 — 2026-11-04
+
+- Rename the Korean reasoning-effort label and related help to 생각 수준. Keep underlying settings unchanged.
+
 ## 1.5.19 — 2026-11-04
 
 - Separate role/identity exclusions from model execution settings. Rename room note to chat room prompt in the UI and clarify learned-instruction help. Validate four exclusion combinations.
