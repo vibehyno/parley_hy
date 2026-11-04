@@ -77,6 +77,7 @@
     <div id="chatWrap">
       <button id="emptyRoomCreate" type="button" class="btn"><span aria-hidden="true">＋</span><span data-i18n="room.addNew">Add a new room</span></button>
       <div id="chat" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation"></div>
+      <div id="chatEnd" data-i18n="chat.end">Latest message</div>
       <div id="empty" style="display:none">
         <div class="big">🃏</div>
         <h2 data-i18n="empty.title">The table is set</h2>
@@ -84,7 +85,7 @@
         <div class="starters" id="starters"></div>
       </div>
     </div>
-    <button id="jump" data-i18n="jump.newMessages">↓ New messages</button>
+    <button id="jump" data-i18n="jump.newMessages">↓ Latest message</button>
 
     <div id="composerWrap">
       <div id="composer">
@@ -282,6 +283,7 @@
     </div>
     <div class="mrow settings-footer">
       <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn" id="mImportSettings" data-i18n="settings.import">Import room settings</button>
         <button class="btn danger" id="mNewConv" data-i18n="settings.archive">🧹 Clean chat</button>
         <button class="btn danger" id="mDelete" data-i18n="settings.delete">Delete room</button>
       </div>

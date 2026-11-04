@@ -675,7 +675,7 @@ function scrollBottom(force, instant = false) {
 // at the top stacks up several whole re-renders inside one frame.
 let historyPaging = false;
 chatWrap.addEventListener("scroll", () => {
-  if (nearBottom()) $("jump").style.display = "none";
+  $("jump").style.display = nearBottom() ? "none" : "block";
   // Scrolling to the top is the second path into "Show earlier ▸"; the button
   // stays as the discoverable one.
   if (chatWrap.scrollTop < 80 && !historyPaging && state.renderFromN !== null) {
@@ -2310,7 +2310,7 @@ function renderSeatsUI(s) {
   const groupChip = document.querySelector('.chip[data-t="both"]');
   if (groupChip) groupChip.textContent = `@${groupMention}`;
   document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset.t === state.chip));
-  $("tagline").textContent = `you · ${seats.map(seatLabel).join(" · ")}`;
+  $("tagline").textContent = `you · ${seats.map(seatName).join(" · ")}`;
   input.placeholder = `Message the table…  (@${seats.map(seatMention).join(", @")}, @${groupMention})`;
   $("starters").innerHTML =
     `<button class="starter" data-fill="@${groupMention} Introduce yourselves in one sentence each."><b class="c3">@${groupMention}</b> Introduce yourselves in one sentence each.</button>` +
@@ -5065,12 +5065,14 @@ $("seatCards").addEventListener("click", async event => {
   const button = event.target.closest("[data-learned-seat]");
   if (!button) return;
   const item = settingsSeatDraft?.find(item => item.id === button.dataset.learnedSeat);
-  if (!item?.existing || settingsCreating) return toast(t("settings.learnedSaveRoom"));
+  const imported = settingsImport?.memories;
+  if (!item || ((!item.existing || settingsCreating) && !imported?.[item.id])) return toast(t("settings.learnedSaveRoom"));
   const room = settingsContext.name;
   let seat = item.id;
   button.disabled = true;
   try {
-    let data = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(seat)}`);
+    const readMemory = key => imported?.[key] ? Promise.resolve({...imported[key],file:t("settings.importDraftMemory")}) : api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(key)}`);
+    let data = await readMemory(seat);
     const dialog = document.createElement("dialog");
     dialog.className = "learned-instructions-modal";
     dialog.innerHTML = `<header><h3>${esc(t("settings.learnedInstructions"))} · ${esc(item.cfg.displayName || seat)}</h3><button type="button" data-close aria-label="${esc(t("common.close"))}">×</button></header>` +
@@ -5087,7 +5089,7 @@ $("seatCards").addEventListener("click", async event => {
       const save = dialog.querySelector("[data-save]"), textarea = dialog.querySelector("textarea");
       save.disabled = true; textarea.disabled = true;
       try {
-        const loaded = await api(`/api/room-instructions?room=${encodeURIComponent(room)}&seat=${encodeURIComponent(selected)}`);
+        const loaded = await readMemory(selected);
         if (request !== scopeRequest || !dialog.isConnected) return;
         data = loaded; seat = selected; textarea.value = data.text;
         dialog.querySelector(".sub").textContent = data.file;
@@ -5103,8 +5105,10 @@ $("seatCards").addEventListener("click", async event => {
     dialog.querySelector("[data-save]").onclick = async () => {
       const save = dialog.querySelector("[data-save]"); save.disabled = true;
       try {
-        await api("/api/room-instructions", {room, seat, text:dialog.querySelector("textarea").value, revision:data.revision});
-        dialog.close(); toast(t("settings.learnedSaved"));
+        const text = dialog.querySelector("textarea").value;
+        if (imported?.[seat]) imported[seat].text = text;
+        else await api("/api/room-instructions", {room, seat, text, revision:data.revision});
+        dialog.close(); toast(t(imported?.[seat] ? "settings.importReady" : "settings.learnedSaved"));
       } catch (error) { dialog.querySelector(".learned-status").textContent = error.message; }
       finally { save.disabled = false; }
     };
@@ -5683,12 +5687,15 @@ function closeSettings() {
   settingsOpener = null;
   settingsSeatDraft = null;
   settingsContext = null;
+  settingsImport = null;
   settingsCreating = false;
 }
+let settingsImport = null;
 let settingsContext = null;
 let settingsCreating = false;
 function openSettings(create = false) {
   setNavOpen(false);
+  settingsImport = null;
   settingsCreating = create === true;
   const initialSeats = ["claude", "codex"].filter(id => state.providers[id]);
   const s = settingsCreating ? {
@@ -5757,6 +5764,64 @@ function openSettings(create = false) {
     renderSeatCards(settingsContext || state.summary);
   }).catch(() => { /* Free-form model input remains available. */ });
 }
+$("mImportSettings").onclick = async () => {
+  const context = settingsContext;
+  if (!context) return;
+  const dialog = document.createElement("dialog");
+  dialog.className = "learned-instructions-modal settings-import-modal";
+  dialog.innerHTML = `<header><h3>${esc(t("settings.import"))}</h3><button data-close aria-label="${esc(t("common.close"))}">×</button></header>
+    <label>${esc(t("settings.importSource"))}<select data-source></select></label>
+    <p data-status></p>
+    <p class="note" title="${esc(t("settings.importHelp"))}">${esc(t("settings.importShort"))}</p>
+    <footer><button class="btn primary" data-apply disabled>${esc(t("settings.import"))}</button><button class="btn" data-close>${esc(t("common.cancel"))}</button></footer>`;
+  document.body.append(dialog);
+  dialog.addEventListener("close",()=>dialog.remove());
+  dialog.querySelectorAll("[data-close]").forEach(button=>button.onclick=()=>dialog.close());
+  dialog.showModal();
+  const select=dialog.querySelector("[data-source]"), status=dialog.querySelector("[data-status]"), apply=dialog.querySelector("[data-apply]");
+  try {
+    const data=await api("/api/rooms");
+    if (!dialog.isConnected) return;
+    const rooms=data.rooms.filter(room=>settingsCreating || room.name !== context.name);
+    select.innerHTML=rooms.map(room=>`<option value="${esc(room.name)}">${esc(room.name)}</option>`).join("");
+    status.textContent=rooms.length ? "" : t("settings.importEmpty");
+    apply.disabled=!rooms.length; select.disabled=!rooms.length;
+  } catch(error) { status.textContent=error.message; }
+  apply.onclick=async()=>{
+    apply.disabled=true;
+    try {
+      const source=(await api("/api/room/summary?name="+encodeURIComponent(select.value))).room;
+      const memories={};
+      {
+        for(const seat of ["_common",...source.seats]) {
+          const memory=await api(`/api/room-instructions?room=${encodeURIComponent(source.name)}&seat=${encodeURIComponent(seat)}`);
+          const current=!settingsCreating && (seat === "_common" || context.seats.includes(seat))
+            ? await api(`/api/room-instructions?room=${encodeURIComponent(context.name)}&seat=${encodeURIComponent(seat)}`) : null;
+          memories[seat]={text:memory.text,revision:current?.revision ?? null};
+        }
+      }
+      if(settingsContext!==context || !dialog.isConnected) return;
+      captureSeatDraftValues();
+      settingsSeatDraft=source.seats.map(id=>{
+        const cfg=structuredClone(source.cfg.agents[id]);
+        return {id,provider:source.seatInfo?.[id]?.provider || cfg.provider || id,cfg,existing:!settingsCreating && context.seats.includes(id)};
+      });
+      settingsImport={memories,projects:{projectDir:source.cfg.projectDir || null,projectDirs:[...(source.cfg.projectDirs || [])]}};
+      $("s_roomnote").value=source.cfg.roomNote || "";
+      $("s_communicationMode").value=source.cfg.communicationMode || "conversation";
+      $("s_timeout").value=Math.round((source.cfg.timeoutMs || 300000)/1000);
+      $("s_hopbudget").value=String(normalizedHopBudget(source.cfg.hopBudget,-1));
+      $("s_pairrounds").value=source.cfg.pairRounds || 0;
+      if(source.cfg.accounting === "exchanges" && !$("s_accounting").querySelector('[value="exchanges"]')) {
+        $("s_accounting").add(new Option(t("settings.previousAccounting"), "exchanges"));
+      }
+      $("s_accounting").value=source.cfg.accounting || "automatic";
+      renderSeatCards(context); refreshDefaultSeatOptions(source.cfg.defaultAgent);
+      dialog.close(); toast(t("settings.importReady"));
+    } catch(error) { status.textContent=error.message; }
+    finally { if(dialog.isConnected) apply.disabled=false; }
+  };
+};
 $("s_addSeat").onclick = () => {
   if (!settingsSeatDraft) return;
   if (settingsSeatDraft.length >= 3) { toast(t("settings.seatLimitReached")); return; }
@@ -5876,6 +5941,7 @@ $("mSave").onclick = async () => {
     if (!accepted) return;
   }
   const config = {
+    ...(settingsImport?.projects || {}),
     explicitPermissions: true,
     defaultAgent: $("s_default").value,
     timeoutMs: Math.max(10, Number($("s_timeout").value) || 300) * 1000,
@@ -5899,6 +5965,10 @@ $("mSave").onclick = async () => {
   try {
     $("mSave").disabled = true;
     const seats = draft.map(({ id, provider }) => ({ id, provider }));
+    if (!settingsCreating && Object.keys(settingsImport?.memories || {}).length) {
+      const latest = (await api("/api/room/summary?name=" + encodeURIComponent(s.name))).room;
+      if (latest.busy?.length) throw new Error(t("settings.importBusy"));
+    }
     const wasCreating = settingsCreating;
     if (wasCreating) {
       await api("/api/rooms", { name: desiredName, seats });
@@ -5907,6 +5977,13 @@ $("mSave").onclick = async () => {
       s.name = desiredName;
     }
     const saved = await api("/api/config", { room: s.name, seats, config });
+    for (const [seat, memory] of Object.entries(settingsImport?.memories || {})) {
+      if (seat !== "_common" && !seats.some(item => item.id === seat)) continue;
+      const current = memory.revision === null
+        ? await api(`/api/room-instructions?room=${encodeURIComponent(s.name)}&seat=${encodeURIComponent(seat)}`) : memory;
+      await api("/api/room-instructions", {room:s.name, seat, text:memory.text, revision:current.revision});
+      delete settingsImport.memories[seat];
+    }
     if (s.name !== desiredName) {
       await api("/api/room/rename", { room: s.name, to: desiredName });
     }

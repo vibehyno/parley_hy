@@ -306,13 +306,16 @@
   /* ---------- chat ---------- */
   #chatWrap { flex: 1; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; }
   #chatWrap::-webkit-scrollbar { width:12px; }
-  #chatWrap::-webkit-scrollbar-thumb {
-    border:3px solid transparent; border-radius:999px; background-clip:padding-box;
-    background-image:linear-gradient(to bottom, color-mix(in srgb,var(--codex) 65%,var(--bg)) 0%, var(--text-faint) 20%, var(--text-faint) 80%, color-mix(in srgb,var(--user) 65%,var(--bg)) 100%);
-    min-height:36px;
-  }
-  #chatWrap::-webkit-scrollbar-thumb:hover { border-width:2px; }
-  #chatWrap::-webkit-scrollbar-thumb:active { background-image:linear-gradient(to bottom,var(--codex),var(--text-dim) 25%,var(--text-dim) 75%,var(--user)); }
+  #chatWrap::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:999px; background:var(--text-faint); background-clip:padding-box; min-height:44px; }
+  #chatWrap::-webkit-scrollbar-thumb:hover { background-color:var(--text-dim); }
+  #chatWrap::-webkit-scrollbar-thumb:active { background-color:var(--user); }
+  #chatEnd { display:flex; align-items:center; gap:12px; justify-content:center; flex:none; color:var(--text-faint); font-size:11px; padding:12px 24px 24px; }
+  #chatEnd::before, #chatEnd::after { content:""; height:1px; width:48px; background:var(--border2); }
+  #chat:empty + #chatEnd { display:none; }
+  .settings-import-modal { width:min(560px,calc(100vw - 32px)); }
+  .settings-import-modal header { background:transparent; padding:0; min-height:0; border:0; }
+  .settings-import-modal h3 { margin:0; }
+  .settings-import-modal select { display:block; width:100%; margin-top:8px; padding:10px 12px; border:1px solid var(--border2); border-radius:10px; background:var(--bg2); color:var(--text); font:inherit; }
   @supports not selector(::-webkit-scrollbar) { #chatWrap { scrollbar-color:var(--text-dim) transparent; scrollbar-width:auto; } }
   #chat { max-width: 1400px; width: 80%; margin: 0 auto; padding: 26px 0 10px; display: flex; flex-direction: column; gap: 18px; }
 

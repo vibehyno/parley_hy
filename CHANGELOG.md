@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.16 — 2026-11-04
+
+- Import all settings from another room into a new or existing room draft, including agents, permissions, persona, notes, learned instructions, images and linked projects. Apply on save; exclude source title, messages and CLI sessions. Imported learned instructions remain editable before saving.
+- Add a latest-message end marker and reveal the jump button when scrolling up. Simplify the native scrollbar and show names without roles in the sidebar tagline.
+- Verify import, creation, editable instructions, cancellation, empty lists, narrow layout and scroll navigation in temporary rooms. Existing personal room notes remain untouched.
+
 ## 1.5.15 — 2026-11-04
 
 - Let the selected communication mode define the flow, with room notes, persona and learned preferences refining it. Preserve approval rules and task constraints; explicit current-request exceptions are turn-scoped.
