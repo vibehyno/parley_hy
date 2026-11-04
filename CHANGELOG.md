@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.18 — 2026-11-04
+
+- Keep personas and avatars when excluding model settings unless their own exclusions are checked. Clarify that unchecked categories are copied unchanged.
+
 ## 1.5.17 — 2026-11-04
 
 - Keep full room-settings import by default; allow multiple exclusions for model settings, personas, notes, learned instructions, avatars and projects. Reset excluded model settings to defaults while keeping provider types.

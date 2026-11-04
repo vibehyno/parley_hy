@@ -5808,7 +5808,9 @@ $("mImportSettings").onclick = async () => {
       captureSeatDraftValues();
       settingsSeatDraft=source.seats.map(id=>{
         const provider=source.seatInfo?.[id]?.provider || source.cfg.agents[id].provider || id;
-        const cfg=excluded.has("models") ? newSeatConfig(provider) : structuredClone(source.cfg.agents[id]);
+        const cfg=excluded.has("models")
+          ? {...newSeatConfig(provider), persona:source.cfg.agents[id].persona, avatar:source.cfg.agents[id].avatar, avatarImage:source.cfg.agents[id].avatarImage}
+          : structuredClone(source.cfg.agents[id]);
         if(excluded.has("persona")) cfg.persona=null;
         if(excluded.has("images")) { cfg.avatar=null; cfg.avatarImage=null; }
         return {id,provider,cfg,existing:!settingsCreating && context.seats.includes(id)};
