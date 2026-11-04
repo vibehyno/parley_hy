@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.13 — 2026-11-04
+
+- Add subtle mint and blue end gradients to the native chat scrollbar with hover emphasis.
+- Anchor the work-panel opener to the top right regardless of wrapped header controls.
+- Verify 320–1440px layouts, scrolling and simulated live typing, replacement, blinking and answer priority in a temporary browser. No live provider calls.
+
 ## 1.5.12 — 2026-11-04
 
 - Remove user-message policy disclosure while preserving agent run details and containing their width.

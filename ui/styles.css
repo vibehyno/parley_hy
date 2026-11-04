@@ -194,6 +194,9 @@
   #connDot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); transition: background .3s; }
   #connDot.on { background: var(--codex); box-shadow: 0 0 6px rgba(47,214,168,.7); }
   .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; max-width:100%; min-width:0; }
+  /* Keep the panel control anchored even when model controls wrap. */
+  #main > header { position:relative; padding-right:64px; }
+  #main > header > #workPanelToggle { position:absolute; right:16px; top:12px; display:flex; align-items:center; justify-content:center; width:32px; height:32px; }
   .pill {
     display: flex; align-items: center; gap: 7px; padding: 5px 12px; border-radius: 999px;
     border: 1px solid var(--border2); font-size: 12.5px; color: var(--text-dim); background: var(--panel);
@@ -302,6 +305,15 @@
 
   /* ---------- chat ---------- */
   #chatWrap { flex: 1; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; }
+  #chatWrap::-webkit-scrollbar { width:12px; }
+  #chatWrap::-webkit-scrollbar-thumb {
+    border:3px solid transparent; border-radius:999px; background-clip:padding-box;
+    background-image:linear-gradient(to bottom, color-mix(in srgb,var(--codex) 65%,var(--bg)) 0%, var(--text-faint) 20%, var(--text-faint) 80%, color-mix(in srgb,var(--user) 65%,var(--bg)) 100%);
+    min-height:36px;
+  }
+  #chatWrap::-webkit-scrollbar-thumb:hover { border-width:2px; }
+  #chatWrap::-webkit-scrollbar-thumb:active { background-image:linear-gradient(to bottom,var(--codex),var(--text-dim) 25%,var(--text-dim) 75%,var(--user)); }
+  @supports not selector(::-webkit-scrollbar) { #chatWrap { scrollbar-color:var(--text-dim) transparent; scrollbar-width:auto; } }
   #chat { max-width: 1400px; width: 80%; margin: 0 auto; padding: 26px 0 10px; display: flex; flex-direction: column; gap: 18px; }
 
   .msg { display: flex; flex-direction: column; max-width: 78%; animation: rise .18s ease-out; }
