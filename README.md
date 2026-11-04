@@ -266,6 +266,7 @@ moyeo start
 - v1.5.7: Fast 알림에 `[모델명] FAST ON/OFF - 설명` 형식 적용. 이름과 상태 분리, 업무명 제외.
 
 - 반응형 메뉴: 좁은 창에서 채팅 우선 및 작업 현황 모달·하단 시트 전환. [W3C Reflow](https://www.w3.org/WAI/WCAG21/Understanding/reflow) 및 [Dialog Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 참고.
+- v1.5.21: 설정 불러오기 툴팁에 제외 대상만 간결하게 표시.
 - v1.5.20: 추론 강도 표시를 생각 수준으로 통일. 실제 설정값 유지.
 - v1.5.19: 모델별 역할과 실행 설정 제외를 독립 적용. 방 메모의 화면 명칭을 채팅방 프롬프트로 변경.
 - v1.5.18: 설정 불러오기에서 체크한 항목만 제외. 모델별 설정 제외와 페르소나·이미지 제외를 분리하고 툴팁 명확화.

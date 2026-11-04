@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.21 — 2026-11-04
+
+- Shorten import exclusion tooltips to list only excluded items.
+
 ## 1.5.20 — 2026-11-04
 
 - Rename the Korean reasoning-effort label and related help to 생각 수준. Keep underlying settings unchanged.
