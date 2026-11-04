@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.15 — 2026-11-04
+
+- Let the selected communication mode define the flow, with room notes, persona and learned preferences refining it. Preserve approval rules and task constraints; explicit current-request exceptions are turn-scoped.
+- Describe both modes in room settings without rewriting saved notes. Six focused tests and JavaScript syntax checks pass.
+
 ## 1.5.14 — 2026-11-04
 
 - Add a short conversational reminder to resumed CLI calls: natural opening before tools, meaningful updates, then a final result. Respect persona, room preferences and explicit output-only requests.

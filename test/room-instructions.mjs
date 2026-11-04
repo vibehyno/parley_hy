@@ -34,8 +34,11 @@ test('communication mode saves without changing permissions and seat memory is i
 
 test('mode preferences describe priority, persona and differing progress behavior', () => {
   assert.match(communicationInstructions('conversation'),/persona.*personality/);
-  assert.match(communicationInstructions('conversation'),/current user's explicit request first, then the room note/);
+  assert.match(communicationInstructions('conversation'),/selected mode defines the communication flow/);
   assert.match(communicationInstructions('task'),/without routine opening acknowledgements/);
+  assert.match(communicationInstructions('conversation'),/Never override approval rules or task constraints/);
+  assert.match(communicationInstructions('conversation'),/applies to that request only/);
+  assert.doesNotMatch(communicationInstructions('task'),/room note requests one/);
 });
 
 test('only explicit ongoing user preferences qualify for automatic storage',()=>{
@@ -124,5 +127,5 @@ test('conversation reminder only accompanies resumed conversational calls', () =
   const reminder = communicationTurnReminder('conversation', true);
   assert.match(reminder, /before tools/);
   assert.match(reminder, /same invocation/);
-  assert.match(reminder, /explicit silence\/output-only requests/);
+  assert.match(reminder, /explicit silence\/output-only requests for this turn/);
 });
