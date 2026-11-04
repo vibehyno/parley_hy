@@ -1253,7 +1253,9 @@ body.no-room #emptyArchivesBtn { display:block; }
 .panel-resizer { position:absolute; top:0; bottom:0; width:9px; z-index:10; cursor:col-resize; touch-action:none; }
 #sidebar > .panel-resizer { right:-5px; }
 #workPanel > .panel-resizer { left:-5px; }
-.panel-resizer:hover, .panel-resizer:focus-visible { background:color-mix(in srgb, var(--user) 35%, transparent); outline:none; }
+.panel-resizer::after { content:""; position:absolute; top:50%; left:50%; width:6px; height:14px; transform:translate(-50%, -50%); background:radial-gradient(circle, var(--muted) 1px, transparent 1.2px) 0 0 / 3px 4px; pointer-events:none; }
+.panel-resizer:focus-visible { outline:none; }
+.panel-resizer:focus-visible::after { outline:1px solid var(--muted); outline-offset:3px; border-radius:2px; }
 .resizing-panels, .resizing-panels * { cursor:col-resize !important; user-select:none !important; }
 .resizing-panels #sidebar { transition:none; }
 body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }

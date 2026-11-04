@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.8 — 2026-11-04
+
+- Remove the blue panel resize highlight and add a centered dotted grip, retaining the resize cursor and keyboard focus indicator.
+
 ## 1.5.7 — 2026-11-04
 
 - Format Fast notices as `[model name] FAST ON/OFF - description`, without the role; show the requested state for pending changes.
