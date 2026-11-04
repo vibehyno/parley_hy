@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.11 — 2026-11-04
+
+- Restrict panel resizing to the centered grip and inset the desktop chat scrollbar by 12px to avoid accidental resizing. Section reordering remains limited to its dedicated title handle.
+
 ## 1.5.10 — 2026-11-04
 
 - Add a subtle animated diamond to live work status, retain the blinking end cursor and make typing perceptible while respecting reduced motion.

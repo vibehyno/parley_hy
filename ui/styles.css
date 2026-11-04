@@ -1257,10 +1257,10 @@ body.no-room #emptyArchivesBtn { display:block; }
 .archive-delete-dialog p { margin:0 0 24px; line-height:1.7; }
 .archive-delete-actions { display:flex; justify-content:flex-end; gap:10px; }
 
-/* Dedicated resize edges; content and section buttons remain ordinary click targets. */
-.panel-resizer { position:absolute; top:0; bottom:0; width:9px; z-index:10; cursor:col-resize; touch-action:none; }
-#sidebar > .panel-resizer { right:-5px; }
-#workPanel > .panel-resizer { left:-5px; }
+/* Only the centered grip resizes panels; the rest of the boundary stays inert. */
+.panel-resizer { position:absolute; top:50%; transform:translateY(-50%); width:12px; height:40px; z-index:10; cursor:col-resize; touch-action:none; }
+#sidebar > .panel-resizer { right:-6px; }
+#workPanel > .panel-resizer { left:-6px; }
 .panel-resizer::after { content:""; position:absolute; top:50%; left:50%; width:6px; height:14px; transform:translate(-50%, -50%); background:radial-gradient(circle, var(--muted) 1px, transparent 1.2px) 0 0 / 3px 4px; pointer-events:none; }
 .panel-resizer:focus-visible { outline:none; }
 .panel-resizer:focus-visible::after { outline:1px solid var(--muted); outline-offset:3px; border-radius:2px; }
@@ -1270,6 +1270,7 @@ body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }
 .work-folder { margin-left:8px; padding-left:10px; border-left:1px solid var(--border); min-width:0; }
 .work-folder > summary { cursor:pointer; padding:7px 3px; font-size:12px; overflow-wrap:anywhere; }
 @media (max-width:1100px) { .panel-resizer { display:none; } }
+@media (min-width:1101px) { #chatWrap { margin-right:12px; } }
 
 /* The latest verified work event replaces the empty streaming caret. */
 .live-work-status { display:flex; align-items:center; gap:4px; min-height:22px; color:var(--text-dim); font-size:12px; line-height:1.6; }
