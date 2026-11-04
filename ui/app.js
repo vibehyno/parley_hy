@@ -2842,10 +2842,10 @@ $("pills").addEventListener("click", async (e) => {
     try {
       const result = await api("/api/seat/fast", { room: state.room, agent: a, enabled: !enabled });
       toast(result.appliesNextTurn
-        ? t("seat.fastNextTurnToast", { seat: seatLabel(a) })
+        ? t("seat.fastNextTurnToast", { seat: seatName(a), status: enabled ? "OFF" : "ON" })
         : (!enabled
-          ? t("seat.fastEnabledToast", { seat: seatLabel(a) })
-          : t("seat.fastDisabledToast", { seat: seatLabel(a) })));
+          ? t("seat.fastEnabledToast", { seat: seatName(a) })
+          : t("seat.fastDisabledToast", { seat: seatName(a) })));
     } catch (err) { toast(err.message, true); }
     return;
   }

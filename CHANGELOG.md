@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.7 — 2026-11-04
+
+- Format Fast notices as `[model name] FAST ON/OFF - description`, without the role; show the requested state for pending changes.
+
 ## 1.5.6 — 2026-11-04
 
 - Resize sidebar and work panel using dedicated edges, with saved widths and double-click reset; store diff width separately.
