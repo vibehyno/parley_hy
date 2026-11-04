@@ -5773,6 +5773,9 @@ $("mImportSettings").onclick = async () => {
     <label>${esc(t("settings.importSource"))}<select data-source></select></label>
     <p data-status></p>
     <p class="note" title="${esc(t("settings.importHelp"))}">${esc(t("settings.importShort"))}</p>
+    <fieldset class="settings-import-options"><legend>${esc(t("settings.importExclude"))}</legend>
+      ${["models","persona","note","instructions","images","projects"].map(key=>`<label title="${esc(t("settings.exclude."+key+"Help"))}"><input type="checkbox" data-exclude="${key}"><span>${esc(t("settings.exclude."+key))}</span></label>`).join("")}
+    </fieldset>
     <footer><button class="btn primary" data-apply disabled>${esc(t("settings.import"))}</button><button class="btn" data-close>${esc(t("common.cancel"))}</button></footer>`;
   document.body.append(dialog);
   dialog.addEventListener("close",()=>dialog.remove());
@@ -5790,11 +5793,12 @@ $("mImportSettings").onclick = async () => {
   apply.onclick=async()=>{
     apply.disabled=true;
     try {
+      const excluded=new Set([...dialog.querySelectorAll("[data-exclude]:checked")].map(el=>el.dataset.exclude));
       const source=(await api("/api/room/summary?name="+encodeURIComponent(select.value))).room;
       const memories={};
       {
         for(const seat of ["_common",...source.seats]) {
-          const memory=await api(`/api/room-instructions?room=${encodeURIComponent(source.name)}&seat=${encodeURIComponent(seat)}`);
+          const memory=excluded.has("instructions") ? {text:""} : await api(`/api/room-instructions?room=${encodeURIComponent(source.name)}&seat=${encodeURIComponent(seat)}`);
           const current=!settingsCreating && (seat === "_common" || context.seats.includes(seat))
             ? await api(`/api/room-instructions?room=${encodeURIComponent(context.name)}&seat=${encodeURIComponent(seat)}`) : null;
           memories[seat]={text:memory.text,revision:current?.revision ?? null};
@@ -5803,11 +5807,14 @@ $("mImportSettings").onclick = async () => {
       if(settingsContext!==context || !dialog.isConnected) return;
       captureSeatDraftValues();
       settingsSeatDraft=source.seats.map(id=>{
-        const cfg=structuredClone(source.cfg.agents[id]);
-        return {id,provider:source.seatInfo?.[id]?.provider || cfg.provider || id,cfg,existing:!settingsCreating && context.seats.includes(id)};
+        const provider=source.seatInfo?.[id]?.provider || source.cfg.agents[id].provider || id;
+        const cfg=excluded.has("models") ? newSeatConfig(provider) : structuredClone(source.cfg.agents[id]);
+        if(excluded.has("persona")) cfg.persona=null;
+        if(excluded.has("images")) { cfg.avatar=null; cfg.avatarImage=null; }
+        return {id,provider,cfg,existing:!settingsCreating && context.seats.includes(id)};
       });
-      settingsImport={memories,projects:{projectDir:source.cfg.projectDir || null,projectDirs:[...(source.cfg.projectDirs || [])]}};
-      $("s_roomnote").value=source.cfg.roomNote || "";
+      settingsImport={memories,projects:excluded.has("projects") ? {projectDir:null,projectDirs:[]} : {projectDir:source.cfg.projectDir || null,projectDirs:[...(source.cfg.projectDirs || [])]}};
+      $("s_roomnote").value=excluded.has("note") ? "" : source.cfg.roomNote || "";
       $("s_communicationMode").value=source.cfg.communicationMode || "conversation";
       $("s_timeout").value=Math.round((source.cfg.timeoutMs || 300000)/1000);
       $("s_hopbudget").value=String(normalizedHopBudget(source.cfg.hopBudget,-1));

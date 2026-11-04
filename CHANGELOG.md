@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.17 — 2026-11-04
+
+- Keep full room-settings import by default; allow multiple exclusions for model settings, personas, notes, learned instructions, avatars and projects. Reset excluded model settings to defaults while keeping provider types.
+- Add per-option tooltips. Verify default copying and combined model/note/instruction exclusions in a temporary UI.
+
 ## 1.5.16 — 2026-11-04
 
 - Import all settings from another room into a new or existing room draft, including agents, permissions, persona, notes, learned instructions, images and linked projects. Apply on save; exclude source title, messages and CLI sessions. Imported learned instructions remain editable before saving.
