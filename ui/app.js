@@ -1943,7 +1943,7 @@ function renderLiveProgress(live) {
   // Real public speech always wins; status must never replace an answer.
   if (live.text) { cancelWorkTyping(live); live.workStatusText = null; return; }
   const target = live.el.querySelector(".bubble");
-  const latest = live.progress.at(-1) || { kind: "preparing" };
+  const latest = [...(live.activeWork?.values() || [])].at(-1) || live.progress.at(-1) || { kind: "preparing" };
   const text = progressText(latest);
   if (live.workStatusText === text && target.querySelector(".live-work-status")) return;
   cancelWorkTyping(live);
@@ -1970,11 +1970,19 @@ function renderLiveProgress(live) {
   tick();
 }
 
+function updateActiveWork(live, progress) {
+  live.activeWork ||= new Map();
+  if (progress.work?.id) {
+    if (progress.work.phase === "running") live.activeWork.set(progress.work.id, progress);
+    else if (["completed", "failed"].includes(progress.work.phase)) live.activeWork.delete(progress.work.id);
+  }
+}
 function liveProgress(agent, msg) {
   const info = busyInfoFor(agent);
   if (msg.runId && info?.runId && msg.runId !== info.runId) return;
   const live = ensureLive(agent, info?.startedAt);
   const progress = msg.progress || { kind: "preparing" };
+  updateActiveWork(live, progress);
   const text = progressText(progress);
   const last = live.progress[live.progress.length - 1];
   if (last && progressText(last) === text && last.work?.id === progress.work?.id) return;

@@ -1,6 +1,6 @@
 {
   "name": "moyeo-room",
-  "version": "1.5.28",
+  "version": "1.5.29",
   "private": false,
   "description": "MoYEO - a local multi-agent chat room for Claude Code, Codex, and AGY using existing CLI logins.",
   "type": "module",

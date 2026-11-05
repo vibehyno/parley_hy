@@ -1768,6 +1768,13 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
       if (ev.type === "content_block_start" && ev.content_block?.type === "text" && onProgress) {
         onProgress({ kind: "writing" });
       }
+      if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+        const tool = ev.content_block;
+        speech.archive(); acc = "";
+        const work = workStatus(tool.name, tool.input || {}, "running", tool.id);
+        runningTools.set(tool.id, work);
+        onProgress?.({ kind: "activity", work });
+      }
       if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") {
         acc += ev.delta.text;
         speech.update(acc);
@@ -1780,7 +1787,7 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
           if (!obj.parent_tool_use_id) { speech.archive(); acc = ""; }
           seenTools.add(c.id);
           const label = claudeToolLabel(c.name, c.input || {});
-          const work = workStatus(c.name, c.input || {}, "observed", c.id);
+          const work = workStatus(c.name, c.input || {}, "running", c.id);
           runningTools.set(c.id, work);
           if (onProgress) onProgress({ kind: "activity", text: label, work });
           if (onActivity) onActivity(label);
@@ -1900,13 +1907,13 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     else if (obj.msg && obj.msg.type === "session_configured" && obj.msg.session_id) threadRef = obj.msg.session_id;
     const item = obj.item;
     if (item && ["item.started", "item.completed"].includes(obj.type) &&
-        ["file_change", "command_execution", "mcp_tool_call", "web_search"].includes(item.type)) {
-      const phase = obj.type === "item.completed" ? (item.status === "failed" || item.exit_code ? "failed" : "completed") : "running";
-      const name = item.type === "web_search" ? "search" : item.type === "mcp_tool_call" ? item.tool || item.name : item.type;
+        ["file_change", "command_execution", "mcp_tool_call", "web_search", "tool_execution"].includes(item.type)) {
+      const phase = obj.type === "item.completed" ? (item.status === "failed" || item.success === false || item.exit_code ? "failed" : "completed") : "running";
+      const name = item.type === "web_search" ? "search" : ["mcp_tool_call", "tool_execution"].includes(item.type) ? item.tool || item.name : item.type;
       const input = item.type === "command_execution" ? { command: shellCommandLabel(item.command) } : item.type === "file_change" ? { path: item.changes?.[0]?.path } : item.arguments || { query: item.query };
       onProgress?.({ kind: "activity", work: workStatus(name, input, phase, item.id) });
     }
-    if (item && obj.type === "item.started" && ["mcp_tool_call", "web_search"].includes(item.type)) speech.archive();
+    if (item && obj.type === "item.started" && ["mcp_tool_call", "web_search", "tool_execution"].includes(item.type)) speech.archive();
     if (item && obj.type === "item.started" && onProgress) {
       if (item.type === "reasoning") onProgress({ kind: "reasoning" });
       else if (item.type === "agent_message" || item.item_type === "assistant_message") onProgress({ kind: "writing" });

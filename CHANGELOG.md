@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.5.29 — 2026-11-05
+
+- Normalize live tool progress across Codex, Claude and AGY with confirmed filenames/search terms and running/completed/failed phases; preserve public progress speech.
+- Capture Codex code-mode tool events, including new tool records from the exact resumed session rollout when raw streaming is unavailable. Exclude historical and private reasoning records.
+- Report Claude tool starts immediately and use AGY tool kinds/file locations. Keep active work visible across reasoning updates and overlapping tool completions.
+- Validation: 22 focused tests passed; real Codex new/resumed file-work events verified. Claude/AGY validated with simulated CLI events; browser UI not tested.
+
 ## 1.5.28 — 2026-11-05
 
 - Forward AGY thinking-state notifications without private content, and preserve running/completed/failed tool status instead of leaving connection status visible.
