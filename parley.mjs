@@ -39,6 +39,7 @@ import { codexTurnUsage } from "./lib/codex-usage.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
 import { archiveConversation, listConversationArchives, readConversationArchive, conversationArchiveSources, deleteConversationArchive } from "./lib/conversation-archives.mjs";
 import { claimService, serviceCommand } from "./lib/service-control.mjs";
+import { repairCommandAliases } from "./lib/command-aliases.mjs";
 import { defaultDataRoot } from "./lib/data-root.mjs";
 import { projectLaunchSpec, launchProjectTool } from "./lib/project-launch.mjs";
 import { createAgyStream } from "./lib/agy-stream.mjs";
@@ -153,6 +154,7 @@ const MAX_CLI_LINE_BYTES = 20_000_000;
 // ---------------------------------------------------------------- CLI args
 
 const argv = process.argv.slice(2);
+repairCommandAliases(fileURLToPath(import.meta.url));
 if (["start", "stop", "restart", "status"].includes(argv[0])) {
   try { await serviceCommand(argv[0], argv.slice(1), fileURLToPath(import.meta.url)); }
   catch (error) { console.error(error.message); process.exitCode = 1; }

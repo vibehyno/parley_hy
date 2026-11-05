@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.25 — 2026-11-05
+
+- Repair missing moyeo/parley Windows command aliases beside a verified launcher after pulling the source. New installations expose both commands.
+
 ## 1.5.24 — 2026-11-05
 
 - Recover readiness records automatically after longer Windows locks, both in the background and through management commands after verifying the live PID, instance, and data root.
