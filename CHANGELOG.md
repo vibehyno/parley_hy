@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.24 — 2026-11-05
+
+- Recover readiness records automatically after longer Windows locks, both in the background and through management commands after verifying the live PID, instance, and data root.
+- Clean up records and pending files for exited processes while retaining identity checks and active-work stop protection.
+
 ## 1.5.23 — 2026-11-05
 
 - Retry transient Windows file replacement failures when publishing server readiness, avoiding startup timeouts after the server starts listening.

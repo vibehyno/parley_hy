@@ -30,6 +30,70 @@ test("ready retries a transient Windows file replacement denial", () => {
 });
 
 const entry = fileURLToPath(new URL("../parley.mjs", import.meta.url));
+test("a longer Windows lock is repaired in the background", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "moyeo-lock-test-"));
+  const service = claimService(root), rename = fs.renameSync;
+  try {
+    fs.renameSync = () => { throw Object.assign(new Error('locked'), { code: 'EPERM' }); };
+    service.ready(4141);
+    assert.equal(readService(root).port, null);
+    fs.renameSync = rename;
+    await new Promise(resolve => setTimeout(resolve, 1200));
+    assert.equal(readService(root).port, 4141);
+  } finally {
+    fs.renameSync = rename; service.release();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("status recovers a listening server from its matching pending record", async () => {
+  const server = await isolatedServer();
+  try {
+    const file = path.join(server.root, '.server.json');
+    const ready = readService(server.root);
+    const pending = file + '.' + ready.instance + '.tmp';
+    fs.writeFileSync(pending, JSON.stringify(ready));
+    fs.writeFileSync(file, JSON.stringify({ ...ready, port: null }));
+    const result = await cli(['status', '--root', server.root]);
+    assert.equal(result.code, 0, result.output);
+    assert.equal(readService(server.root).port, ready.port);
+    assert.equal(fs.existsSync(pending), false);
+    assert.equal((await server.api('GET', '/api/service/status')).status, 200);
+  } finally { await server.close(); }
+});
+
+test("pending records cannot impersonate a different running server", async () => {
+  const server = await isolatedServer();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moyeo-pending-test-'));
+  try {
+    const ready = readService(server.root);
+    const forged = { ...ready, root };
+    const file = path.join(root, '.server.json');
+    fs.writeFileSync(file, JSON.stringify({ ...forged, port: null }));
+    fs.writeFileSync(file + '.' + forged.instance + '.tmp', JSON.stringify(forged));
+    const result = await cli(['restart', '--root', root, '--no-open']);
+    assert.equal(result.code, 1);
+    assert.match(result.output, /일치하지 않아/);
+    assert.equal(readService(root).port, null);
+    assert.equal((await server.api('GET', '/api/service/status')).status, 200);
+  } finally { await server.close(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("status clears only records belonging to an exited process", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moyeo-exited-test-'));
+  try {
+    const child = spawn(process.execPath, ['-e', ''], { windowsHide: true });
+    await new Promise(resolve => child.once('close', resolve));
+    const record = { pid: child.pid, instance: '12345678-1234-1234-1234-123456789abc', port: null, root };
+    const file = path.join(root, '.server.json');
+    fs.writeFileSync(file, JSON.stringify(record));
+    fs.writeFileSync(file + '.' + record.instance + '.tmp', JSON.stringify(record));
+    const result = await cli(['status', '--root', root]);
+    assert.equal(result.code, 0, result.output);
+    assert.deepEqual(fs.readdirSync(root), []);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 function cli(args) {
   return new Promise((resolve, reject) => {
     // Run outside the checkout to exercise location-independent commands.
