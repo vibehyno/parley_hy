@@ -115,15 +115,15 @@ test("edit changes pending text; invalid edits preserve it; stop prevents automa
   } finally { await f.server.close(); }
 });
 
-test("send now queues without interrupting the active call and suppresses its old handoff", async () => {
+test("unsupported live transport refuses send now while preserving automatic waiting", async () => {
   const f = await fixture({ reissue: false });
   try {
     await f.server.api("POST", "/api/adjustment", f.draft);
     const sent = await f.server.api("POST", "/api/adjustment", { room: "default", id: f.draft.id, action: "send" });
-    assert.equal(sent.status, 200);
+    assert.equal(sent.status, 409);
     const waiting = await f.server.room("default");
     assert.ok(waiting.room.busy.includes("codex"));
-    assert.ok(waiting.room.continuingRunIds.includes(waiting.room.busyInfo.find(run => run.agent === "codex").runId));
+    assert.ok(waiting.room.adjustmentDraft);
     assert.equal(waiting.entries.filter(e => e.kind === "agent").length, 0);
     f.finish();
     const done = await until(f.server, idle);

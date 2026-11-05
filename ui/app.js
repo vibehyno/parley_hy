@@ -660,6 +660,17 @@ window.addEventListener("focus", () => { document.title = t("app.name"); refresh
 
 // ------------------------------------------------------------ chat rendering
 const chatWrap = $("chatWrap"), chat = $("chat");
+let unreadChat = false;
+function updateChatEnd() {
+  const bottom = chatWrap.scrollHeight - chatWrap.scrollTop - chatWrap.clientHeight <= 3;
+  chatWrap.classList.toggle("at-chat-end", bottom);
+  if (bottom) unreadChat = false;
+  $("jump").dataset.i18n = unreadChat ? "jump.newMessages" : "jump.bottom";
+  $("jump").textContent = t($("jump").dataset.i18n);
+  $("jump").style.display = nearBottom() ? "none" : "block";
+}
+new ResizeObserver(updateChatEnd).observe(chatWrap);
+new ResizeObserver(updateChatEnd).observe(chat);
 function nearBottom() { return chatWrap.scrollHeight - chatWrap.scrollTop - chatWrap.clientHeight < 120; }
 function scrollBottom(force, instant = false) {
   if (force || nearBottom()) {
@@ -668,14 +679,15 @@ function scrollBottom(force, instant = false) {
     chatWrap.scrollTop = chatWrap.scrollHeight;
     if (instant) chatWrap.style.scrollBehavior = behavior;
     $("jump").style.display = "none";
-  } else $("jump").style.display = "block";
+  }
+  updateChatEnd();
 }
 // One page per frame. Scroll fires far faster than a render, and a page of
 // collapsed activity adds little height — so without this guard a single flick
 // at the top stacks up several whole re-renders inside one frame.
 let historyPaging = false;
 chatWrap.addEventListener("scroll", () => {
-  $("jump").style.display = nearBottom() ? "none" : "block";
+  updateChatEnd();
   // Scrolling to the top is the second path into "Show earlier ▸"; the button
   // stays as the discoverable one.
   if (chatWrap.scrollTop < 80 && !historyPaging && state.renderFromN !== null) {
@@ -3610,6 +3622,7 @@ function connect(resyncOnOpen = false) {
     const msg = JSON.parse(ev.data);
     state.eventVersion++;
     if (msg.type === "entry") {
+      if (!nearBottom() && ["agent", "user"].includes(msg.entry.kind) && !state.entries.some(e => e.n === msg.entry.n)) unreadChat = true;
       addEntry(msg.entry);
       if (state.summary) applySummary(state.summary);
     }
@@ -3664,7 +3677,11 @@ function connect(resyncOnOpen = false) {
       renderBusyStrip();
       if ($("queueWrap").classList.contains("open")) renderQueuePop();
     }
-    else if (msg.type === "stream") liveStream(msg.agent, msg);
+    else if (msg.type === "stream") {
+      if (!nearBottom() && (msg.delta || (msg.text && msg.text !== state.live[msg.agent]?.text))) unreadChat = true;
+      liveStream(msg.agent, msg);
+      updateChatEnd();
+    }
     else if (msg.type === "progress") liveProgress(msg.agent, msg);
     else if (msg.type === "room") {
       applySummary(msg.room);
@@ -4100,6 +4117,10 @@ function renderAdjustmentDraft() {
   $("adjustDraftEdit").disabled = draftSending;
   $("adjustDraftDelete").disabled = draftSending || state.sending;
   if (!draft) return;
+  const liveTarget = resolvedAdjustmentTarget(draft);
+  const liveRun = (state.summary?.busyInfo || []).find(run => run.agent === liveTarget && run.rootN === draft.sourceN);
+  $("adjustDraftSendNow").disabled = draftSending || state.sending || !liveRun?.liveSteering;
+  $("adjustDraftSendNow").title = t(liveRun?.liveSteering ? "adjust.liveHelp" : "adjust.liveUnavailable");
   $("adjustDraftStatus").textContent = draft.error || t(draft.saving ? "adjust.sending" : "adjust.waiting");
   $("adjustDraftPreview").textContent = draft.text;
   const seats = state.summary?.seats || [];

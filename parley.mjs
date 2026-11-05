@@ -31,6 +31,9 @@ import { readLocalToolInventory } from "./lib/local-tool-inventory.mjs";
 import { readProviderUsage } from "./lib/provider-usage.mjs";
 import { normalizeProjectDirs, projectLinksStatus, sameProjectPath } from "./lib/project-links.mjs";
 import { buildCodexInvocationArgs } from "./lib/codex-command.mjs";
+import { runCodexLive } from "./lib/codex-live.mjs";
+import { closeLiveConnections } from "./lib/live-pool.mjs";
+import { runClaudeLive, runAgyLive } from "./lib/provider-live.mjs";
 import { workStatus } from "./lib/work-status.mjs";
 import { codexTurnUsage } from "./lib/codex-usage.mjs";
 import { readRemoteUpdate } from "./lib/update-manager.mjs";
@@ -1236,6 +1239,38 @@ function runCli(spec, args, { cwd, timeoutMs, input, onLine, room, agent }) {
   });
 }
 
+function liveRunOptions(room, seat) {
+  const run = room.runs.get(seat);
+  return {
+    poolKey: room.dir + ":" + seat,
+    poolSettings: room.cfg,
+    kill: killTree,
+    onChild: child => {
+      room.procs.set(seat, child);
+      if (run) {
+        run.child = child;
+        if (run.stopRequested || chainStopped(room, run.stopAt)) { child.rtStopped = true; killTree(child); }
+      }
+    },
+    onReady: steer => {
+      if (run) run.steer = run.stopRequested ? null : steer;
+      broadcast(room, { type: "room", room: roomSummary(room) });
+    },
+  };
+}
+
+function liveRunAllowed(room, seat, command, provider) {
+  const run = room.runs.get(seat);
+  return new RegExp(`^${provider}(\\.(cmd|exe|ps1|js))?$`, 'i').test(path.basename(command)) &&
+    !(run?.stopRequested || (run && chainStopped(room, run.stopAt)));
+}
+
+function releaseLiveRun(room, seat) {
+  const run = room.runs.get(seat);
+  if (run && room.procs.get(seat) === run.child) room.procs.delete(seat);
+  if (run) { run.child = null; run.steer = null; }
+}
+
 // ---------------------------------------------------------------- adapters
 
 // The peer contract is one part of the complete standing contract below. Keep
@@ -1765,7 +1800,21 @@ async function claudeSend(room, { seat = "claude", prompt, briefing, onStream, o
     }
   };
 
-  const r = await runCli(resolveCommand(cfg.command), args, {
+  const useLive = liveRunAllowed(room, seat, cfg.command, 'claude');
+  let r;
+  if (useLive) {
+    if (!args.includes('--input-format')) args.push('--input-format', 'stream-json');
+    args.push('--replay-user-messages');
+    const message = input === prompt
+      ? { type: 'user', parent_tool_use_id: null, message: { role: 'user', content: prompt } }
+      : JSON.parse(input);
+    try {
+      r = await runClaudeLive(resolveCommand(cfg.command), {
+        args, sessionRef: sess, cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input: message, onLine,
+        ...liveRunOptions(room, seat),
+      });
+    } finally { releaseLiveRun(room, seat); }
+  } else r = await runCli(resolveCommand(cfg.command), args, {
     cwd: workDir(room), timeoutMs: seatTimeout(room, "claude"), input, onLine, room, agent: "claude",
   });
 
@@ -1895,9 +1944,35 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
     }
   };
 
-  const r = await runCli(resolveCommand(cfg.command), args, {
+  // Arbitrary exec-only extra flags and the legacy --last sentinel retain their
+  // original transport. Such calls deliberately expose no live-steering hook.
+  const run = room.runs.get(seat);
+  const useLive = /^(codex)(\.(cmd|exe|ps1|js))?$/i.test(path.basename(cfg.command)) && extraArgs.length === 0 && sess !== "--last";
+  const liveConfig = {};
+  if (browserConnection) {
+    const browserArgs = browserCliArgs("codex");
+    for (let i = 1; i < browserArgs.length; i += 2) {
+      const index = browserArgs[i].indexOf("=");
+      liveConfig[browserArgs[i].slice(0, index)] = JSON.parse(browserArgs[i].slice(index + 1));
+    }
+  }
+  const writeRoots = normalizeProjectDirs(room.cfg.projectDirs, room.cfg.projectDir);
+  if (inputDir) writeRoots.push(inputDir);
+  liveConfig["sandbox_workspace_write.writable_roots"] = writeRoots;
+  const r = useLive && !(run?.stopRequested || (run && chainStopped(room, run.stopAt)))
+    ? await runCodexLive(resolveCommand(cfg.command), {
+      cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input, images, onLine,
+      sessionRef: sess, sandbox, model: cfg.model, effort: cfg.effort, fastMode: !!cfg.fastMode,
+      config: liveConfig, poolKey: room.dir + ":" + seat, poolSettings: room.cfg, kill: killTree,
+      onChild: child => { room.procs.set(seat, child); if (run) run.child = child; },
+      onReady: steer => {
+        if (run) run.steer = steer;
+        broadcast(room, { type: "room", room: roomSummary(room) });
+      },
+    }) : await runCli(resolveCommand(cfg.command), args, {
     cwd: workDir(room), timeoutMs: seatTimeout(room, "codex"), input, onLine, room, agent: "codex",
   });
+  if (useLive && room.procs.get(seat) === run?.child) room.procs.delete(seat);
 
   let fileText = null;
   try { fileText = fs.readFileSync(tmp, "utf8").trim() || null; } catch { /* no file */ }
@@ -1972,17 +2047,32 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
   };
 
   let r, settingsDir;
+  // ACP preserves the live task across extra prompts. Print-only advanced
+  // settings retain their old transport rather than silently losing options.
+  const useLive = liveRunAllowed(room, seat, cfg.command, 'agy') && extraArgs.length === 0 &&
+    (!browserSettings || approval === 'full');
   try {
-    if (browserSettings) {
+    if (browserSettings && !useLive) {
       settingsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'parley-agy-permissions-'));
       const settingsPath = path.join(settingsDir, 'settings.json');
       fs.writeFileSync(settingsPath, JSON.stringify(browserSettings.settings), { mode: 0o600 });
       args.push('--settings', settingsPath);
     }
-    r = await runCli(resolveCommand(cfg.command), args, {
+    if (useLive) {
+      const acpArgs = ['acp', ...(approval === 'full' ? ['--dangerously-skip-permissions'] : ['--sandbox'])];
+      for (const dir of normalizeProjectDirs(room.cfg.projectDirs, inputDir || room.cfg.projectDir)) {
+        if (!sameProjectPath(dir, workDir(room))) acpArgs.push('--add-dir', dir);
+      }
+      r = await runAgyLive(resolveCommand(cfg.command), {
+        args: acpArgs, cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input: promptText,
+        sessionRef: sess, model: cfg.model, effort: cfg.effort, mode: approval, onLine,
+        ...liveRunOptions(room, seat),
+      });
+    } else r = await runCli(resolveCommand(cfg.command), args, {
       cwd: workDir(room), timeoutMs: seatTimeout(room, seat), input, onLine, room, agent: seat,
     });
   } finally {
+    if (useLive) releaseLiveRun(room, seat);
     if (settingsDir) { try { fs.unlinkSync(path.join(settingsDir, 'settings.json')); fs.rmdirSync(settingsDir); } catch {} }
   }
 
@@ -2026,11 +2116,11 @@ async function agySend(room, { seat = "gemini", prompt, briefing, onStream, onAc
       reasoning: Number(rawUsage.thinking_tokens) || 0,
       cacheRead: Number(rawUsage.cache_read_tokens) || 0,
     };
-    const previous = room.state.agents[seat].agyUsage;
+    const previous = useLive ? null : room.state.agents[seat].agyUsage;
     usage = Object.fromEntries(Object.entries(cumulative).map(([key, value]) => [
       key, Math.max(0, value - (previous?.sessionRef === sessionRef ? Number(previous[key]) || 0 : 0)),
     ]));
-    room.state.agents[seat].agyUsage = { sessionRef, ...cumulative };
+    room.state.agents[seat].agyUsage = useLive ? null : { sessionRef, ...cumulative };
   }
   return { text: text || "", emptyReply: !text, sessionRef, sessionScope: approval, ...(usage ? { usage } : {}) };
 }
@@ -3109,6 +3199,7 @@ function runProvenance(room, run) {
 function busyInfo(room) {
   return [...room.runs.values()].map((run) => ({
     agent: run.agent, runId: run.runId, phase: run.phase,
+    liveSteering: typeof run.steer === "function" && !run.stopRequested,
     startedAt: run.startedAt, ...runProvenance(room, run),
   }));
 }
@@ -3170,6 +3261,7 @@ function deltaEntries(room, agent, excludeTurn) {
   const cur = room.state.agents[agent].cursor;
   return room.entries.filter((e) =>
     e.n > cur && e.n !== excludeTurn && e.author !== agent &&
+    !(e.meta?.liveSession && e.target === agent && e.meta.liveSession === room.state.agents[agent].sessionRef) &&
     (e.kind !== "system" || isLiveCancellationNotice(room, e) || isSleepNotice(e)));
 }
 
@@ -7048,7 +7140,7 @@ function commitAdjustment(room, draft) {
 
 function flushAdjustment(room) {
   const draft = room.adjustmentDraft;
-  if (!draft || draft.error) return;
+  if (!draft || draft.error || draft.delivering) return;
   if (draft.gen !== room.generation || draft.stopAt !== room.stopEpoch ||
       draft.runs.some(run => run.stopRequested || run.chain?.halted)) {
     room.adjustmentDraft = null;
@@ -7063,22 +7155,52 @@ function flushAdjustment(room) {
   }
 }
 
-function handleAdjustment(room, body) {
+async function handleAdjustment(room, body) {
   const id = String(body.id || "");
   if (!/^[\w-]{1,80}$/.test(id)) throw Object.assign(new Error("invalid adjustment id"), { status: 400 });
   const existing = room.adjustmentDraft;
+  const delivered = room.entries.find(entry => entry.kind === "user" && entry.meta?.askFrom?.adjustmentId === id);
+  if (body.action === "send" && delivered) return { sent: true, n: delivered.n };
+  if (existing?.delivering) throw Object.assign(new Error("추가 지시 전달을 확인 중입니다."), { status: 409 });
   if (body.action === "cancel" || body.action === "send") {
     if (!existing || existing.id !== id) {
       throw Object.assign(new Error("추가 지시가 이미 전달되었거나 삭제되었습니다."), { status: 409 });
     }
-    if (body.action === "send") return { sent: true, ...commitAdjustment(room, existing) };
+    if (body.action === "send") {
+      if (existing.deliveryUncertain) throw Object.assign(new Error("전달 여부를 확인하지 못했습니다. 모델 답변을 확인한 후 삭제하거나 새 지시를 작성해 주세요."), { status: 409 });
+      const targets = existing.target === "both" ? seatIds(room) : [existing.target];
+      const active = targets.map(agent => existing.runs.find(run => run.agent === agent && room.runs.get(agent) === run));
+      if (active.length !== 1 || !active[0]?.steer || active[0].stopRequested) {
+        throw Object.assign(new Error("현재 작업에 즉시 추가할 수 없는 대상입니다. 연결 준비가 끝난 모델 하나를 선택해 주세요. 자동 대기는 그대로 유지됩니다."), { status: 409 });
+      }
+      const run = active[0];
+      existing.delivering = true;
+      try {
+        // Keep automatic flushing locked until the native turn acknowledges.
+        const selectedSkill = extractSkillMessage(existing.text, run.agent);
+        const liveText = applySkillInvocationPrompt(providerIdOf(room, run.agent), selectedSkill, selectedSkill?.text || existing.text);
+        const receipt = await run.steer(liveText + "\n\n[Additional user instruction for this active task. Incorporate it into the ongoing work." +
+          (room.cfg.communicationMode === "task" ? "" : " Briefly acknowledge it naturally before continuing, using the room persona.") + "]", id);
+        const entry = appendEntry(room, { kind: "user", author: "user", target: run.agent, text: existing.text,
+          meta: { liveSession: receipt.threadId, audience: { addressed: [run.agent], lurking: [] },
+            askFrom: { sourceN: existing.sourceN, adjustment: true, adjustmentId: id, live: true,
+              continuesRunIds: [run.runId], nativeTurnId: receipt.turnId } } });
+        appendReceipt(room, { agent: run.agent, from: entry.n - 1, upTo: entry.n, turn: existing.sourceN, mode: "turn" });
+        room.adjustmentDraft = null;
+        broadcast(room, { type: "room", room: roomSummary(room) });
+        return { sent: true, live: true, n: entry.n };
+      } catch (error) {
+        existing.error = "추가 지시 전달을 확인하지 못했습니다. 모델 답변을 확인해 주세요.";
+        existing.deliveryUncertain = true;
+        throw error;
+      } finally { existing.delivering = false; }
+    }
     room.adjustmentDraft = null;
     broadcast(room, { type: "room", room: roomSummary(room) });
     return { cancelled: true };
   }
   if (body.action !== "stage") throw Object.assign(new Error("invalid adjustment action"), { status: 400 });
   // A lost HTTP response must not turn Retry into a second user instruction.
-  const delivered = room.entries.find(entry => entry.kind === "user" && entry.meta?.askFrom?.adjustmentId === id);
   if (delivered) {
     if (body.update) throw Object.assign(new Error("추가 지시가 이미 전달되었습니다."), { status: 409 });
     return { sent: true, n: delivered.n, draft: null };
@@ -8376,7 +8498,7 @@ const server = http.createServer(async (req, res) => {
     if (route === "POST /api/adjustment") {
       const body = await readBody(req, MAX_MESSAGE_BODY_BYTES);
       const room = loadRoom(body.room || "default");
-      return json(res, 200, handleAdjustment(room, body));
+      return json(res, 200, await handleAdjustment(room, body));
     }
 
     if (route === "POST /api/message") {
@@ -8975,6 +9097,7 @@ function openBrowser(u) {
 }
 
 function killAllChildren() {
+  closeLiveConnections();
   for (const room of rooms.values()) {
     for (const [, child] of room.procs) { try { killTree(child); } catch { /* best effort */ } }
   }

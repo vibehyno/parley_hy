@@ -309,7 +309,15 @@
   #chatWrap::-webkit-scrollbar-thumb { border:3px solid transparent; border-radius:999px; background:var(--text-faint); background-clip:padding-box; min-height:44px; }
   #chatWrap::-webkit-scrollbar-thumb:hover { background-color:var(--text-dim); }
   #chatWrap::-webkit-scrollbar-thumb:active { background-color:var(--user); }
-  #chatEnd { display:flex; align-items:center; gap:12px; justify-content:center; flex:none; color:var(--text-faint); font-size:11px; padding:12px 24px 24px; }
+  #chatWrap::-webkit-scrollbar-button:vertical { display:none; }
+  #chatWrap::-webkit-scrollbar-button:vertical:increment:end {
+    display:block; height:16px;
+    background:center / 10px 10px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 4 3 3 3-3M3 10h6' fill='none' stroke='%238494a8' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  #chatWrap.at-chat-end::-webkit-scrollbar-button:vertical:increment:end {
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='m3 4 3 3 3-3M3 10h6' fill='none' stroke='%2322b99a' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  #chatEnd { display:flex; align-items:center; gap:12px; justify-content:center; flex:none; color:var(--text-dim); font-size:11px; padding:12px 24px 24px; }
   #chatEnd::before, #chatEnd::after { content:""; height:1px; width:48px; background:var(--border2); }
   #chat:empty + #chatEnd { display:none; }
   .settings-import-modal { width:min(560px,calc(100vw - 32px)); }

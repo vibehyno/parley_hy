@@ -2,6 +2,14 @@
 
 Notable changes per repository version.
 
+## 1.5.22 — 2026-11-05
+
+- Add a bottom marker to the chat scrollbar, highlight it at the end, and distinguish “Go to bottom” from newly arrived messages.
+- Deliver active-task instructions through Codex app-server, Claude stream-json, and AGY ACP. Do not mistake the superseded ACP prompt response for completion of the latest work.
+- Reuse connections per room and seat, keeping successful connections idle for 10 minutes (at most 12 idle connections). Dispose on stop, error, timeout, and shutdown; reconnect when settings or session change.
+- Preserve automatic waiting and legacy paths for unsupported advanced launch settings. Guard duplicate/uncertain delivery and retain skill invocation syntax for additional input.
+- Verify all three providers in isolated real CLI runs: GREEN was the first file output after live input, and the next request reused the same PID/session. Claude paid Fast was not used. Add focused reuse, isolation, expiry, stop, and completion-race coverage.
+
 ## 1.5.21 — 2026-11-04
 
 - Shorten import exclusion tooltips to list only excluded items.
