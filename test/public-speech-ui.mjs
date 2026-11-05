@@ -33,9 +33,12 @@ test("speech stays a bubble during work; only completed runs fold with their too
   assert.equal(completed.children.length, 2);
   assert.equal(completed.children[0].className, "completed-work");
   assert.equal(completed.children[0].open, false);
-  assert.equal(completed.children[0].children.length, 14);
+  assert.equal(completed.children[0].children.length, 1);
   assert.equal(completed.children[1].text, "완료");
   completed.children[0].open = true; completed.children[0].ontoggle();
+  assert.equal(completed.children[0].children.length, 14);
+  completed.children[0].ontoggle();
+  assert.equal(completed.children[0].children.length, 14);
   const reload = node(); context.appendEntryRange(reload, entries);
   assert.equal(reload.children[0].open, true);
   state.summary.busyInfo = [{ runId: "run-2" }];

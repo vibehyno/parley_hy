@@ -3,6 +3,8 @@
   const STORAGE_KEY = "parley.locale";
   const DICT = {
     en: {
+      "history.more": "Earlier messages ↑",
+      "history.moreHint": "Show {count} earlier entries",
       "appSettings.title": "App settings",
       "appSettings.font": "Font",
       "appSettings.size": "Chat text size",
@@ -589,6 +591,8 @@
       "language.en": "English",
     },
     ko: {
+      "history.more": "이전 대화 보기 ↑",
+      "history.moreHint": "이전 기록 {count}개 표시",
       "appSettings.title": "앱 설정",
       "appSettings.font": "글꼴",
       "appSettings.size": "대화 글자 크기",

@@ -1658,7 +1658,7 @@ async function main() {
     /function jumpToEntry\(n\) \{\s*\n\s*revealEntry\(n\);[\s\S]{0,200}?querySelector/.test(page) &&
     !/function jumpToEntry\(n\) \{\s*\n\s*expandHistory\(\)/.test(page));
   ok("history paging is bounded, coalesced per frame, and the button ignores its MouseEvent",
-    page.includes("const HISTORY_PAGE = 150") && page.includes("const HISTORY_CONTEXT = 20") &&
+    page.includes("const HISTORY_PAGE = 50") && page.includes("const HISTORY_CONTEXT = 20") &&
     page.includes("function expandHistory(count = HISTORY_PAGE)") &&
     page.includes("if (chatWrap.scrollTop < 80 && !historyPaging && state.renderFromN !== null)") &&
     page.includes("requestAnimationFrame(() => { expandHistory(); historyPaging = false; })") &&

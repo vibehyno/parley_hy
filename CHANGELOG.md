@@ -2,6 +2,13 @@
 
 Notable changes per repository version.
 
+## 1.5.31 — 2026-11-05
+
+- Render the latest 50 entries and reveal scrollback in pages of 50, preserving the reader's message anchor.
+- Defer completed-work DOM creation until expanded; materialize folded quote targets before navigation. Use native content visibility for durable message rows while excluding live streaming replies.
+- Preserve transcripts, model sessions and existing full-history API transport. This change optimizes display, not model context or network payload size.
+- Seven focused tests passed, including 10,000 collapsed actions, paging and quote navigation. Browser UI/performance measurement deferred by user.
+
 ## 1.5.30 — 2026-11-05
 
 - Require early public speech for substantial planning/review even without tools in conversational mode across all three providers. Preserve short direct answers, task mode and explicit output-only requests.

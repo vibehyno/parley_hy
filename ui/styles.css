@@ -332,6 +332,16 @@
   .msg.user { align-self: flex-end; align-items: flex-end; }
   .msg.agent { align-self: flex-start; max-width: 100%; min-width: 0; }
   .msg.public-speech { animation: none; }
+  /* Native viewport rendering preserves selection/find and remembered heights.
+     Live replies have no data-n and must never be skipped during streaming. */
+  @supports (content-visibility: auto) {
+    #chat > .msg[data-n] {
+      content-visibility: auto;
+      contain-intrinsic-block-size: auto 180px;
+    }
+    #chat > .msg[data-n]:focus-within,
+    #chat > .msg[data-n].jump-flash { content-visibility: visible; }
+  }
   .completed-work { align-self: flex-start; width: 100%; min-width: 0; margin: 8px 0; color: var(--muted); }
   .completed-work > summary { cursor: pointer; padding: 6px 0; font-size: 12px; }
   .completed-work > .msg { margin-top: 12px; }

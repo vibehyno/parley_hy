@@ -1119,6 +1119,8 @@ function refreshErrorRecovery() {
   }
 }
 function isToolActivity(e) { return e?.kind === "activity" && !e.meta?.publicSpeech; }
+// Collapsed work keeps its source entries, not thousands of prebuilt DOM nodes.
+const deferredWorkByN = new Map();
 function isActiveWorkRun(runId) {
   return (state.summary?.busyInfo || []).some(run => run.runId === runId) ||
     (state.summary?.continuingRunIds || []).includes(runId);
@@ -1131,13 +1133,20 @@ function appendCompletedWork(parent, entries) {
   const summary = document.createElement("summary");
   summary.textContent = t("progress.workDetails");
   detail.appendChild(summary);
-  for (const entry of entries) {
-    const node = entryEl(entry);
-    rowByN.set(entry.n, node);
-    detail.appendChild(node);
-  }
+  let loaded = false;
+  detail.loadEntries = () => {
+    if (loaded) return;
+    loaded = true;
+    for (const entry of entries) {
+      const node = entryEl(entry);
+      rowByN.set(entry.n, node);
+      detail.appendChild(node);
+    }
+  };
+  for (const entry of entries) deferredWorkByN.set(entry.n, detail);
+  if (detail.open) detail.loadEntries();
   detail.ontoggle = () => {
-    if (detail.open) state.expandedActivity.add(key);
+    if (detail.open) { detail.loadEntries(); state.expandedActivity.add(key); }
     else state.expandedActivity.delete(key);
   };
   parent.appendChild(detail);
@@ -1299,11 +1308,11 @@ function entryEl(e) {
   return div;
 }
 
-const INITIAL_ENTRY_LIMIT = 150;
+const INITIAL_ENTRY_LIMIT = 50;
 // Scrollback is revealed a page at a time. Revealing all of it at once tied the
 // cost of every later renderAll — and one runs for every activity entry — to how
 // long the room has run rather than to how much of it is on screen.
-const HISTORY_PAGE = 150;
+const HISTORY_PAGE = 50;
 // Entries kept above a jump target, so it lands in context rather than flush
 // against the "Show earlier" button.
 const HISTORY_CONTEXT = 20;
@@ -1513,13 +1522,14 @@ function renderPreservingAnchor(nextFromN) {
     typeof btn.after === "function";
   const beforeHeight = chatWrap.scrollHeight;
   const beforeTop = chatWrap.scrollTop;
+  const readerAnchor = readAnchor();
   const behavior = chatWrap.style.scrollBehavior;
   chatWrap.style.scrollBehavior = "auto";
   state.renderFromN = nextFromN;
   const newStart = renderedStartIndex();
   if (!canPrepend || newStart >= prevStart) {
     renderAll({ stickToBottom: false });
-    chatWrap.scrollTop = beforeTop + chatWrap.scrollHeight - beforeHeight;
+    if (!applyAnchor(readerAnchor)) chatWrap.scrollTop = beforeTop + chatWrap.scrollHeight - beforeHeight;
     chatWrap.style.scrollBehavior = behavior;
     return;
   }
@@ -1544,11 +1554,9 @@ function renderPreservingAnchor(nextFromN) {
   btn.after(frag);
   if (newStart <= 0) btn.remove();
   else {
-    btn.title = newStart > HISTORY_PAGE
-      ? `${newStart} earlier entries — shows ${HISTORY_PAGE} more`
-      : `${newStart} earlier entr${newStart === 1 ? "y" : "ies"}`;
+    btn.title = t("history.moreHint", { count: Math.min(newStart, HISTORY_PAGE) });
   }
-  chatWrap.scrollTop = beforeTop + chatWrap.scrollHeight - beforeHeight;
+  if (!applyAnchor(readerAnchor)) chatWrap.scrollTop = beforeTop + chatWrap.scrollHeight - beforeHeight;
   chatWrap.style.scrollBehavior = behavior;
 }
 
@@ -1639,6 +1647,8 @@ function entryQuoteHTML(e) {
 // was built for.
 function jumpToEntry(n) {
   revealEntry(n);
+  const folded = deferredWorkByN.get(n);
+  if (folded) { folded.loadEntries(); folded.open = true; folded.ontoggle(); }
   const el = chat.querySelector(`[data-n="${String(n).replace(/"/g, "")}"]`);
   if (!el) return toast("That message isn't part of this conversation any more.", true);
   el.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -1718,16 +1728,15 @@ function renderAll({ stickToBottom = true, preserveTransient = true, anchor = fa
   chat.innerHTML = "";
   heardSig.clear(); // the rebuild below re-reads them, so nothing cached survives it
   rowByN.clear();
+  deferredWorkByN.clear();
   const start = renderedStartIndex();
   const frag = document.createDocumentFragment();
   if (start > 0) {
     const earlier = document.createElement("button");
     earlier.type = "button";
     earlier.className = "history-more";
-    earlier.textContent = "Show earlier ▸";
-    earlier.title = start > HISTORY_PAGE
-      ? `${start} earlier entries — shows ${HISTORY_PAGE} more`
-      : `${start} earlier entr${start === 1 ? "y" : "ies"}`;
+    earlier.textContent = t("history.more");
+    earlier.title = t("history.moreHint", { count: Math.min(start, HISTORY_PAGE) });
     // Wrapped, not passed directly: a handler receives the MouseEvent, which
     // would arrive as the page size.
     earlier.onclick = () => expandHistory();
