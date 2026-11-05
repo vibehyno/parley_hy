@@ -1902,7 +1902,7 @@ function ensureLive(agent, startedAt, label) {
   div.className = "msg agent " + agent;
   div.dataset.liveAgent = agent;
   div.innerHTML = `<div class="meta">${seatAvatarHTML(agent)}` +
-    `<span class="who">${agent.charAt(0).toUpperCase() + agent.slice(1)}</span>` +
+    `<span class="who">${esc(seatLabel(agent))}</span>` +
     `<span class="live-label">${label || t("live.thinking")} <span class="elapsed"></span></span></div>` +
     `<div class="quote-slot"></div>` +
     `<div class="live-progress-slot" hidden></div>` +

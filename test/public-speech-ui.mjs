@@ -49,3 +49,17 @@ test("speech stays a bubble during work; only completed runs fold with their too
   const settled = node(); context.appendEntryRange(settled, entries);
   assert.equal(settled.children[0].className, "completed-work");
 });
+
+test("live cards use configured names and roles for all providers", () => {
+  const context = vm.createContext({
+    state: { live: {} }, document: { createElement: () => ({ dataset: {} }) },
+    seatAvatarHTML: () => "avatar", seatLabel: id => ({ codex: "빵빵이 · 주도", claude: "옥지 · 검토", gemini: "뚱뚱이 · 문서" })[id],
+    esc: x => x, t: x => x, chat: { appendChild() {} }, liveObserver: { observe() {} },
+    applyLiveRef() {}, scrollBottom() {}, scheduleVisibility() {},
+  });
+  vm.runInContext(source.slice(source.indexOf("function ensureLive("), source.indexOf("function progressText(")), context);
+  for (const id of ["codex", "claude", "gemini"]) {
+    const live = context.ensureLive(id);
+    assert.ok(live.el.innerHTML.includes(`<span class="who">${context.seatLabel(id)}</span>`));
+  }
+});

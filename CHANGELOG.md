@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.27 — 2026-11-05
+
+- Use the configured seat name and role in live response cards, matching progress messages and final replies.
+
 ## 1.5.26 — 2026-11-05
 
 - Apply the conversational public-update reminder to first and resumed calls, including peer work and history inspection; direct answers do not require acknowledgements.
