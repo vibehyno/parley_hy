@@ -2,6 +2,11 @@
 
 Notable changes per repository version.
 
+## 1.5.26 — 2026-11-05
+
+- Apply the conversational public-update reminder to first and resumed calls, including peer work and history inspection; direct answers do not require acknowledgements.
+- Stop treating Korean task-continuation requests containing “계속” alone as persistent preferences.
+
 ## 1.5.25 — 2026-11-05
 
 - Repair missing moyeo/parley Windows command aliases beside a verified launcher after pulling the source. New installations expose both commands.

@@ -271,6 +271,7 @@ moyeo start
 - v1.5.7: Fast 알림에 `[모델명] FAST ON/OFF - 설명` 형식 적용. 이름과 상태 분리, 업무명 제외.
 
 - 반응형 메뉴: 좁은 창에서 채팅 우선 및 작업 현황 모달·하단 시트 전환. [W3C Reflow](https://www.w3.org/WAI/WCAG21/Understanding/reflow) 및 [Dialog Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 참고.
+- v1.5.26: 대화형 첫·후속 호출에 작업 전 공개 안내 지침 적용. 동료 요청도 포함하며 “계속 회의해” 같은 일회성 이어가기 요청의 지침 자동 저장 제외.
 - v1.5.25: 기존 Parley 실행 시 moyeo/parley 명령 자동 등록 및 신규 설치의 두 명령 호환.
 - v1.5.24: 서버 실행 정보 백그라운드 자동 복구 및 관리 명령의 실제 서버 신원 확인 후 복구. 종료된 프로세스의 남은 관리 정보 정리.
 - v1.5.23: Windows 서버 실행 정보 파일의 일시적 교체 실패 재시도 및 시작 확인 안정화.

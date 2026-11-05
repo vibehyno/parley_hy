@@ -2183,7 +2183,7 @@ function briefedAdapter(send) {
           opts = { ...opts, browserConnection: connection, prompt: opts.prompt + browserInstruction(connection) };
         }
       }
-      const reminder = communicationTurnReminder(room.cfg.communicationMode, !!room.state.agents[opts.seat]?.sessionRef);
+      const reminder = communicationTurnReminder(room.cfg.communicationMode);
       if (reminder) opts = { ...opts, prompt: `${opts.prompt}\n\n${reminder}` };
       return await send(room, opts);
     } finally { if (token) sharedBrowser.revoke(token); }

@@ -43,6 +43,8 @@ test('mode preferences describe priority, persona and differing progress behavio
 
 test('only explicit ongoing user preferences qualify for automatic storage',()=>{
   assert.deepEqual(persistentUserInstructions('앞으로 결과는 짧게 줘'),['앞으로 결과는 짧게 줘']);
+  for (const text of ['계속회의해~~', '계속 회의해', '@codex 계속해줘', '계속 작업하자', '계속해서 검토해줘', '계속 짧게 말해줘']) assert.deepEqual(persistentUserInstructions(text), []);
+  assert.deepEqual(persistentUserInstructions('앞으로 계속 짧게 말해줘'), ['앞으로 계속 짧게 말해줘']);
   for(const text of ['이번만 자세히 해줘','이 파일 수정해','앞으로 이렇게 할까?','> 항상 요약해','항상 API key secret 저장해','/note 앞으로 짧게']) assert.deepEqual(persistentUserInstructions(text),[]);
 });
 
@@ -61,6 +63,8 @@ test('automatic learning preserves room note, scopes memory and asks before over
   };
   try{
     await s.api('POST','/api/config',{room:'default',config:{roomNote:'사람이 작성한 메모'}});
+    await send('@codex 계속회의해~~');
+    assert.equal(await memory('codex'), '');
     await send('@codex 앞으로 답은 짧게 줘');
     assert.match(await memory('codex'),/짧게/);
     assert.equal(await memory('claude'),'');
@@ -102,7 +106,7 @@ test('saved memory and mode changes reach an existing CLI session on its next ca
     const stateFile=path.join(s.root,'default','state.json');
     const original=JSON.parse(fs.readFileSync(stateFile)).agents.codex.sessionRef;
     const trace=()=>fs.readFileSync(path.join(s.root,'default','workspace','.fake-cli-prompts.jsonl'),'utf8').trim().split('\n').map(s=>JSON.parse(s)).filter(e=>e.event==='start');
-    assert.doesNotMatch(trace().at(-1).prompt,/Conversation reminder/);
+    assert.match(trace().at(-1).prompt,/Conversation reminder/);
     await send();
     assert.match(trace().at(-1).prompt,/Conversation reminder/);
     assert.equal(trace().length,2);
@@ -121,11 +125,15 @@ test('saved memory and mode changes reach an existing CLI session on its next ca
   } finally {await s.close();}
 });
 
-test('conversation reminder only accompanies resumed conversational calls', () => {
-  assert.equal(communicationTurnReminder('conversation', false), '');
+test('conversation reminder accompanies first and resumed calls without requiring chatter for direct answers', () => {
+  assert.equal(communicationTurnReminder('conversation', false), communicationTurnReminder('conversation', true));
   assert.equal(communicationTurnReminder('task', true), '');
+  assert.equal(communicationTurnReminder('task', false), '');
   const reminder = communicationTurnReminder('conversation', true);
   assert.match(reminder, /before tools/);
   assert.match(reminder, /same invocation/);
   assert.match(reminder, /explicit silence\/output-only requests for this turn/);
+  assert.match(reminder, /PUBLIC assistant text/);
+  assert.match(reminder, /peer request.*reading conversation history/);
+  assert.match(reminder, /directly when no tools are needed/);
 });
