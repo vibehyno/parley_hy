@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.23 — 2026-11-05
+
+- Retry transient Windows file replacement failures when publishing server readiness, avoiding startup timeouts after the server starts listening.
+
 ## 1.5.22 — 2026-11-05
 
 - Add a bottom marker to the chat scrollbar, highlight it at the end, and distinguish “Go to bottom” from newly arrived messages.

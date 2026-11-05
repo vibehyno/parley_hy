@@ -6,6 +6,28 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { isolatedServer } from "./server-fixture.mjs";
+import { claimService, readService } from "../lib/service-control.mjs";
+
+test("ready retries a transient Windows file replacement denial", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "moyeo-ready-test-"));
+  const service = claimService(root);
+  const rename = fs.renameSync;
+  let attempts = 0;
+  try {
+    fs.renameSync = (...args) => {
+      if (++attempts <= 2) throw Object.assign(new Error("temporarily locked"), { code: "EPERM" });
+      return rename(...args);
+    };
+    service.ready(4141);
+    assert.equal(attempts, 3);
+    assert.equal(readService(root).port, 4141);
+    assert.equal(readService(root).instance, service.info.instance);
+  } finally {
+    fs.renameSync = rename;
+    service.release();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const entry = fileURLToPath(new URL("../parley.mjs", import.meta.url));
 function cli(args) {
