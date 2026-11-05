@@ -2,6 +2,12 @@
 
 Notable changes per repository version.
 
+## 1.5.30 — 2026-11-05
+
+- Require early public speech for substantial planning/review even without tools in conversational mode across all three providers. Preserve short direct answers, task mode and explicit output-only requests.
+- Align saved-preference precedence with communication mode without editing personal room prompts; replace speculative reasoning status with “Preparing a response”.
+- Real Codex single-invocation check: opening at 13.7 seconds, final streaming at 20.7 seconds. Claude/AGY transport checked with simulated events; browser UI not tested.
+
 ## 1.5.29 — 2026-11-05
 
 - Normalize live tool progress across Codex, Claude and AGY with confirmed filenames/search terms and running/completed/failed phases; preserve public progress speech.

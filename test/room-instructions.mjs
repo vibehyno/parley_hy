@@ -135,5 +135,7 @@ test('conversation reminder accompanies first and resumed calls without requirin
   assert.match(reminder, /explicit silence\/output-only requests for this turn/);
   assert.match(reminder, /PUBLIC assistant text/);
   assert.match(reminder, /peer request.*reading conversation history/);
-  assert.match(reminder, /directly when no tools are needed/);
+  assert.match(reminder, /even when no tools are needed/);
+  assert.match(reminder, /BEFORE extended analysis or tools/);
+  assert.match(reminder, /Only genuinely short questions/);
 });
