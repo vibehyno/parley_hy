@@ -25,6 +25,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  }
  if(m.method==='session/prompt'){
   const text=p.prompt[0].text;
+  out({method:'session/update',params:{sessionId:'session',update:{sessionUpdate:'agent_thought_chunk',content:{type:'text',text:'PRIVATE_THOUGHT'}}}});
   if(text==='FIRST'){initial=m.id;return;}
   if(initial){out({id:initial,result:{stopReason:'end_turn'}});initial=null;}
   return setTimeout(()=>{
@@ -57,7 +58,11 @@ for (const [name, runner] of [['claude', runClaudeLive], ['agy', runAgyLive], ['
         if (steer && !sent) { sent = true; receipt = steer('GREEN', 'one'); }
       } });
       assert.equal(first.code, 0, first.stderr); await receipt;
-      if (name === 'agy') assert.equal(events.filter(e => e.event === 'result').at(-1).result.response, 'GREEN');
+      if (name === 'agy') {
+        assert.equal(events.filter(e => e.event === 'result').at(-1).result.response, 'GREEN');
+        assert.ok(events.some(e => e.event === 'thinking'));
+        assert.ok(!JSON.stringify(events).includes('PRIVATE_THOUGHT'));
+      }
       const second = await runner(spec, { ...options, input: input('SECOND'), sessionRef: 'session' });
       assert.equal(second.code, 0, second.stderr); assert.equal(pids[0], pids[1]);
       const third = await runner(spec, { ...options, input: input('THIRD'), sessionRef: 'session', poolSettings: { permission: 'changed' } });

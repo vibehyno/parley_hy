@@ -2,6 +2,10 @@
 
 Notable changes per repository version.
 
+## 1.5.28 — 2026-11-05
+
+- Forward AGY thinking-state notifications without private content, and preserve running/completed/failed tool status instead of leaving connection status visible.
+
 ## 1.5.27 — 2026-11-05
 
 - Use the configured seat name and role in live response cards, matching progress messages and final replies.
