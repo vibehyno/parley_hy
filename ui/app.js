@@ -486,6 +486,8 @@ function renderMD(src) {
     return SENT_A + (blocks.length - 1) + SENT_B;
   });
   let t = esc(src);
+  // Hide only the redundant mention immediately before its own skill badge.
+  t = t.replace(/(^|\s)@([a-z][a-z0-9_-]*)[ \t]+(?=\[\$\2:)/gi, "$1");
   t = t.replace(/\[\$([a-z][a-z0-9_-]*):([a-z0-9][a-z0-9:_-]*)\]/gi,
     '<span class="skill-chip" title="$1 모델에서 $2 Skill 사용"><span>$1</span>$2</span>');
   t = t.replace(/\[(MCP|Plugin):([^\]\r\n]+)\]/g,
@@ -2806,7 +2808,12 @@ navClose.id = "navClose"; navClose.type = "button"; navClose.textContent = "×";
 navClose.dataset.i18nAriaLabel = "nav.hideRooms";
 navClose.setAttribute("aria-label", tr("nav.hideRooms", "Hide rooms"));
 sidebar.querySelector(".logo").append(navClose);
-navClose.onclick = () => setNavOpen(false);
+let navPreview;
+navClose.onclick = () => {
+  navPreview?.reset();
+  if (desktopNav.matches) setSidebarCollapsed(true);
+  else setNavOpen(false);
+};
 function syncSidebarVisibility() {
   const visible = desktopNav.matches
     ? !document.body.classList.contains("sidebar-collapsed")
@@ -2818,6 +2825,7 @@ function syncSidebarVisibility() {
   $("navToggle").title = navLabel;
 }
 function setSidebarCollapsed(collapsed, persist = true) {
+  navPreview?.reset();
   document.body.classList.toggle("sidebar-collapsed", collapsed);
   if (persist) {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0"); } catch { /* unavailable storage */ }
@@ -2825,6 +2833,7 @@ function setSidebarCollapsed(collapsed, persist = true) {
   syncSidebarVisibility();
 }
 function setNavOpen(open) {
+  navPreview?.reset();
   const wasOpen = document.body.classList.contains("nav-open");
   document.body.classList.toggle("nav-open", open);
   $("navScrim").hidden = !open;
@@ -2855,6 +2864,17 @@ $("navToggle").onclick = () => {
 $("navScrim").onclick = () => setNavOpen(false);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") setNavOpen(false); });
 desktopNav.addEventListener("change", () => { setNavOpen(false); syncSidebarVisibility(); });
+navPreview = window.MoyeoPanelPreview.create({
+  button: $("navToggle"), panel: sidebar,
+  isPinned: () => desktopNav.matches
+    ? !document.body.classList.contains("sidebar-collapsed")
+    : document.body.classList.contains("nav-open"),
+  show: () => {
+    sidebar.classList.add("panel-preview"); sidebar.inert = false;
+    $("navToggle").setAttribute("aria-expanded", "true");
+  },
+  hide: () => { sidebar.classList.remove("panel-preview"); syncSidebarVisibility(); },
+});
 
 // ---- keyboard-navigable menus ----
 // These surfaces declare role="menu" but had no arrow keys, no focus move on

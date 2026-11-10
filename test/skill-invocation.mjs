@@ -7,6 +7,14 @@ import { skillMarker, extractSkillMessage, applySkillInvocationPrompt } from "..
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+test("selected installation document is supplied without inventing successful execution", () => {
+  const prompt = applySkillInvocationPrompt("codex", { name: "mattpocock:wait-what", path: "C:/skills/wait-what/SKILL.md" }, "question");
+  assert.match(prompt, /^\$mattpocock:wait-what/);
+  assert.ok(prompt.includes('"C:/skills/wait-what/SKILL.md"'));
+  assert.ok(prompt.includes("check this exact file"));
+  assert.ok(prompt.endsWith("question"));
+});
+
 test("creates and extracts a visible provider skill marker", () => {
   assert.equal(skillMarker("claude", "wait-what"), "[$claude:wait-what]");
   assert.deepEqual(extractSkillMessage("[$claude:wait-what] 구조적으로 설명해줘", "claude"), {

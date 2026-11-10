@@ -1924,7 +1924,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
       if (t) {
         if (publicItem !== null && item.id && publicItem !== item.id) speech.archive();
         publicItem = item.id || publicItem;
-        lastMsg = t; speech.update(t);
+        lastMsg = t; speech.update(t, item.id || null);
       }
     }
     if (item && (item.type === "file_change" || item.type === "command_execution") && onActivity && seenItems.size < 200) {
@@ -1995,7 +1995,7 @@ async function codexSend(room, { seat = "codex", prompt, briefing, onStream, onA
       resumeFailed: !!sess && missingNativeSession(room, seat, r),
     });
   }
-  const text = fileText ?? lastMsg ?? (acc || null);
+  const text = speech.finalText(fileText ?? lastMsg ?? (acc || ""));
   if (!text && !allowEmpty) throw new AdapterError("codex returned an empty reply");
   const tokens = codexTurnUsage(usage, { sessionRef: threadRef, resumed: !!sess, previous: previousUsage });
   return { text: text || "", emptyReply: !text, sessionRef: threadRef || "--last", sentinelThread: !threadRef || threadRef === "--last", usage: tokens.usage, codexUsage: tokens.baseline };
@@ -3752,6 +3752,11 @@ async function runAgentTurn(room, agent, userTurn, scope = NO_SCOPE, opts = {}) 
       : "";
     const noted = (p) => [p, opts.instruction, roomNoteInstruction, adjustmentInstruction].filter(Boolean).join("\n\n");
     const selectedSkill = extractSkillMessage(userTurn.text, agent);
+    if (selectedSkill) {
+      const provider = providerIdOf(room, agent);
+      await providerToolCatalog(room, provider, { refresh: true });
+      selectedSkill.path = skillDocumentPaths.get(`${provider}\0${workDir(room)}\0${selectedSkill.name}`);
+    }
     const promptTurn = selectedSkill ? { ...userTurn, text: selectedSkill.text } : userTurn;
     const attemptPrompt = (dlv, ts) => {
       const base = buildPrompt(room, delta, promptTurn, providerInputs,
@@ -7187,6 +7192,11 @@ async function handleAdjustment(room, body) {
       try {
         // Keep automatic flushing locked until the native turn acknowledges.
         const selectedSkill = extractSkillMessage(existing.text, run.agent);
+        if (selectedSkill) {
+          const provider = providerIdOf(room, run.agent);
+          await providerToolCatalog(room, provider, { refresh: true });
+          selectedSkill.path = skillDocumentPaths.get(`${provider}\0${workDir(room)}\0${selectedSkill.name}`);
+        }
         const liveText = applySkillInvocationPrompt(providerIdOf(room, run.agent), selectedSkill, selectedSkill?.text || existing.text);
         const receipt = await run.steer(liveText + "\n\n[Additional user instruction for this active task. Incorporate it into the ongoing work." +
           (room.cfg.communicationMode === "task" ? "" : " Briefly acknowledge it naturally before continuing, using the room persona.") + "]", id);
@@ -7735,6 +7745,8 @@ function handleNewConversation(room) {
 // a page just because the page wants a convenient tool picker.
 const TOOL_CATALOG_TTL_MS = 45_000;
 const toolCatalogCache = new Map();
+// Server-only paths: never expose local installation paths in browser inventory.
+const skillDocumentPaths = new Map();
 const USAGE_CACHE_TTL_MS = 5 * 60_000;
 const usageCache = new Map();
 const usagePending = new Map();
@@ -7896,7 +7908,7 @@ function skillMetadata(file) {
   return description ? { name, description } : { name };
 }
 
-function scanSkillRoots(roots, providerId) {
+function scanSkillRoots(roots, providerId, cwd) {
   const found = [];
   function scanRoot(root) {
     const visited = new Set();
@@ -7917,10 +7929,13 @@ function scanSkillRoots(roots, providerId) {
         const meta = skillMetadata(path.join(resolved, entry.name));
         if (meta) {
           const displayName = `${source.id}:${meta.name}`;
+          const invokeName = source.kind === "plugin" && providerId === "codex" ? displayName : meta.name;
+          const documentKey = `${providerId}\0${cwd}\0${invokeName}`;
+          if (!skillDocumentPaths.has(documentKey)) skillDocumentPaths.set(documentKey, path.join(resolved, entry.name));
           found.push({
             ...meta,
             displayName,
-            invokeName: source.kind === "plugin" && providerId === "codex" ? displayName : meta.name,
+            invokeName,
             source,
           });
         }
@@ -7965,7 +7980,10 @@ async function providerToolCatalog(room, providerId, options = {}) {
   skillRoots.push(...pluginData.roots);
   const warnings = [];
   if (mcpRun && mcpRun.code !== 0) warnings.push("MCP 연결 상태를 확인하지 못했습니다. 설정 목록을 표시합니다.");
-  const skills = scanSkillRoots(skillRoots, providerId);
+  for (const key of skillDocumentPaths.keys()) {
+    if (key.startsWith(`${providerId}\0${cwd}\0`)) skillDocumentPaths.delete(key);
+  }
+  const skills = scanSkillRoots(skillRoots, providerId, cwd);
   const plugins = pluginData.items.map(({ _sourceId, ...item }) => ({
     ...item,
     skillCount: skills.filter((skill) => skill.source?.kind === "plugin" && skill.source.id === _sourceId).length,

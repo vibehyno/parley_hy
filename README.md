@@ -268,6 +268,12 @@ moyeo start
 
 ### 원본 Parley와의 차이점
 
+- 스킬 선택 배지와 중복되는 모델 호출명 숨김. 선택한 스킬의 설치 문서 경로를 모델에 함께 전달하여 세션 목록에 없더라도 해당 문서를 직접 확인하도록 안내.
+
+- 접힌 좌우 메뉴: 버튼에 마우스를 올리면 미리보기, 벗어나면 숨김, 클릭하면 펼쳐 고정. 미리보기 중 채팅 폭 유지.
+
+- 동일 Codex 발언의 누적 수신으로 생기는 중복 접두 문장 제거. 자연스러운 여러 발언과 작업 전후 설명 유지.
+
 - v1.5.7: Fast 알림에 `[모델명] FAST ON/OFF - 설명` 형식 적용. 이름과 상태 분리, 업무명 제외.
 
 - 반응형 메뉴: 좁은 창에서 채팅 우선 및 작업 현황 모달·하단 시트 전환. [W3C Reflow](https://www.w3.org/WAI/WCAG21/Understanding/reflow) 및 [Dialog Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/) 참고.

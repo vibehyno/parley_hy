@@ -2,6 +2,18 @@
 
 Notable changes per repository version.
 
+## Unreleased
+
+- Hide redundant model mentions immediately before their skill badge. Include the selected local skill document path in normal and live-steered requests so missing session inventory does not imply a missing installation.
+
+- Register the panel preview script in the startup asset snapshot, fixing a 403 that interrupted UI initialization. Add coverage for every local script and stylesheet referenced by the page.
+
+- Preview collapsed side panels on hover without resizing chat. Dismiss after leaving the button and panel; click to pin using the existing layout. Touch keeps click-only navigation.
+- Focused preview state/timer tests and syntax checks passed; browser validation not performed.
+
+- Remove already published prefixes when Codex repeats cumulative text for the same message ID after interleaved tool events. Preserve separate utterances, progress reports and final results.
+- Nine focused speech tests passed; no live browser or provider-call validation performed.
+
 ## 1.5.31 — 2026-11-05
 
 - Render the latest 50 entries and reveal scrollback in pages of 50, preserving the reader's message anchor.

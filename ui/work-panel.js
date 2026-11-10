@@ -142,7 +142,7 @@
     new ResizeObserver(() => {
       const width = Math.round(panel.getBoundingClientRect().width);
       handle.setAttribute('aria-valuenow', width);
-      if (side === 'left') document.documentElement.style.setProperty('--visible-sidebar-width', width + 'px');
+      if (side === 'left') document.documentElement.style.setProperty('--visible-sidebar-width', (panel.classList.contains('panel-preview') ? 0 : width) + 'px');
     }).observe(panel);
   }
   function enableSectionOrder(container, t) {
@@ -259,8 +259,9 @@
     panel.before(scrim);
     const title = panel.querySelector('.work-panel-head strong');
     title.id = 'workPanelTitle';
-    let previousInert = null;
+    let previousInert = null, preview;
     function setVisible(value, persist = true) {
+      preview?.reset();
       const wasVisible = visible && !panel.hidden;
       visible = value; panel.hidden = !value;
       const toggle = $('workPanelToggle');
@@ -354,7 +355,7 @@
       if ($('workUsage').innerHTML !== content) $('workUsage').innerHTML = content;
     }
     async function refresh(force = false) {
-      if (!state.summary || !visible || document.hidden) return;
+      if (!state.summary || (!visible && !panel.classList.contains('panel-preview')) || document.hidden) return;
       const room = state.room;
       if (pending?.room === room) return pending.promise;
       $('workRefresh').disabled = true;
@@ -428,6 +429,18 @@
       section.addEventListener('toggle', () => { try { localStorage.setItem(key, section.open ? 'open' : 'closed'); } catch {} });
     });
     setVisible(visible);
+    preview = global.MoyeoPanelPreview.create({
+      button: $('workPanelToggle'), panel, isPinned: () => visible,
+      show: () => {
+        panel.classList.add('panel-preview'); panel.hidden = false;
+        $('workPanelToggle').setAttribute('aria-expanded', 'true');
+        renderAgents(); renderUsage(); refresh();
+      },
+      hide: () => {
+        panel.classList.remove('panel-preview'); panel.hidden = !visible;
+        $('workPanelToggle').setAttribute('aria-expanded', String(visible));
+      },
+    });
     setInterval(() => {
       if (document.hidden) return;
       if (currentRoom !== state.room) { roomChanged(); return; }

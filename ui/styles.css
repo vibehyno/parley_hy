@@ -1231,8 +1231,8 @@
   .diff-column-head { display:none; }
 }
 
-body:has(#workPanel:not([hidden])) #main > header { flex-wrap:wrap; row-gap:6px; }
-body:has(#workPanel.with-diff:not([hidden])) #chat, body:has(#workPanel.with-diff:not([hidden])) #composer { width:calc(100% - 32px); }
+body:has(#workPanel:not([hidden]):not(.panel-preview)) #main > header { flex-wrap:wrap; row-gap:6px; }
+body:has(#workPanel.with-diff:not([hidden]):not(.panel-preview)) #chat, body:has(#workPanel.with-diff:not([hidden]):not(.panel-preview)) #composer { width:calc(100% - 32px); }
 /* Shared browser controls stay inside the work panel at every width. */
 .shared-browser-controls { display:inline-flex; flex-shrink:0; align-items:center; gap:4px; }
 .shared-browser-controls button { min-height:28px; padding:4px 6px; border-radius:5px; cursor:pointer; font-family:inherit; font-size:11px; line-height:1.4; white-space:nowrap; }
@@ -1321,3 +1321,18 @@ body.sidebar-collapsed #sidebar > .panel-resizer { display:none; }
 .settings-import-options legend { margin-bottom:10px; color:var(--text-dim); }
 .settings-import-options label { display:flex; align-items:center; gap:8px; cursor:pointer; }
 .settings-import-options input { width:16px; height:16px; margin:0; flex:none; }
+
+/* Hover previews float over chat; pinning restores the normal panel layout. */
+body #sidebar.panel-preview,
+body #workPanel.panel-preview {
+  position:fixed; top:64px; bottom:12px; height:auto; max-height:calc(100dvh - 76px);
+  width:min(360px, calc(100vw - 24px)); z-index:45;
+  visibility:visible; transform:none; overflow:hidden;
+  border:1px solid var(--border2); border-radius:16px;
+  box-shadow:0 16px 60px #0005;
+}
+body #sidebar.panel-preview { left:12px; right:auto; }
+body #workPanel.panel-preview { right:12px; left:auto; }
+body #workPanel.panel-preview.with-diff { width:min(800px, calc(100vw - 24px)); }
+.panel-preview > .panel-resizer { display:none; }
+#sidebar.panel-preview #navClose { display:block; }
