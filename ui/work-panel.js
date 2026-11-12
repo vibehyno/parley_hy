@@ -276,7 +276,7 @@
         panel.setAttribute('aria-labelledby', title.id);
         previousInert ||= [$('main'), $('sidebar')].map(el => [el, el.inert]);
         for (const [el] of previousInert) el.inert = true;
-        $('workClose').focus({ preventScroll: true });
+        toggle.focus({ preventScroll: true });
       } else {
         panel.removeAttribute('role'); panel.removeAttribute('aria-modal'); panel.removeAttribute('aria-labelledby');
         if (previousInert) { for (const [el, inert] of previousInert) el.inert = inert; previousInert = null;
@@ -408,7 +408,6 @@
       finally { if (selection === selected) $('workFilePath').disabled = false; }
     };
     $('workPanelToggle').onclick = () => setVisible(!visible);
-    $('workClose').onclick = () => setVisible(false);
     $('workBack').onclick = closeDiff;
     $('workRefresh').onclick = (event) => { event.preventDefault(); event.stopPropagation(); refresh(true); };
     $('workDiffRefresh').onclick = () => selection && showDiff(selection.project, selection.file);

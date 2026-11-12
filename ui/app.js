@@ -2803,22 +2803,17 @@ const desktopNav = typeof window.matchMedia === "function"
   : { matches: true, addEventListener() {} };
 const SIDEBAR_COLLAPSED_KEY = "parley.sidebarCollapsed";
 const sidebar = $("sidebar");
-const navClose = document.createElement("button");
-navClose.id = "navClose"; navClose.type = "button"; navClose.textContent = "×";
-navClose.dataset.i18nAriaLabel = "nav.hideRooms";
-navClose.setAttribute("aria-label", tr("nav.hideRooms", "Hide rooms"));
-sidebar.querySelector(".logo").append(navClose);
+const navToggleHome = document.createComment("sidebar toggle home");
+$("navToggle").before(navToggleHome);
+$("navToggle").innerHTML = $("workPanelToggle").innerHTML;
 let navPreview;
-navClose.onclick = () => {
-  navPreview?.reset();
-  if (desktopNav.matches) setSidebarCollapsed(true);
-  else setNavOpen(false);
-};
 function syncSidebarVisibility() {
   const visible = desktopNav.matches
     ? !document.body.classList.contains("sidebar-collapsed")
     : document.body.classList.contains("nav-open");
   sidebar.inert = !visible;
+  if (visible) sidebar.querySelector(".logo").append($("navToggle"));
+  else navToggleHome.after($("navToggle"));
   $("navToggle").setAttribute("aria-expanded", String(visible));
   const navLabel = visible ? tr("nav.hideRooms", "Hide rooms") : tr("nav.showRooms", "Show rooms");
   $("navToggle").setAttribute("aria-label", navLabel);
@@ -2841,7 +2836,7 @@ function setNavOpen(open) {
   if (open && !desktopNav.matches) {
     sidebar.setAttribute("role", "dialog"); sidebar.setAttribute("aria-modal", "true");
     sidebar.setAttribute("aria-label", tr("nav.showRooms", "Show rooms"));
-    $("main").inert = true; navClose.focus({preventScroll:true});
+    $("main").inert = true; $("navToggle").focus({preventScroll:true});
   } else {
     sidebar.removeAttribute("role"); sidebar.removeAttribute("aria-modal"); sidebar.removeAttribute("aria-label");
     if (wasOpen) { $("main").inert = false; $("navToggle").focus({preventScroll:true}); }
@@ -5947,13 +5942,35 @@ $("updateApply").onclick = applyUpdate;
 $("updateOverlay").addEventListener("click", (e) => { if (e.target === $("updateOverlay")) closeUpdate(); });
 $("mClose").onclick = () => closeSettings();
 
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  if ($("archiveOverlay").classList.contains("open")) closeArchives();
-  else if ($("updateOverlay").classList.contains("open")) closeUpdate();
-  else if ($("projectOverlay").classList.contains("open")) closeProjectManager();
-  // Settings are dismissed explicitly through their close button.
-});
+// Consume Escape before page/menu listeners so one key closes only the top modal.
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.isComposing) return;
+  if (document.querySelector("dialog[open]")) {
+    // Keep the native cancel event (including cancellation guards) and focus restoration.
+    e.stopImmediatePropagation();
+    return;
+  }
+  const closers = new Map([
+    ["overlay", closeSettings],
+    ["appSettingsOverlay", () => $("appSettingsClose").click()],
+    ["toolsOverlay", closeTools],
+    ["archiveOverlay", closeArchives],
+    ["updateOverlay", closeUpdate],
+    ["projectOverlay", closeProjectManager],
+  ]);
+  const candidates = [...document.querySelectorAll(
+    "#overlay, #appSettingsOverlay, #toolsOverlay, #archiveOverlay, #updateOverlay, #projectOverlay, .avatar-crop-overlay"
+  )].filter(el => el.getClientRects().length && getComputedStyle(el).visibility !== "hidden");
+  candidates.sort((a, b) => (Number.parseInt(getComputedStyle(a).zIndex) || 0) -
+    (Number.parseInt(getComputedStyle(b).zIndex) || 0));
+  const top = candidates.at(-1);
+  if (!top) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (e.repeat) return;
+  if (top.classList.contains("avatar-crop-overlay")) top.querySelector("[data-avatar-cancel]").click();
+  else closers.get(top.id)?.();
+}, true);
 $("mSave").onclick = async () => {
   const s = settingsContext; if (!s || $("mSave").disabled) return;
   const desiredName = $("s_roomName").value.trim().normalize("NFC");

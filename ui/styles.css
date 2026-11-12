@@ -1144,6 +1144,11 @@
 .work-panel-head { min-height:54px; padding:0 16px; border-bottom:1px solid var(--border); }
 #workPanelToggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:32px; padding:6px; }
 #workPanelToggle svg { display:block; flex:none; }
+#navToggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 36px; width:36px; height:32px; padding:6px; }
+#navToggle svg { display:block; flex:none; }
+#sidebar .logo > div { min-width:0; }
+#sidebar .logo #navToggle { margin-left:auto; border-radius:7px; }
+#sidebar .logo #navToggle:hover { background:var(--panel2); }
 .work-panel-head strong, .work-section-head h3 { flex:1; }
 .work-panel-head button, .work-section-head button, .work-diff-head button { border-radius:7px; padding:5px 9px; }
 #workPanel button:hover { background:var(--panel2); }

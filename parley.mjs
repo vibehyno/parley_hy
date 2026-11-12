@@ -53,7 +53,7 @@ import { diagnosticText } from "./lib/diagnostic-text.mjs";
 import { changedFiles, fileDiff, resolveProjectFile, discoverRepositories, resolveRepository } from "./lib/work-changes.mjs";
 import { subagentEvents } from "./lib/subagent-events.mjs";
 import { plainPeerRequest } from "./lib/peer-routing.mjs";
-import { readRoomInstructions, saveRoomInstructions, communicationInstructions, communicationTurnReminder, persistentUserInstructions, planRememberedInstructions } from "./lib/room-instructions.mjs";
+import { readRoomInstructions, saveRoomInstructions, communicationInstructions, communicationTurnReminder, liveAdjustmentInstructions, persistentUserInstructions, planRememberedInstructions } from "./lib/room-instructions.mjs";
 import { SharedBrowser } from "./lib/shared-browser.mjs";
 import { browserBridge, browserCliArgs, browserInstruction, agyBrowserNeedsSetup, browserSetupRequired } from "./lib/shared-browser-config.mjs";
 import { agyBrowserPermissions } from "./lib/agy-browser-permissions.mjs";
@@ -7198,8 +7198,7 @@ async function handleAdjustment(room, body) {
           selectedSkill.path = skillDocumentPaths.get(`${provider}\0${workDir(room)}\0${selectedSkill.name}`);
         }
         const liveText = applySkillInvocationPrompt(providerIdOf(room, run.agent), selectedSkill, selectedSkill?.text || existing.text);
-        const receipt = await run.steer(liveText + "\n\n[Additional user instruction for this active task. Incorporate it into the ongoing work." +
-          (room.cfg.communicationMode === "task" ? "" : " Briefly acknowledge it naturally before continuing, using the room persona.") + "]", id);
+        const receipt = await run.steer(liveText + "\n\n" + liveAdjustmentInstructions(room.cfg.communicationMode, id), id);
         const entry = appendEntry(room, { kind: "user", author: "user", target: run.agent, text: existing.text,
           meta: { liveSession: receipt.threadId, audience: { addressed: [run.agent], lurking: [] },
             askFrom: { sourceN: existing.sourceN, adjustment: true, adjustmentId: id, live: true,

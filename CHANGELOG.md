@@ -4,6 +4,12 @@ Notable changes per repository version.
 
 ## Unreleased
 
+- Support Escape dismissal for settings, app settings, tools and other overlays. Close only the top overlay, preserve background menus and native dialog cancellation, and cancel avatar cropping without applying it.
+
+- Scope live acknowledgements to first receipt and preserve settled answers across compaction/resume through shared prompt guidance. Keep natural progress updates and explicitly repeated user questions.
+
+- Unify sidebar toggle icons, move the open left sidebar toggle into its header, and remove the redundant right-panel close button.
+
 - Hide redundant model mentions immediately before their skill badge. Include the selected local skill document path in normal and live-steered requests so missing session inventory does not imply a missing installation.
 
 - Register the panel preview script in the startup asset snapshot, fixing a 403 that interrupted UI initialization. Add coverage for every local script and stylesheet referenced by the page.
